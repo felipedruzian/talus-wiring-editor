@@ -1,0 +1,48 @@
+:host {
+  display: block;
+  position: relative;
+  cursor: grab;
+
+  --card-border-color: var(--ngd-ui-stroke-primary-default);
+  --card-box-shadow: var(--ngd-token-radius-shadow-xxs-x) var(--ngd-token-radius-shadow-xxs-y)
+    var(--ngd-token-radius-shadow-xxs-blur) 0 var(--ngd-colors-gray-900-10);
+
+  &:active {
+    cursor: grabbing;
+  }
+
+  &:hover {
+    --card-border-color: var(--ngd-ui-stroke-primary-highlight);
+  }
+
+  &.selected {
+    --card-border-color: var(--ngd-ui-stroke-primary-highlight);
+    --card-box-shadow: var(--ngd-token-shadow-focus-node-active-x)
+      var(--ngd-token-shadow-focus-node-active-y) var(--ngd-token-shadow-focus-node-active-blur)
+      var(--ngd-token-shadow-focus-node-active-spread) var(--ngd-focus-ring-node-active);
+  }
+
+  ng-diagram-port {
+    --ngd-port-size: 0;
+    visibility: hidden;
+  }
+}
+
+.device-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 160px;
+  min-height: 72px;
+  padding: var(--ngd-primitive-4rule-12) var(--ngd-primitive-4rule-16);
+  background: var(--ngd-node-bg-primary-default);
+  color: var(--ngd-txt-primary-default);
+  border: 1px solid var(--card-border-color);
+  border-radius: var(--ngd-token-radius-element-12);
+  box-shadow: var(--card-box-shadow);
+}
+
+.device-label {
+  text-align: center;
+  word-break: break-word;
+}

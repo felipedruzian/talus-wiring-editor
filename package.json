@@ -1,0 +1,55 @@
+{
+  "name": "ng-diagram-av-schematic",
+  "version": "0.1.0",
+  "description": "Interactive AV schematic template built with Angular and ng-diagram",
+  "license": "MIT",
+  "keywords": [
+    "visualization",
+    "open-source",
+    "angular",
+    "typescript",
+    "graph",
+    "diagram",
+    "av",
+    "audio-video",
+    "schematic",
+    "diagramming",
+    "node-editor",
+    "node-based-ui",
+    "ng-diagram"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/synergycodes/ng-diagram-av-schematic.git"
+  },
+  "homepage": "https://www.ngdiagram.dev",
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve",
+    "build": "ng build",
+    "watch": "ng build --watch --configuration development",
+    "test": "ng test",
+    "format": "prettier --write \"src/**/*.{ts,html,css,scss}\""
+  },
+  "private": true,
+  "packageManager": "npm@10.9.2",
+  "dependencies": {
+    "@angular/common": "^21.2.9",
+    "@angular/compiler": "^21.2.9",
+    "@angular/core": "^21.2.9",
+    "@angular/forms": "^21.2.9",
+    "@angular/platform-browser": "^21.2.9",
+    "@angular/router": "^21.2.9",
+    "ng-diagram": "^1.2.0",
+    "tslib": "^2.8.1"
+  },
+  "devDependencies": {
+    "@angular/build": "^21.2.7",
+    "@angular/cli": "^21.2.7",
+    "@angular/compiler-cli": "^21.2.9",
+    "jsdom": "^29.0.2",
+    "prettier": "^3.8.3",
+    "typescript": "~5.9.2",
+    "vitest": "^4.1.4"
+  }
+}

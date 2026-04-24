@@ -1,0 +1,31 @@
+<aside class="sidebar" aria-labelledby="properties-sidebar-title">
+  <app-sidebar-header [isExpanded]="isExpanded()" (toggle)="onHeaderToggle()" />
+  @if (isExpanded()) {
+    <div class="sidebar-separator"></div>
+    <div class="sidebar-content sidebar-enter">
+      @if (state() === 'single' && selectedNode(); as node) {
+        <div class="device-info">
+          <span class="p10 field-label">Id</span>
+          <span class="p10 field-value">{{ node.id }}</span>
+          <span class="p10 field-label">Label</span>
+          <span class="p10 field-value">{{ node.data.label ?? '—' }}</span>
+        </div>
+        <div class="sidebar-actions">
+          <button class="remove-button p10" type="button" (click)="onRemoveNode()">
+            Remove device
+          </button>
+        </div>
+      } @else if (state() === 'empty') {
+        <app-sidebar-placeholder
+          title="No selection"
+          description="Select a device on the canvas to view its properties."
+        />
+      } @else {
+        <app-sidebar-placeholder
+          title="Multiple items selected."
+          description="Please select a single node to view properties."
+        />
+      }
+    </div>
+  }
+</aside>

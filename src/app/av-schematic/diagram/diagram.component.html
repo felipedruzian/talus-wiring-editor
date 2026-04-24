@@ -1,0 +1,12 @@
+<div class="diagram">
+  <ng-diagram
+    [model]="model"
+    [config]="config"
+    [nodeTemplateMap]="nodeTemplateMap"
+    [edgeTemplateMap]="edgeTemplateMap"
+    (selectionGestureEnded)="onSelectionGestureEnded($event)"
+    (diagramInit)="onDiagramInit($event)"
+  >
+    <ng-diagram-background type="dots" />
+  </ng-diagram>
+</div>

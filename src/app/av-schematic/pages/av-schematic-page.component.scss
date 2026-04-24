@@ -1,0 +1,63 @@
+:host {
+  --sidebar-width: 320px;
+  position: relative;
+  display: block;
+  height: 100%;
+}
+
+.ui-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  padding: var(--ngd-primitive-4rule-12);
+  gap: var(--ngd-primitive-even-14);
+  pointer-events: none;
+  z-index: 10;
+
+  .top-navbar {
+    pointer-events: all;
+    grid-row: 1;
+    grid-column: 1;
+  }
+
+  .top-toolbar-wrapper {
+    grid-row: 2;
+    grid-column: 1;
+    display: flex;
+    justify-content: center;
+  }
+
+  .top-toolbar {
+    pointer-events: all;
+  }
+
+  .content-area {
+    display: flex;
+    grid-row: 2 / span 3;
+    grid-column: 1;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--ngd-primitive-4rule-12);
+    min-height: 0;
+
+    &:has(app-properties-sidebar.expanded) {
+      flex-direction: row;
+      justify-content: flex-end;
+      align-items: flex-end;
+
+      app-properties-sidebar {
+        align-self: stretch;
+        order: 2;
+      }
+
+      app-minimap-panel {
+        order: 1;
+      }
+    }
+  }
+
+  app-minimap-panel {
+    margin-top: auto;
+  }
+}

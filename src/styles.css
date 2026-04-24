@@ -1,0 +1,53 @@
+@import './tokens.css';
+@import './typography.css';
+@import 'ng-diagram/styles.css';
+
+html[data-theme='dark'] {
+  background-color: var(--ngd-colors-gray-800);
+}
+
+html[data-theme='light'] {
+  background-color: var(--ngd-colors-gray-200);
+}
+
+html,
+body {
+  height: 100%;
+  font-family: 'Poppins', sans-serif;
+  margin: 0;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+input,
+button,
+textarea,
+select {
+  font: inherit;
+}
+
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  overflow-wrap: break-word;
+}
+
+p {
+  text-wrap: pretty;
+}
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  text-wrap: balance;
+}

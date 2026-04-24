@@ -26,3 +26,11 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# JetBrains / WebStorm
+.idea/
+*.iml
+*.iws
+*.ipr
+.idea_modules/
+
