@@ -27,8 +27,8 @@ export class DeviceNodeComponent implements NgDiagramNodeTemplate<DeviceNodeData
 
   protected readonly data = computed(() => this.node().data);
 
-  protected readonly inputPorts = computed(() => this.sortedPorts('input'));
-  protected readonly outputPorts = computed(() => this.sortedPorts('output'));
+  protected readonly inputPorts = computed(() => this.portsByDirection('input'));
+  protected readonly outputPorts = computed(() => this.portsByDirection('output'));
 
   protected readonly edgeHighlighted = computed(() => {
     const nodeId = this.node().id;
@@ -41,9 +41,7 @@ export class DeviceNodeComponent implements NgDiagramNodeTemplate<DeviceNodeData
     this.portFocusService.navigateToConnectedPort(portId, this.node().id);
   }
 
-  private sortedPorts(direction: DevicePort['direction']): DevicePort[] {
-    return this.data()
-      .ports.filter((p) => p.direction === direction)
-      .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+  private portsByDirection(direction: DevicePort['direction']): DevicePort[] {
+    return this.data().ports.filter((p) => p.direction === direction);
   }
 }

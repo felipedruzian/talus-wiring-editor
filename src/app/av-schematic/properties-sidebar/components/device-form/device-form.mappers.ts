@@ -1,5 +1,5 @@
 import { InjectionToken } from '@angular/core';
-import { type DeviceNodeData } from '../../../diagram/model/interfaces';
+import { type DeviceNodeData, type DevicePort } from '../../../diagram/model/interfaces';
 
 export interface DeviceFormData {
   deviceId: string;
@@ -7,6 +7,7 @@ export interface DeviceFormData {
   model: string;
   category: string;
   location: string;
+  ports: DevicePort[];
 }
 
 export interface DeviceFieldChange {
@@ -25,6 +26,7 @@ export const EMPTY_DEVICE_FORM: DeviceFormData = {
   model: '',
   category: '',
   location: '',
+  ports: [],
 };
 
 export function deviceDataToFormData(data: DeviceNodeData): DeviceFormData {
@@ -34,6 +36,7 @@ export function deviceDataToFormData(data: DeviceNodeData): DeviceFormData {
     model: data.model,
     category: data.category ?? '',
     location: data.location ?? '',
+    ports: data.ports,
   };
 }
 
@@ -48,5 +51,6 @@ export function formDataToDeviceData(
     model: formData.model,
     category: formData.category || undefined,
     location: formData.location || undefined,
+    ports: formData.ports,
   };
 }

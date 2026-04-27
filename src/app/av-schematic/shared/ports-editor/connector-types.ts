@@ -1,0 +1,16 @@
+export const CONNECTOR_TYPES: readonly string[] = [
+  '3.5mm',
+  'BNC',
+  'DisplayPort',
+  'HDMI',
+  'Optical',
+  'Phoenix',
+  'RCA',
+  'RJ45',
+  'Speakon',
+  'TRS',
+  'USB',
+  'USB-C',
+  'VGA',
+  'XLR',
+];

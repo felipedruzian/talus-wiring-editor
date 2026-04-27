@@ -13,6 +13,7 @@ const DEBOUNCED_FIELDS: (keyof DeviceFormData)[] = [
   'model',
   'category',
   'location',
+  'ports',
 ];
 
 @Injectable()
@@ -22,9 +23,12 @@ export class DeviceFormService {
   readonly formModel = signal<DeviceFormData>({ ...EMPTY_DEVICE_FORM });
 
   readonly fieldTree = form(this.formModel, (schemaPath) => {
-    DEBOUNCED_FIELDS.forEach((fieldName) => {
-      debounce(schemaPath[fieldName], DEBOUNCE_TIME_MS);
-    });
+    debounce(schemaPath.deviceId, DEBOUNCE_TIME_MS);
+    debounce(schemaPath.manufacturer, DEBOUNCE_TIME_MS);
+    debounce(schemaPath.model, DEBOUNCE_TIME_MS);
+    debounce(schemaPath.category, DEBOUNCE_TIME_MS);
+    debounce(schemaPath.location, DEBOUNCE_TIME_MS);
+    debounce(schemaPath.ports, DEBOUNCE_TIME_MS);
   });
 
   private lastEmittedModel: DeviceFormData = { ...EMPTY_DEVICE_FORM };

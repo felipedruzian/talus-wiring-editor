@@ -34,7 +34,23 @@ export class ElementMutationService {
     const node = this.modelService.getNodeById<DeviceNodeData>(change.nodeId);
     if (!node) return;
     const updatedData = formDataToDeviceData(change.formData, node.data);
-    this.modelService.updateNodeData(change.nodeId, updatedData);
+
+    if (change.fields.includes('ports')) {
+      // Port add/remove/reorder/direction-flip shifts port DOM without size or
+      // node changes, so the auto-router doesn't see a "node moved/resized"
+      // trigger and edges keep stale points. Run through a transaction (for
+      // measurement wait) AND rewrite `position` to a new reference so the
+      // router treats it as a node change and re-routes connected edges.
+      const changes = new ModelChanges();
+      changes.addNodeUpdates({
+        id: change.nodeId,
+        data: updatedData,
+        position: { ...node.position },
+      });
+      void this.modelApplyService.apply(changes);
+    } else {
+      this.modelService.updateNodeData(change.nodeId, updatedData);
+    }
   }
 
   handleWireFieldChange(change: WireFieldChange): void {

@@ -10,13 +10,14 @@ import {
 import { FormField } from '@angular/forms/signals';
 import { type DeviceNodeData } from '../../../diagram/model/interfaces';
 import { AutofocusDirective } from '../../../shared/autofocus/autofocus.directive';
+import { PortsEditorComponent } from '../../../shared/ports-editor/ports-editor.component';
 import { FormFieldComponent } from '../form-field/form-field.component';
 import { deviceDataToFormData } from './device-form.mappers';
 import { DeviceFormService } from './device-form.service';
 
 @Component({
   selector: 'app-device-form',
-  imports: [FormField, FormFieldComponent, AutofocusDirective],
+  imports: [FormField, FormFieldComponent, AutofocusDirective, PortsEditorComponent],
   templateUrl: './device-form.component.html',
   styleUrl: './device-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

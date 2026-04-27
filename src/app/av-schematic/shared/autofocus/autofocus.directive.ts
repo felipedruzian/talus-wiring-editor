@@ -11,8 +11,9 @@ export class AutofocusDirective {
     const el = inject(ElementRef<HTMLElement>).nativeElement;
 
     afterRenderEffect(() => {
-      this.appAutofocus();
-      el.focus();
+      if (this.appAutofocus()) {
+        el.focus();
+      }
     });
   }
 }

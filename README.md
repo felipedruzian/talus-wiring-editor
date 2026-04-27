@@ -15,6 +15,7 @@ Features:
 - Selection and edge-highlighted states
 - Minimap with zoom controls
 - Properties sidebar with editable device and wire fields (live updates, debounced text inputs)
+- Inline ports editor (add/remove/reorder ports, toggle direction, choose connector type from a list)
 - Dark/light theme
 
 ## Getting Started
@@ -226,7 +227,8 @@ src/app/av-schematic/
 │       ├── device-form/                  # Device fields (signals form)
 │       └── wire-form/                    # Wire fields (signals form)
 ├── shared/
-│   └── autofocus/                        # Re-focus directive on selection change
+│   ├── autofocus/                        # Re-focus directive on selection change
+│   └── ports-editor/                     # Two-column ports editor (FormValueControl<DevicePort[]>)
 ├── top-navbar/                           # Navigation bar + theme toggle
 ├── toolbar/                              # Placeholder toolbar
 └── minimap-panel/                        # Minimap with zoom controls

@@ -20,6 +20,11 @@
   gap: var(--ngd-primitive-4rule-8);
 }
 
+.form-separator {
+  height: var(--ngd-primitive-odd-1);
+  background: var(--ngd-ui-separator-primary-default);
+}
+
 .form-input {
   width: 100%;
   padding: var(--ngd-token-spacing-input-m-v-pad) var(--ngd-token-spacing-input-m-h-pad);
