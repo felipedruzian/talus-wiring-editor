@@ -28,7 +28,7 @@ export const diagramModel: {
     {
       id: 'media-1',
       type: NodeTemplateType.DeviceNode,
-      position: { x: 60, y: 360 },
+      position: { x: 60, y: 380 },
       data: {
         type: 'device',
         deviceId: 'MEDIA-01',
@@ -45,7 +45,7 @@ export const diagramModel: {
     {
       id: 'mixer-1',
       type: NodeTemplateType.DeviceNode,
-      position: { x: 420, y: 60 },
+      position: { x: 580, y: 60 },
       data: {
         type: 'device',
         deviceId: 'MIXER-01',
@@ -68,7 +68,7 @@ export const diagramModel: {
     {
       id: 'amp-1',
       type: NodeTemplateType.DeviceNode,
-      position: { x: 800, y: 100 },
+      position: { x: 1100, y: 120 },
       data: {
         type: 'device',
         deviceId: 'AMP-01',
@@ -87,7 +87,7 @@ export const diagramModel: {
     {
       id: 'spk-1',
       type: NodeTemplateType.DeviceNode,
-      position: { x: 1180, y: 60 },
+      position: { x: 1620, y: 40 },
       data: {
         type: 'device',
         deviceId: 'SPK-01',
@@ -101,7 +101,7 @@ export const diagramModel: {
     {
       id: 'spk-2',
       type: NodeTemplateType.DeviceNode,
-      position: { x: 1180, y: 240 },
+      position: { x: 1620, y: 280 },
       data: {
         type: 'device',
         deviceId: 'SPK-02',
@@ -115,7 +115,7 @@ export const diagramModel: {
     {
       id: 'display-1',
       type: NodeTemplateType.DeviceNode,
-      position: { x: 420, y: 460 },
+      position: { x: 580, y: 540 },
       data: {
         type: 'device',
         deviceId: 'DISPLAY-01',

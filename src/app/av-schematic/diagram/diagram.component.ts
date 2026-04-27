@@ -38,7 +38,11 @@ export class DiagramComponent {
 
   config = {
     edgeRouting: {
-      defaultRouting: 'polyline',
+      defaultRouting: 'orthogonal',
+      orthogonal: {
+        firstLastSegmentLength: 80,
+        maxCornerRadius: 4,
+      },
     },
     linking: {
       finalEdgeDataBuilder: (edge: Edge): Edge<WireEdgeData> => ({
