@@ -1,0 +1,50 @@
+<div class="form-section">
+  <span class="h10 section-title">Wire</span>
+
+  <div class="section-content">
+    <app-form-field label="Wire ID" fieldId="wireId">
+      <input
+        id="wireId"
+        type="text"
+        class="form-input p10"
+        [formField]="fieldTree.wireId"
+        [appAutofocus]="edgeId()"
+        placeholder="Enter wire ID"
+      />
+    </app-form-field>
+
+    <app-form-field label="Wire type" fieldId="wireType">
+      <select id="wireType" class="form-input p10" [formField]="fieldTree.wireType">
+        <option value="">—</option>
+        @for (type of wireTypes; track type) {
+          <option [value]="type">{{ type }}</option>
+        }
+      </select>
+    </app-form-field>
+  </div>
+</div>
+
+<div class="form-separator"></div>
+
+<div class="form-section">
+  <span class="h10 section-title">Connection</span>
+
+  <div class="endpoint-grid">
+    <span class="p10 field-label">Source</span>
+    <span class="p10 field-value">
+      @if (source(); as src) {
+        {{ src.deviceId }} · {{ src.portLabel }}
+      } @else {
+        —
+      }
+    </span>
+    <span class="p10 field-label">Target</span>
+    <span class="p10 field-value">
+      @if (target(); as tgt) {
+        {{ tgt.deviceId }} · {{ tgt.portLabel }}
+      } @else {
+        —
+      }
+    </span>
+  </div>
+</div>

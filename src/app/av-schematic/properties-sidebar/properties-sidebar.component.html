@@ -4,52 +4,19 @@
     <div class="sidebar-separator"></div>
     <div class="sidebar-content sidebar-enter">
       @if (state() === 'single-node' && selectedNode(); as node) {
-        <div class="properties-grid">
-          <span class="p10 field-label">Device ID</span>
-          <span class="p10 field-value">{{ node.data.deviceId }}</span>
-          <span class="p10 field-label">Manufacturer</span>
-          <span class="p10 field-value">{{ node.data.manufacturer }}</span>
-          <span class="p10 field-label">Model</span>
-          <span class="p10 field-value">{{ node.data.model }}</span>
-          @if (node.data.category) {
-            <span class="p10 field-label">Category</span>
-            <span class="p10 field-value">{{ node.data.category }}</span>
-          }
-          @if (node.data.location) {
-            <span class="p10 field-label">Location</span>
-            <span class="p10 field-value">{{ node.data.location }}</span>
-          }
-        </div>
+        <app-device-form [nodeId]="node.id" [nodeData]="node.data" />
         <div class="sidebar-actions">
           <button class="remove-button p10" type="button" (click)="onRemoveNode()">
             Remove device
           </button>
         </div>
       } @else if (state() === 'single-edge' && selectedWireDetails(); as wire) {
-        <div class="properties-grid">
-          <span class="p10 field-label">Wire ID</span>
-          <span class="p10 field-value">{{ wire.edge.data.wireId }}</span>
-          @if (wire.edge.data.wireType) {
-            <span class="p10 field-label">Wire type</span>
-            <span class="p10 field-value">{{ wire.edge.data.wireType }}</span>
-          }
-          <span class="p10 field-label">Source</span>
-          <span class="p10 field-value">
-            @if (wire.source) {
-              {{ wire.source.deviceId }} · {{ wire.source.portLabel }}
-            } @else {
-              —
-            }
-          </span>
-          <span class="p10 field-label">Target</span>
-          <span class="p10 field-value">
-            @if (wire.target) {
-              {{ wire.target.deviceId }} · {{ wire.target.portLabel }}
-            } @else {
-              —
-            }
-          </span>
-        </div>
+        <app-wire-form
+          [edgeId]="wire.edge.id"
+          [edgeData]="wire.edge.data"
+          [source]="wire.source"
+          [target]="wire.target"
+        />
         <div class="sidebar-actions">
           <button class="remove-button p10" type="button" (click)="onRemoveWire()">
             Remove wire

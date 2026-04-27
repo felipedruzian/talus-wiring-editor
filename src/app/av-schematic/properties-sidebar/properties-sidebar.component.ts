@@ -1,12 +1,47 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { ElementMutationService } from './element-mutation.service';
-import { PropertiesSidebarService } from './properties-sidebar.service';
+import { DeviceFormComponent } from './components/device-form/device-form.component';
+import {
+  ON_DEVICE_FIELD_CHANGE,
+  type DeviceFieldChange,
+} from './components/device-form/device-form.mappers';
+import { DeviceFormService } from './components/device-form/device-form.service';
 import { SidebarHeaderComponent } from './components/sidebar-header/sidebar-header.component';
 import { SidebarPlaceholderComponent } from './components/sidebar-placeholder/sidebar-placeholder.component';
+import { WireFormComponent } from './components/wire-form/wire-form.component';
+import {
+  ON_WIRE_FIELD_CHANGE,
+  type WireFieldChange,
+} from './components/wire-form/wire-form.mappers';
+import { WireFormService } from './components/wire-form/wire-form.service';
+import { ElementMutationService } from './element-mutation.service';
+import { PropertiesSidebarService } from './properties-sidebar.service';
 
 @Component({
   selector: 'app-properties-sidebar',
-  imports: [SidebarHeaderComponent, SidebarPlaceholderComponent],
+  imports: [
+    SidebarHeaderComponent,
+    SidebarPlaceholderComponent,
+    DeviceFormComponent,
+    WireFormComponent,
+  ],
+  providers: [
+    DeviceFormService,
+    WireFormService,
+    {
+      provide: ON_DEVICE_FIELD_CHANGE,
+      useFactory: () => {
+        const mutation = inject(ElementMutationService);
+        return (change: DeviceFieldChange) => mutation.handleDeviceFieldChange(change);
+      },
+    },
+    {
+      provide: ON_WIRE_FIELD_CHANGE,
+      useFactory: () => {
+        const mutation = inject(ElementMutationService);
+        return (change: WireFieldChange) => mutation.handleWireFieldChange(change);
+      },
+    },
+  ],
   templateUrl: './properties-sidebar.component.html',
   styleUrl: './properties-sidebar.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

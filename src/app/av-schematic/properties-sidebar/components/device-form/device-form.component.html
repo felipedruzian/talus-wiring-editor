@@ -1,0 +1,56 @@
+<div class="form-section">
+  <span class="h10 section-title">Device</span>
+
+  <div class="section-content">
+    <app-form-field label="Device ID" fieldId="deviceId">
+      <input
+        id="deviceId"
+        type="text"
+        class="form-input p10"
+        [formField]="fieldTree.deviceId"
+        [appAutofocus]="nodeId()"
+        placeholder="Enter device ID"
+      />
+    </app-form-field>
+
+    <app-form-field label="Manufacturer" fieldId="manufacturer">
+      <input
+        id="manufacturer"
+        type="text"
+        class="form-input p10"
+        [formField]="fieldTree.manufacturer"
+        placeholder="Enter manufacturer"
+      />
+    </app-form-field>
+
+    <app-form-field label="Model" fieldId="model">
+      <input
+        id="model"
+        type="text"
+        class="form-input p10"
+        [formField]="fieldTree.model"
+        placeholder="Enter model"
+      />
+    </app-form-field>
+
+    <app-form-field label="Category" fieldId="category">
+      <input
+        id="category"
+        type="text"
+        class="form-input p10"
+        [formField]="fieldTree.category"
+        placeholder="Enter category"
+      />
+    </app-form-field>
+
+    <app-form-field label="Location" fieldId="location">
+      <input
+        id="location"
+        type="text"
+        class="form-input p10"
+        [formField]="fieldTree.location"
+        placeholder="Enter location"
+      />
+    </app-form-field>
+  </div>
+</div>

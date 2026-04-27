@@ -14,7 +14,7 @@ Features:
 - Connector-type display per port (XLR, HDMI, Speakon, …)
 - Selection and edge-highlighted states
 - Minimap with zoom controls
-- Properties sidebar
+- Properties sidebar with editable device and wire fields (live updates, debounced text inputs)
 - Dark/light theme
 
 ## Getting Started
@@ -55,6 +55,7 @@ This template wires up a focused subset of the ng-diagram public surface. Useful
 | Model init | `initializeModel()` | `diagram/diagram.component.ts` |
 | Model reads | `NgDiagramModelService` (`getNodeById`, `getEdgeById`, `getConnectedEdges`) | `diagram/port-focus.service.ts`, `diagram/model/model-apply.service.ts` |
 | Model writes | `NgDiagramModelService` (`addNodes`, `addEdges`, `deleteNodes`, `deleteEdges`, `updateNodes`, `updateEdges`) | `diagram/model/model-apply.service.ts` |
+| Live data edits | `NgDiagramModelService` (`updateNodeData`, `updateEdgeData`) | `properties-sidebar/element-mutation.service.ts` |
 | Atomic transactions | `NgDiagramService.transaction(..., { waitForMeasurements: true })` | `diagram/model/model-apply.service.ts` |
 | Template-output event payloads | `DiagramInitEvent`, `SelectionGestureEndedEvent` | `diagram/diagram.component.ts` |
 | Viewport state | `NgDiagramViewportService` (`scale()`, `viewport()`, `canZoomIn`, `canZoomOut`) | `minimap-panel/minimap-panel.component.ts` |
@@ -97,8 +98,8 @@ Node and edge data interfaces are defined in `src/app/av-schematic/diagram/model
 | `deviceId` | Bold header line (e.g. `AMP-01`) |
 | `manufacturer` | Header subtitle |
 | `model` | Header subtitle |
-| `category` | Optional metadata (not displayed yet) |
-| `location` | Optional metadata (not displayed yet) |
+| `category` | Free-text metadata (editable in sidebar) |
+| `location` | Free-text metadata (editable in sidebar) |
 | `ports` | Array of `DevicePort` |
 
 `DevicePort`:
@@ -115,8 +116,8 @@ Node and edge data interfaces are defined in `src/app/av-schematic/diagram/model
 | Property | Purpose |
 |---|---|
 | `type: 'wire'` | Discriminator |
-| `wireId` | Rendered as label near both ends of the edge |
-| `wireType` | Optional metadata (not displayed yet) |
+| `wireId` | Rendered as label near both ends of the edge (editable in sidebar) |
+| `wireType` | Optional signal kind: `audio`, `video`, `speaker`, `ethernet`, `power`, `control`, `usb`, `fiber` (editable in sidebar) |
 
 ### Node Component
 
@@ -190,7 +191,9 @@ AvSchematicPageComponent (providers)
 
 ### Key Patterns
 
-- **Compute-then-apply mutations** — services build a `ModelChanges` accumulator (partial data patches allowed); `ModelApplyService` resolves patches against current state and commits in a single `NgDiagramService.transaction(..., { waitForMeasurements: true })`.
+- **Compute-then-apply mutations** — services build a `ModelChanges` accumulator (partial data patches allowed); `ModelApplyService` resolves patches against current state and commits in a single `NgDiagramService.transaction(..., { waitForMeasurements: true })`. Used for structural ops (add/remove).
+- **Live field edits bypass the transaction wrapper** — sidebar form changes call `NgDiagramModelService.updateNodeData` / `updateEdgeData` directly so each keystroke (after debounce) flips the model without staging through `ModelChanges`.
+- **Signals-based sidebar forms** — each entity (`device-form`, `wire-form`) owns a form service that holds a signal-backed model via `@angular/forms/signals`. Text fields are debounced (300 ms); on each dirty change the service computes a diff and emits via an injected `ON_*_FIELD_CHANGE` callback to `ElementMutationService`. Switching selection flushes pending edits before reloading the form.
 - **Diagram-as-model** — there is no separate device/wire domain layer; the ng-diagram `Node<DeviceNodeData>` and `Edge<WireEdgeData>` are the source of truth.
 - **Viewport overlays** — `appViewportBounds` / `appViewportOverlay` directives register UI elements that obscure the diagram so visibility / zoom-to-fit calculations account for them.
 - **Per-row port positioning** — each `.port-row` is `position: relative`, so each `<ng-diagram-port>`'s absolute positioning anchors to its own row, not the whole node. Side-specific transforms push the port shape entirely outside the card edge.
@@ -213,8 +216,16 @@ src/app/av-schematic/
 │   │   └── model-apply.service.ts        # Atomic apply
 │   ├── node/                             # DeviceNode template
 │   └── node-visibility/                  # Viewport-aware overlay registration
-├── properties-sidebar/                   # Node properties panel
-│   └── components/                       # Header, placeholder
+├── properties-sidebar/                   # Editable device/wire properties panel
+│   ├── element-mutation.service.ts       # Removal + live field updates
+│   └── components/
+│       ├── sidebar-header/               # Toggle header
+│       ├── sidebar-placeholder/          # Empty / multi states
+│       ├── form-field/                   # Label + projected input wrapper
+│       ├── device-form/                  # Device fields (signals form)
+│       └── wire-form/                    # Wire fields (signals form)
+├── shared/
+│   └── autofocus/                        # Re-focus directive on selection change
 ├── top-navbar/                           # Navigation bar + theme toggle
 ├── toolbar/                              # Placeholder toolbar
 └── minimap-panel/                        # Minimap with zoom controls
@@ -223,6 +234,7 @@ src/app/av-schematic/
 ## Tech Stack
 
 - **Angular 21** — standalone components, signals, OnPush change detection
+- **`@angular/forms/signals`** — sidebar forms (signal-backed `form()`, per-field `debounce()`)
 - **ng-diagram** — diagram rendering, viewport management, selection, edge routing
 - **Prettier** — code formatting
 

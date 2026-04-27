@@ -39,22 +39,6 @@ app-sidebar-placeholder {
   display: flex;
 }
 
-.properties-grid {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: var(--ngd-primitive-4rule-8) var(--ngd-primitive-4rule-12);
-  padding: var(--ngd-primitive-4rule-16);
-}
-
-.field-label {
-  color: var(--ngd-txt-secondary-default);
-}
-
-.field-value {
-  color: var(--ngd-txt-primary-default);
-  word-break: break-word;
-}
-
 .sidebar-actions {
   padding: var(--ngd-primitive-4rule-16);
   margin-top: auto;
