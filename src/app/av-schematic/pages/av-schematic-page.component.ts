@@ -4,6 +4,7 @@ import { DiagramComponent } from '../diagram/diagram.component';
 import { ModelApplyService } from '../diagram/model/model-apply.service';
 import { NodeVisibilityConfigService } from '../diagram/node-visibility/node-visibility-config.service';
 import { PortFocusService } from '../diagram/port-focus.service';
+import { ViewportAnimationService } from '../diagram/viewport-animation.service';
 import { ViewportBoundsDirective } from '../diagram/node-visibility/viewport-bounds.directive';
 import { ViewportOverlayDirective } from '../diagram/node-visibility/viewport-overlay.directive';
 import { MinimapPanelComponent } from '../minimap-panel/minimap-panel.component';
@@ -33,6 +34,7 @@ import { TopNavbarComponent } from '../top-navbar/top-navbar.component';
     ElementMutationService,
     ModelApplyService,
     NodeVisibilityConfigService,
+    ViewportAnimationService,
     PortFocusService,
   ],
 })

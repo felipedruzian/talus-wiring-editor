@@ -10,7 +10,7 @@ Features:
 
 - Custom `DeviceNode` template with header (deviceId / manufacturer / model) and per-side input/output port columns
 - Custom `WireEdge` template with orthogonal routing and dual wire-id labels (near both ends)
-- Per-port double-click to focus the node connected on the other side
+- Per-port double-click to smoothly pan to the node connected on the other side
 - Connector-type display per port (XLR, HDMI, Speakon, …)
 - Selection and edge-highlighted states
 - Minimap with zoom controls
@@ -59,7 +59,7 @@ This template wires up a focused subset of the ng-diagram public surface. Useful
 | Atomic transactions | `NgDiagramService.transaction(..., { waitForMeasurements: true })` | `diagram/model/model-apply.service.ts` |
 | Template-output event payloads | `DiagramInitEvent`, `SelectionGestureEndedEvent` | `diagram/diagram.component.ts` |
 | Viewport state | `NgDiagramViewportService` (`scale()`, `viewport()`, `canZoomIn`, `canZoomOut`) | `minimap-panel/minimap-panel.component.ts` |
-| Viewport actions | `NgDiagramViewportService` (`zoomToFit`, `zoom`, `centerOnNode`) | `diagram/diagram.component.ts`, `diagram/port-focus.service.ts`, `minimap-panel/minimap-panel.component.ts` |
+| Viewport actions | `NgDiagramViewportService` (`zoomToFit`, `zoom`, `moveViewport`) | `diagram/diagram.component.ts`, `diagram/viewport-animation.service.ts`, `minimap-panel/minimap-panel.component.ts` |
 | Selection | `NgDiagramSelectionService` (`selection()`) | `properties-sidebar/properties-sidebar.service.ts`, `diagram/node/device-node.component.ts` |
 | Config typing | `NgDiagramConfig` | `diagram/diagram.component.ts` |
 | Core types | `Node<TData>`, `Edge<TData>` | throughout |
@@ -185,7 +185,7 @@ AvSchematicPageComponent (providers)
   ├── Model: ModelApplyService
   ├── UI: PropertiesSidebarService → ElementMutationService
   ├── Visibility: NodeVisibilityConfigService
-  ├── Navigation: PortFocusService
+  ├── Navigation: PortFocusService → ViewportAnimationService
   └── DiagramComponent
 ```
 
@@ -208,6 +208,7 @@ src/app/av-schematic/
 │   ├── diagram.component.ts              # Main diagram component
 │   ├── wire-edge.component.ts            # Wire edge template
 │   ├── port-focus.service.ts             # Pan viewport to connected node
+│   ├── viewport-animation.service.ts     # Animated viewport pan primitive
 │   ├── data.ts                           # Seed data
 │   ├── model/                            # Domain types & services
 │   │   ├── interfaces.ts                 # DeviceNodeData, WireEdgeData, DevicePort
