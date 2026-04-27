@@ -34,3 +34,6 @@ yarn-error.log*
 *.ipr
 .idea_modules/
 
+#AI
+.claude/
+

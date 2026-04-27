@@ -14,11 +14,14 @@ import {
 import { AV_SCHEMATIC_CONFIG } from '../av-schematic.config';
 import { PropertiesSidebarService } from '../properties-sidebar/properties-sidebar.service';
 import { isDeviceNode } from './model/guards';
-import { EdgeTemplateType, NodeTemplateType } from './model/interfaces';
+import { EdgeTemplateType, NodeTemplateType, type WireEdgeData } from './model/interfaces';
 import { NodeVisibilityConfigService } from './node-visibility/node-visibility-config.service';
 import { DeviceNodeComponent } from './node/device-node.component';
 import { WireEdgeComponent } from './wire-edge.component';
 import { diagramModel } from './data';
+
+const generateWireId = (): string =>
+  'W-' + Math.random().toString(36).slice(2, 8).toUpperCase();
 
 @Component({
   selector: 'app-diagram',
@@ -34,10 +37,14 @@ export class DiagramComponent {
   private readonly nodeVisibilityConfigService = inject(NodeVisibilityConfigService);
 
   config = {
+    edgeRouting: {
+      defaultRouting: 'polyline',
+    },
     linking: {
-      finalEdgeDataBuilder: (edge: Edge) => ({
+      finalEdgeDataBuilder: (edge: Edge): Edge<WireEdgeData> => ({
         ...edge,
         type: EdgeTemplateType.WireEdge,
+        data: { type: 'wire', wireId: generateWireId() },
       }),
     },
     watermarkPosition: 'bottom-left',

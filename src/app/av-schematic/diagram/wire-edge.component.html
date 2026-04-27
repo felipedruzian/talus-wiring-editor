@@ -1,0 +1,9 @@
+<ng-diagram-base-edge
+  [edge]="edge()"
+  [stroke]="strokeColor()"
+  [strokeWidth]="strokeWidth()"
+>
+  <ng-diagram-base-edge-label id="wire-id" [positionOnEdge]="0.5">
+    <span class="wire-label">{{ edge().data.wireId }}</span>
+  </ng-diagram-base-edge-label>
+</ng-diagram-base-edge>

@@ -5,10 +5,20 @@
     <div class="sidebar-content sidebar-enter">
       @if (state() === 'single' && selectedNode(); as node) {
         <div class="device-info">
-          <span class="p10 field-label">Id</span>
-          <span class="p10 field-value">{{ node.id }}</span>
-          <span class="p10 field-label">Label</span>
-          <span class="p10 field-value">{{ node.data.label ?? '—' }}</span>
+          <span class="p10 field-label">Device ID</span>
+          <span class="p10 field-value">{{ node.data.deviceId }}</span>
+          <span class="p10 field-label">Manufacturer</span>
+          <span class="p10 field-value">{{ node.data.manufacturer }}</span>
+          <span class="p10 field-label">Model</span>
+          <span class="p10 field-value">{{ node.data.model }}</span>
+          @if (node.data.category) {
+            <span class="p10 field-label">Category</span>
+            <span class="p10 field-value">{{ node.data.category }}</span>
+          }
+          @if (node.data.location) {
+            <span class="p10 field-label">Location</span>
+            <span class="p10 field-value">{{ node.data.location }}</span>
+          }
         </div>
         <div class="sidebar-actions">
           <button class="remove-button p10" type="button" (click)="onRemoveNode()">

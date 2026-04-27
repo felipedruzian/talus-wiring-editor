@@ -1,0 +1,12 @@
+.wire-label {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--ngd-ui-bg-primary-default);
+  border: 1px solid var(--ngd-ui-stroke-primary-default);
+  color: var(--ngd-txt-secondary-default);
+  font-size: 10px;
+  white-space: nowrap;
+  user-select: none;
+  pointer-events: none;
+}

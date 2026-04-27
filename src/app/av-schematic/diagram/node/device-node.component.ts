@@ -1,6 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { NgDiagramPortComponent, type NgDiagramNodeTemplate, type Node } from 'ng-diagram';
-import { type DeviceNodeData } from '../model/interfaces';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import {
+  NgDiagramPortComponent,
+  NgDiagramSelectionService,
+  type NgDiagramNodeTemplate,
+  type Node,
+} from 'ng-diagram';
+import { PortFocusService } from '../port-focus.service';
+import { type DeviceNodeData, type DevicePort } from '../model/interfaces';
 
 @Component({
   selector: 'app-device-node',
@@ -11,10 +17,34 @@ import { type DeviceNodeData } from '../model/interfaces';
   host: {
     '[class.ng-diagram-port-hoverable-over-node]': 'true',
     '[class.selected]': 'node().selected',
+    '[class.edge-highlighted]': 'edgeHighlighted()',
   },
 })
 export class DeviceNodeComponent implements NgDiagramNodeTemplate<DeviceNodeData> {
+  private readonly selectionService = inject(NgDiagramSelectionService);
+  private readonly portFocusService = inject(PortFocusService);
+
   node = input.required<Node<DeviceNodeData>>();
 
-  protected readonly label = computed(() => this.node().data.label ?? this.node().id);
+  protected readonly data = computed(() => this.node().data);
+
+  protected readonly inputPorts = computed(() => this.sortedPorts('input'));
+  protected readonly outputPorts = computed(() => this.sortedPorts('output'));
+
+  protected readonly edgeHighlighted = computed(() => {
+    const nodeId = this.node().id;
+    return this.selectionService
+      .selection()
+      .edges.some((e) => e.source === nodeId || e.target === nodeId);
+  });
+
+  protected onPortDblClick(portId: string): void {
+    this.portFocusService.navigateToConnectedPort(portId, this.node().id);
+  }
+
+  private sortedPorts(direction: DevicePort['direction']): DevicePort[] {
+    return this.data()
+      .ports.filter((p) => p.direction === direction)
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+  }
 }

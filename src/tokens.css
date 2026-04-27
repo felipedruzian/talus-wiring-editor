@@ -852,4 +852,11 @@ html[data-theme='dark'] {
   --ngd-token-spacing-spacing-32: var(--ngd-primitive-4rule-32);
   --ngd-token-stroke-edge-regular: var(--ngd-primitive-even-2);
   --ngd-token-stroke-edge-bold: var(--ngd-primitive-odd-3);
+
+  /* AV schematic tokens */
+  --av-node-width: 240px;
+  --av-port-width: 8px;
+  --av-port-height: 13px;
+  --av-color-wire-stroke: var(--ngd-edge-primary-default);
+  --av-color-accent: var(--ngd-ui-stroke-primary-highlight);
 }
