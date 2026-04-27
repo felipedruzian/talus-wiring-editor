@@ -182,7 +182,7 @@ All services are provided at the page component level (`AvSchematicPageComponent
 AvSchematicPageComponent (providers)
   ├── ng-diagram: provideNgDiagram()
   ├── Model: ModelApplyService
-  ├── UI: PropertiesSidebarService → NodeMutationService
+  ├── UI: PropertiesSidebarService → ElementMutationService
   ├── Visibility: NodeVisibilityConfigService
   ├── Navigation: PortFocusService
   └── DiagramComponent

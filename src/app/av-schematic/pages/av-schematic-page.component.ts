@@ -7,7 +7,7 @@ import { PortFocusService } from '../diagram/port-focus.service';
 import { ViewportBoundsDirective } from '../diagram/node-visibility/viewport-bounds.directive';
 import { ViewportOverlayDirective } from '../diagram/node-visibility/viewport-overlay.directive';
 import { MinimapPanelComponent } from '../minimap-panel/minimap-panel.component';
-import { NodeMutationService } from '../properties-sidebar/node-mutation.service';
+import { ElementMutationService } from '../properties-sidebar/element-mutation.service';
 import { PropertiesSidebarComponent } from '../properties-sidebar/properties-sidebar.component';
 import { PropertiesSidebarService } from '../properties-sidebar/properties-sidebar.service';
 import { ToolbarComponent } from '../toolbar/toolbar.component';
@@ -30,7 +30,7 @@ import { TopNavbarComponent } from '../top-navbar/top-navbar.component';
   providers: [
     provideNgDiagram(),
     PropertiesSidebarService,
-    NodeMutationService,
+    ElementMutationService,
     ModelApplyService,
     NodeVisibilityConfigService,
     PortFocusService,

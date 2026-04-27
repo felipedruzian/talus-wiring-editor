@@ -3,8 +3,8 @@
   @if (isExpanded()) {
     <div class="sidebar-separator"></div>
     <div class="sidebar-content sidebar-enter">
-      @if (state() === 'single' && selectedNode(); as node) {
-        <div class="device-info">
+      @if (state() === 'single-node' && selectedNode(); as node) {
+        <div class="properties-grid">
           <span class="p10 field-label">Device ID</span>
           <span class="p10 field-value">{{ node.data.deviceId }}</span>
           <span class="p10 field-label">Manufacturer</span>
@@ -25,15 +25,45 @@
             Remove device
           </button>
         </div>
+      } @else if (state() === 'single-edge' && selectedWireDetails(); as wire) {
+        <div class="properties-grid">
+          <span class="p10 field-label">Wire ID</span>
+          <span class="p10 field-value">{{ wire.edge.data.wireId }}</span>
+          @if (wire.edge.data.wireType) {
+            <span class="p10 field-label">Wire type</span>
+            <span class="p10 field-value">{{ wire.edge.data.wireType }}</span>
+          }
+          <span class="p10 field-label">Source</span>
+          <span class="p10 field-value">
+            @if (wire.source) {
+              {{ wire.source.deviceId }} · {{ wire.source.portLabel }}
+            } @else {
+              —
+            }
+          </span>
+          <span class="p10 field-label">Target</span>
+          <span class="p10 field-value">
+            @if (wire.target) {
+              {{ wire.target.deviceId }} · {{ wire.target.portLabel }}
+            } @else {
+              —
+            }
+          </span>
+        </div>
+        <div class="sidebar-actions">
+          <button class="remove-button p10" type="button" (click)="onRemoveWire()">
+            Remove wire
+          </button>
+        </div>
       } @else if (state() === 'empty') {
         <app-sidebar-placeholder
           title="No selection"
-          description="Select a device on the canvas to view its properties."
+          description="Select a device or wire on the canvas to view its properties."
         />
       } @else {
         <app-sidebar-placeholder
           title="Multiple items selected."
-          description="Please select a single node to view properties."
+          description="Please select a single device or wire to view properties."
         />
       }
     </div>

@@ -13,7 +13,7 @@ import {
 } from 'ng-diagram';
 import { AV_SCHEMATIC_CONFIG } from '../av-schematic.config';
 import { PropertiesSidebarService } from '../properties-sidebar/properties-sidebar.service';
-import { isDeviceNode } from './model/guards';
+import { isDeviceNode, isWireEdge } from './model/guards';
 import { EdgeTemplateType, NodeTemplateType, type WireEdgeData } from './model/interfaces';
 import { NodeVisibilityConfigService } from './node-visibility/node-visibility-config.service';
 import { DeviceNodeComponent } from './node/device-node.component';
@@ -84,7 +84,8 @@ export class DiagramComponent {
 
   onSelectionGestureEnded(event: SelectionGestureEndedEvent): void {
     const hasDeviceNodes = event.nodes.some(isDeviceNode);
-    if (hasDeviceNodes) {
+    const hasWireEdges = event.edges.some(isWireEdge);
+    if (hasDeviceNodes || hasWireEdges) {
       this.sidebarService.expandSidebar();
     }
   }

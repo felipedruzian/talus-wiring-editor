@@ -39,7 +39,7 @@ app-sidebar-placeholder {
   display: flex;
 }
 
-.device-info {
+.properties-grid {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: var(--ngd-primitive-4rule-8) var(--ngd-primitive-4rule-12);
