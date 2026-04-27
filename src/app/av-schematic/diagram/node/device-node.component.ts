@@ -15,7 +15,6 @@ import { type DeviceNodeData, type DevicePort } from '../model/interfaces';
   styleUrl: './device-node.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
-    '[class.ng-diagram-port-hoverable-over-node]': 'true',
     '[class.selected]': 'node().selected',
     '[class.edge-highlighted]': 'edgeHighlighted()',
   },
