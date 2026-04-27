@@ -45,9 +45,20 @@ export class DiagramComponent {
       },
     },
     linking: {
+      temporaryEdgeDataBuilder: (edge: Edge): Edge<WireEdgeData> => ({
+        ...edge,
+        type: EdgeTemplateType.WireEdge,
+        routing: 'polyline',
+        sourceArrowhead: undefined,
+        targetArrowhead: undefined,
+        data: { type: 'wire', wireId: '' },
+      }),
       finalEdgeDataBuilder: (edge: Edge): Edge<WireEdgeData> => ({
         ...edge,
         type: EdgeTemplateType.WireEdge,
+        routing: undefined,
+        sourceArrowhead: undefined,
+        targetArrowhead: undefined,
         data: { type: 'wire', wireId: generateWireId() },
       }),
     },
