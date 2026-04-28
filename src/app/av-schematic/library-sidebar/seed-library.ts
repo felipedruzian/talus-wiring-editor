@@ -10,7 +10,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-shure-sm58',
     template: {
       type: 'device',
-      deviceId: 'MIC-01',
+      deviceId: '',
       manufacturer: 'Shure',
       model: 'SM58',
       category: 'microphone',
@@ -22,7 +22,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-shure-sm57',
     template: {
       type: 'device',
-      deviceId: 'MIC-02',
+      deviceId: '',
       manufacturer: 'Shure',
       model: 'SM57',
       category: 'microphone',
@@ -34,7 +34,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-sennheiser-e835',
     template: {
       type: 'device',
-      deviceId: 'MIC-03',
+      deviceId: '',
       manufacturer: 'Sennheiser',
       model: 'e835',
       category: 'microphone',
@@ -46,7 +46,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-audiotechnica-at2020',
     template: {
       type: 'device',
-      deviceId: 'MIC-04',
+      deviceId: '',
       manufacturer: 'Audio-Technica',
       model: 'AT2020',
       category: 'microphone',
@@ -58,7 +58,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-shure-ulxd4',
     template: {
       type: 'device',
-      deviceId: 'WMIC-01',
+      deviceId: '',
       manufacturer: 'Shure',
       model: 'ULXD4D',
       category: 'wireless-mic',
@@ -73,7 +73,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-sennheiser-ewdx-em',
     template: {
       type: 'device',
-      deviceId: 'WMIC-02',
+      deviceId: '',
       manufacturer: 'Sennheiser',
       model: 'EW-DX EM 2',
       category: 'wireless-mic',
@@ -88,7 +88,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-brightsign-hd224',
     template: {
       type: 'device',
-      deviceId: 'MEDIA-01',
+      deviceId: '',
       manufacturer: 'BrightSign',
       model: 'HD224',
       category: 'media-player',
@@ -103,7 +103,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-brightsign-xd234',
     template: {
       type: 'device',
-      deviceId: 'MEDIA-02',
+      deviceId: '',
       manufacturer: 'BrightSign',
       model: 'XD234',
       category: 'media-player',
@@ -119,7 +119,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-yamaha-mg10xu',
     template: {
       type: 'device',
-      deviceId: 'MIXER-01',
+      deviceId: '',
       manufacturer: 'Yamaha',
       model: 'MG10XU',
       category: 'mixer',
@@ -140,7 +140,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-behringer-x32-compact',
     template: {
       type: 'device',
-      deviceId: 'MIXER-02',
+      deviceId: '',
       manufacturer: 'Behringer',
       model: 'X32 Compact',
       category: 'mixer',
@@ -161,7 +161,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-crown-xli1500',
     template: {
       type: 'device',
-      deviceId: 'AMP-01',
+      deviceId: '',
       manufacturer: 'Crown',
       model: 'XLi 1500',
       category: 'amplifier',
@@ -178,7 +178,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-crown-dci-8-600',
     template: {
       type: 'device',
-      deviceId: 'AMP-02',
+      deviceId: '',
       manufacturer: 'Crown',
       model: 'DCi 8|600',
       category: 'amplifier',
@@ -199,7 +199,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-jbl-eon615',
     template: {
       type: 'device',
-      deviceId: 'SPK-01',
+      deviceId: '',
       manufacturer: 'JBL',
       model: 'EON615',
       category: 'loudspeaker',
@@ -211,7 +211,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-jbl-eon710',
     template: {
       type: 'device',
-      deviceId: 'SPK-02',
+      deviceId: '',
       manufacturer: 'JBL',
       model: 'EON710',
       category: 'loudspeaker',
@@ -226,7 +226,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-qsc-k12-2',
     template: {
       type: 'device',
-      deviceId: 'SPK-03',
+      deviceId: '',
       manufacturer: 'QSC',
       model: 'K12.2',
       category: 'loudspeaker',
@@ -241,7 +241,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-nec-e325',
     template: {
       type: 'device',
-      deviceId: 'DISPLAY-01',
+      deviceId: '',
       manufacturer: 'NEC',
       model: 'E325',
       category: 'display',
@@ -253,7 +253,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-samsung-qm55b',
     template: {
       type: 'device',
-      deviceId: 'DISPLAY-02',
+      deviceId: '',
       manufacturer: 'Samsung',
       model: 'QM55B',
       category: 'display',
@@ -268,7 +268,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-lg-75ur640s',
     template: {
       type: 'device',
-      deviceId: 'DISPLAY-03',
+      deviceId: '',
       manufacturer: 'LG',
       model: '75UR640S',
       category: 'display',
@@ -283,7 +283,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-ptzoptics-move-4k',
     template: {
       type: 'device',
-      deviceId: 'CAM-01',
+      deviceId: '',
       manufacturer: 'PTZOptics',
       model: 'Move 4K',
       category: 'camera',
@@ -298,7 +298,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-sony-brc-x400',
     template: {
       type: 'device',
-      deviceId: 'CAM-02',
+      deviceId: '',
       manufacturer: 'Sony',
       model: 'BRC-X400',
       category: 'camera',
@@ -313,7 +313,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-extron-dtp-crosspoint',
     template: {
       type: 'device',
-      deviceId: 'SW-01',
+      deviceId: '',
       manufacturer: 'Extron',
       model: 'DTP CrossPoint 84',
       category: 'switcher',
@@ -334,7 +334,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
     libraryId: 'lib-crestron-hd-md-400',
     template: {
       type: 'device',
-      deviceId: 'SW-02',
+      deviceId: '',
       manufacturer: 'Crestron',
       model: 'HD-MD-400-C-E',
       category: 'switcher',

@@ -5,6 +5,7 @@
     [nodeTemplateMap]="nodeTemplateMap"
     [edgeTemplateMap]="edgeTemplateMap"
     (selectionGestureEnded)="onSelectionGestureEnded($event)"
+    (paletteItemDropped)="onPaletteItemDropped($event)"
     (diagramInit)="onDiagramInit($event)"
   >
     <ng-diagram-background type="dots" />

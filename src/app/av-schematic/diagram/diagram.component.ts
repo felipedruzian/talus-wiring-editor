@@ -5,16 +5,24 @@ import {
   NgDiagramBackgroundComponent,
   NgDiagramComponent,
   NgDiagramEdgeTemplateMap,
+  NgDiagramModelService,
   NgDiagramNodeTemplateMap,
   NgDiagramViewportService,
   type Edge,
   type NgDiagramConfig,
+  type PaletteItemDroppedEvent,
   type SelectionGestureEndedEvent,
 } from 'ng-diagram';
 import { AV_SCHEMATIC_CONFIG } from '../av-schematic.config';
 import { PropertiesSidebarService } from '../properties-sidebar/properties-sidebar.service';
+import { generateDeviceId } from './model/auto-device-id';
 import { isDeviceNode, isWireEdge } from './model/guards';
-import { EdgeTemplateType, NodeTemplateType, type WireEdgeData } from './model/interfaces';
+import {
+  EdgeTemplateType,
+  NodeTemplateType,
+  type DeviceNodeData,
+  type WireEdgeData,
+} from './model/interfaces';
 import { NodeVisibilityConfigService } from './node-visibility/node-visibility-config.service';
 import { DeviceNodeComponent } from './node/device-node.component';
 import { WireEdgeComponent } from './wire-edge.component';
@@ -35,6 +43,7 @@ export class DiagramComponent {
   private readonly viewportService = inject(NgDiagramViewportService);
   private readonly sidebarService = inject(PropertiesSidebarService);
   private readonly nodeVisibilityConfigService = inject(NodeVisibilityConfigService);
+  private readonly modelService = inject(NgDiagramModelService);
 
   config = {
     edgeRouting: {
@@ -88,6 +97,17 @@ export class DiagramComponent {
     if (hasDeviceNodes || hasWireEdges) {
       this.sidebarService.expandSidebar();
     }
+  }
+
+  onPaletteItemDropped(event: PaletteItemDroppedEvent): void {
+    const node = event.node;
+    if (!isDeviceNode(node) || node.data.deviceId) return;
+
+    const deviceId = generateDeviceId(node.data.category, this.modelService.nodes());
+    this.modelService.updateNodeData<DeviceNodeData>(node.id, {
+      ...node.data,
+      deviceId,
+    });
   }
 
   private zoomToFit(): void {
