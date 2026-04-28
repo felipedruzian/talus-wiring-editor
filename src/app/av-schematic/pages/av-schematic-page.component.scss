@@ -3,6 +3,7 @@
   position: relative;
   display: block;
   height: 100%;
+  overflow: hidden;
 }
 
 .ui-overlay {
@@ -13,6 +14,7 @@
   padding: var(--ngd-primitive-4rule-12);
   gap: var(--ngd-primitive-even-14);
   pointer-events: none;
+  overflow: hidden;
   z-index: 10;
 
   .top-navbar {
