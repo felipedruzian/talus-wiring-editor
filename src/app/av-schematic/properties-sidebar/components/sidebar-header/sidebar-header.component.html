@@ -1,11 +1,11 @@
 <div class="sidebar-header">
-  <span id="properties-sidebar-title" class="h7 sidebar-title">Properties</span>
+  <span [id]="titleId()" class="h7 sidebar-title">{{ title() }}</span>
   <button
     class="sidebar-toggle"
     (click)="toggle.emit()"
     [attr.aria-expanded]="isExpanded()"
-    aria-label="Toggle properties panel"
+    [attr.aria-label]="ariaLabel()"
   >
-    <span class="icon icon-sidebar"></span>
+    <span class="icon" [class]="iconClass()"></span>
   </button>
 </div>

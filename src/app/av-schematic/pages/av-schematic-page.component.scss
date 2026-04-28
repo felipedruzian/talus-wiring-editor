@@ -1,5 +1,5 @@
 :host {
-  --sidebar-width: 400px;
+  --sidebar-width: 360px;
   position: relative;
   display: block;
   height: 100%;
@@ -36,10 +36,29 @@
     display: flex;
     grid-row: 2 / span 3;
     grid-column: 1;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--ngd-primitive-4rule-12);
+    min-height: 0;
+
+    app-library-sidebar {
+      align-self: flex-start;
+    }
+
+    app-library-sidebar.expanded {
+      align-self: stretch;
+    }
+  }
+
+  .right-rail {
+    display: flex;
     flex-direction: column;
     align-items: flex-end;
     gap: var(--ngd-primitive-4rule-12);
     min-height: 0;
+    align-self: stretch;
+    margin-left: auto;
 
     &:has(app-properties-sidebar.expanded) {
       flex-direction: row;
@@ -55,9 +74,9 @@
         order: 1;
       }
     }
-  }
 
-  app-minimap-panel {
-    margin-top: auto;
+    app-minimap-panel {
+      margin-top: auto;
+    }
   }
 }

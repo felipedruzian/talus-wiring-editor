@@ -1,0 +1,62 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.detail-toolbar {
+  padding: var(--ngd-primitive-4rule-8) var(--ngd-primitive-4rule-12);
+  border-bottom: 1px solid var(--ngd-ui-separator-primary-default);
+}
+
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: var(--ngd-txt-primary-default);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--ngd-token-radius-button-s);
+  transition: background 150ms ease;
+
+  &:hover {
+    background: var(--ngd-ui-bg-tertiary-default);
+  }
+}
+
+.detail-form {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.detail-actions {
+  padding: var(--ngd-primitive-4rule-16);
+  margin-top: auto;
+}
+
+.remove-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--ngd-token-radius-button-m);
+  background: var(--ngd-button-primary-bg-default);
+  color: var(--ngd-txt-primary-white);
+  cursor: pointer;
+  padding: var(--ngd-token-spacing-button-m-v-pad-2);
+  transition: background 150ms ease;
+
+  &:hover {
+    background: var(--ngd-button-primary-bg-hover);
+  }
+
+  &:active {
+    background: var(--ngd-button-primary-bg-active);
+  }
+}

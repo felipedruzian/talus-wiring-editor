@@ -1,0 +1,28 @@
+<ng-diagram-palette-item [item]="paletteItem()">
+  <div class="device-row" (click)="onOpenDetail()" role="button" tabindex="0">
+    <div class="device-row__main">
+      @if (device().template.manufacturer) {
+        <span class="device-row__manufacturer p10">{{ device().template.manufacturer }}</span>
+      }
+      <span class="device-row__model">{{ device().template.model || 'New device' }}</span>
+    </div>
+    <div class="device-row__meta">
+      @if (inputPortCount() > 0) {
+        <span class="device-row__chip">{{ inputPortCount() }} in</span>
+      }
+      @if (outputPortCount() > 0) {
+        <span class="device-row__chip">{{ outputPortCount() }} out</span>
+      }
+    </div>
+  </div>
+
+  <ng-diagram-palette-item-preview>
+    <div class="device-preview">
+      <div class="device-preview__header">
+        <span class="device-preview__id">{{ device().template.deviceId || '—' }}</span>
+        <span class="device-preview__info">{{ device().template.manufacturer }}</span>
+        <span class="device-preview__info">{{ device().template.model }}</span>
+      </div>
+    </div>
+  </ng-diagram-palette-item-preview>
+</ng-diagram-palette-item>
