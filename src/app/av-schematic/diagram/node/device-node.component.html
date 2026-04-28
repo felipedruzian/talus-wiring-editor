@@ -1,3 +1,11 @@
+<!--
+  TODO(workaround): The `[style.height]` parity toggle on `.port-shape` below
+  forces a 1px content-box change on alternating ports so ng-diagram's
+  ResizeObserver fires on reorder, causing `measuredPorts` to refresh and
+  connected edges to re-route. Without it, edge attachment points stay stuck
+  at the old port positions. Remove once ng-diagram fixes:
+  https://github.com/synergycodes/ng-diagram/issues/644
+-->
 <div class="device-node">
   <div class="device-node__header">
     <span class="device-node__id">{{ data().deviceId }}</span>
@@ -10,7 +18,11 @@
       @for (port of inputPorts(); track port.id + '@' + $index; let last = $last) {
         <div class="port-row" [class.port-row--last]="last">
           <ng-diagram-port [id]="port.id" type="target" side="left">
-            <div class="port-shape port-shape--input" (dblclick)="onPortDblClick(port.id)"></div>
+            <div
+              class="port-shape port-shape--input"
+              [style.height]="$even ? null : 'calc(var(--av-port-height) + 1px)'"
+              (dblclick)="onPortDblClick(port.id)"
+            ></div>
           </ng-diagram-port>
           <div class="port-info">
             <span class="port-label">{{ port.label }}</span>
@@ -31,7 +43,11 @@
             }
           </div>
           <ng-diagram-port [id]="port.id" type="source" side="right">
-            <div class="port-shape port-shape--output" (dblclick)="onPortDblClick(port.id)"></div>
+            <div
+              class="port-shape port-shape--output"
+              [style.height]="$even ? null : 'calc(var(--av-port-height) + 1px)'"
+              (dblclick)="onPortDblClick(port.id)"
+            ></div>
           </ng-diagram-port>
         </div>
       }
