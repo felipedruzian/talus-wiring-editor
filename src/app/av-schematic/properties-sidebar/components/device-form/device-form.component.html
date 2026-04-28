@@ -2,16 +2,18 @@
   <span class="h10 section-title">Device</span>
 
   <div class="section-content">
-    <app-form-field label="Device ID" fieldId="deviceId">
-      <input
-        id="deviceId"
-        type="text"
-        class="form-input p10"
-        [formField]="fieldTree.deviceId"
-        [appAutofocus]="nodeId()"
-        placeholder="Enter device ID"
-      />
-    </app-form-field>
+    @if (showDeviceId()) {
+      <app-form-field label="Device ID" fieldId="deviceId">
+        <input
+          id="deviceId"
+          type="text"
+          class="form-input p10"
+          [formField]="fieldTree.deviceId"
+          [appAutofocus]="nodeId()"
+          placeholder="Enter device ID"
+        />
+      </app-form-field>
+    }
 
     <app-form-field label="Manufacturer" fieldId="manufacturer">
       <input
@@ -19,6 +21,7 @@
         type="text"
         class="form-input p10"
         [formField]="fieldTree.manufacturer"
+        [appAutofocus]="autofocusManufacturer()"
         placeholder="Enter manufacturer"
       />
     </app-form-field>
@@ -43,15 +46,17 @@
       />
     </app-form-field>
 
-    <app-form-field label="Location" fieldId="location">
-      <input
-        id="location"
-        type="text"
-        class="form-input p10"
-        [formField]="fieldTree.location"
-        placeholder="Enter location"
-      />
-    </app-form-field>
+    @if (showLocation()) {
+      <app-form-field label="Location" fieldId="location">
+        <input
+          id="location"
+          type="text"
+          class="form-input p10"
+          [formField]="fieldTree.location"
+          placeholder="Enter location"
+        />
+      </app-form-field>
+    }
   </div>
 </div>
 

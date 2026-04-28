@@ -15,6 +15,6 @@ export class LibraryListComponent {
   protected readonly devices = this.libraryService.devices;
 
   protected onAddDevice(): void {
-    this.libraryService.addDevice();
+    this.libraryService.beginCreate();
   }
 }

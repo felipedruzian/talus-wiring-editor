@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   DestroyRef,
   effect,
   inject,
@@ -12,7 +13,7 @@ import { type DeviceNodeData } from '../../../diagram/model/interfaces';
 import { AutofocusDirective } from '../../../shared/autofocus/autofocus.directive';
 import { PortsEditorComponent } from '../../../shared/ports-editor/ports-editor.component';
 import { FormFieldComponent } from '../form-field/form-field.component';
-import { deviceDataToFormData } from './device-form.mappers';
+import { deviceDataToFormData, type DeviceFormData } from './device-form.mappers';
 import { DeviceFormService } from './device-form.service';
 
 @Component({
@@ -27,8 +28,14 @@ export class DeviceFormComponent {
 
   readonly nodeId = input.required<string>();
   readonly nodeData = input.required<DeviceNodeData>();
+  readonly hiddenFields = input<readonly (keyof DeviceFormData)[]>([]);
 
   protected readonly fieldTree = this.formService.fieldTree;
+  protected readonly showDeviceId = computed(() => !this.hiddenFields().includes('deviceId'));
+  protected readonly showLocation = computed(() => !this.hiddenFields().includes('location'));
+  protected readonly autofocusManufacturer = computed(() =>
+    this.showDeviceId() ? null : this.nodeId(),
+  );
 
   constructor() {
     this.syncFormWithInputs();

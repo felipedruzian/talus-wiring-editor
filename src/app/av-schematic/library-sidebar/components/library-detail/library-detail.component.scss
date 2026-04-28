@@ -6,8 +6,15 @@
 }
 
 .detail-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--ngd-primitive-4rule-8);
   padding: var(--ngd-primitive-4rule-8) var(--ngd-primitive-4rule-12);
   border-bottom: 1px solid var(--ngd-ui-separator-primary-default);
+}
+
+.detail-title {
+  color: var(--ngd-txt-primary-default);
 }
 
 .back-button {
@@ -35,11 +42,14 @@
 }
 
 .detail-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ngd-primitive-4rule-8);
   padding: var(--ngd-primitive-4rule-16);
   margin-top: auto;
 }
 
-.remove-button {
+.save-button {
   width: 100%;
   display: flex;
   align-items: center;
@@ -58,5 +68,23 @@
 
   &:active {
     background: var(--ngd-button-primary-bg-active);
+  }
+}
+
+.remove-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ngd-ui-stroke-primary-default);
+  border-radius: var(--ngd-token-radius-button-m);
+  background: transparent;
+  color: var(--ngd-txt-primary-default);
+  cursor: pointer;
+  padding: var(--ngd-token-spacing-button-m-v-pad-2);
+  transition: background 150ms ease, color 150ms ease;
+
+  &:hover {
+    background: var(--ngd-ui-bg-tertiary-default);
   }
 }

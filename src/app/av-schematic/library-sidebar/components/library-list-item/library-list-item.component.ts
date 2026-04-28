@@ -45,6 +45,6 @@ export class LibraryListItemComponent {
   });
 
   protected onOpenDetail(): void {
-    this.libraryService.openDetail(this.device().libraryId);
+    this.libraryService.beginEdit(this.device().libraryId);
   }
 }
