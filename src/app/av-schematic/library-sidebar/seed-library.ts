@@ -1,0 +1,361 @@
+import { type DeviceNodeData } from '../diagram/model/interfaces';
+
+export interface LibraryDevice {
+  libraryId: string;
+  template: DeviceNodeData;
+}
+
+export const createBlankTemplate = (): DeviceNodeData => ({
+  type: 'device',
+  deviceId: '',
+  manufacturer: '',
+  model: '',
+  category: '',
+  location: '',
+  ports: [],
+});
+
+export const SEED_LIBRARY: LibraryDevice[] = [
+  {
+    libraryId: 'lib-shure-sm58',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'Shure',
+      model: 'SM58',
+      category: 'microphone',
+      location: '',
+      ports: [{ id: 'out', label: 'OUT', direction: 'output', connectorType: 'XLR' }],
+    },
+  },
+  {
+    libraryId: 'lib-shure-sm57',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'Shure',
+      model: 'SM57',
+      category: 'microphone',
+      location: '',
+      ports: [{ id: 'out', label: 'OUT', direction: 'output', connectorType: 'XLR' }],
+    },
+  },
+  {
+    libraryId: 'lib-sennheiser-e835',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'Sennheiser',
+      model: 'e835',
+      category: 'microphone',
+      location: '',
+      ports: [{ id: 'out', label: 'OUT', direction: 'output', connectorType: 'XLR' }],
+    },
+  },
+  {
+    libraryId: 'lib-audiotechnica-at2020',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'Audio-Technica',
+      model: 'AT2020',
+      category: 'microphone',
+      location: '',
+      ports: [{ id: 'out', label: 'OUT', direction: 'output', connectorType: 'XLR' }],
+    },
+  },
+  {
+    libraryId: 'lib-shure-ulxd4',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'Shure',
+      model: 'ULXD4D',
+      category: 'wireless-mic',
+      location: '',
+      ports: [
+        { id: 'out-1', label: 'OUT 1', direction: 'output', connectorType: 'XLR' },
+        { id: 'out-2', label: 'OUT 2', direction: 'output', connectorType: 'XLR' },
+      ],
+    },
+  },
+  {
+    libraryId: 'lib-sennheiser-ewdx-em',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'Sennheiser',
+      model: 'EW-DX EM 2',
+      category: 'wireless-mic',
+      location: '',
+      ports: [
+        { id: 'out-1', label: 'OUT 1', direction: 'output', connectorType: 'XLR' },
+        { id: 'out-2', label: 'OUT 2', direction: 'output', connectorType: 'XLR' },
+      ],
+    },
+  },
+  {
+    libraryId: 'lib-brightsign-hd224',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'BrightSign',
+      model: 'HD224',
+      category: 'media-player',
+      location: '',
+      ports: [
+        { id: 'hdmi-out', label: 'HDMI', direction: 'output', connectorType: 'HDMI' },
+        { id: 'audio-out', label: 'AUDIO', direction: 'output', connectorType: '3.5mm' },
+      ],
+    },
+  },
+  {
+    libraryId: 'lib-brightsign-xd234',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'BrightSign',
+      model: 'XD234',
+      category: 'media-player',
+      location: '',
+      ports: [
+        { id: 'hdmi-out', label: 'HDMI', direction: 'output', connectorType: 'HDMI' },
+        { id: 'audio-out', label: 'AUDIO', direction: 'output', connectorType: '3.5mm' },
+        { id: 'lan', label: 'LAN', direction: 'output', connectorType: 'RJ45' },
+      ],
+    },
+  },
+  {
+    libraryId: 'lib-yamaha-mg10xu',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'Yamaha',
+      model: 'MG10XU',
+      category: 'mixer',
+      location: '',
+      ports: [
+        { id: 'mic-1', label: 'MIC 1', direction: 'input', connectorType: 'XLR' },
+        { id: 'mic-2', label: 'MIC 2', direction: 'input', connectorType: 'XLR' },
+        { id: 'mic-3', label: 'MIC 3', direction: 'input', connectorType: 'XLR' },
+        { id: 'mic-4', label: 'MIC 4', direction: 'input', connectorType: 'XLR' },
+        { id: 'line-1', label: 'LINE 1', direction: 'input', connectorType: 'TRS' },
+        { id: 'line-2', label: 'LINE 2', direction: 'input', connectorType: 'TRS' },
+        { id: 'out-1', label: 'OUT 1', direction: 'output', connectorType: 'XLR' },
+        { id: 'out-2', label: 'OUT 2', direction: 'output', connectorType: 'XLR' },
+      ],
+    },
+  },
+  {
+    libraryId: 'lib-behringer-x32-compact',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'Behringer',
+      model: 'X32 Compact',
+      category: 'mixer',
+      location: '',
+      ports: [
+        { id: 'mic-1', label: 'MIC 1', direction: 'input', connectorType: 'XLR' },
+        { id: 'mic-2', label: 'MIC 2', direction: 'input', connectorType: 'XLR' },
+        { id: 'mic-3', label: 'MIC 3', direction: 'input', connectorType: 'XLR' },
+        { id: 'mic-4', label: 'MIC 4', direction: 'input', connectorType: 'XLR' },
+        { id: 'out-1', label: 'OUT 1', direction: 'output', connectorType: 'XLR' },
+        { id: 'out-2', label: 'OUT 2', direction: 'output', connectorType: 'XLR' },
+        { id: 'out-3', label: 'OUT 3', direction: 'output', connectorType: 'XLR' },
+        { id: 'out-4', label: 'OUT 4', direction: 'output', connectorType: 'XLR' },
+      ],
+    },
+  },
+  {
+    libraryId: 'lib-crown-xli1500',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'Crown',
+      model: 'XLi 1500',
+      category: 'amplifier',
+      location: '',
+      ports: [
+        { id: 'in-a', label: 'IN A', direction: 'input', connectorType: 'XLR' },
+        { id: 'in-b', label: 'IN B', direction: 'input', connectorType: 'XLR' },
+        { id: 'out-a', label: 'OUT A', direction: 'output', connectorType: 'Speakon' },
+        { id: 'out-b', label: 'OUT B', direction: 'output', connectorType: 'Speakon' },
+      ],
+    },
+  },
+  {
+    libraryId: 'lib-crown-dci-8-600',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'Crown',
+      model: 'DCi 8|600',
+      category: 'amplifier',
+      location: '',
+      ports: [
+        { id: 'in-1', label: 'IN 1', direction: 'input', connectorType: 'Phoenix' },
+        { id: 'in-2', label: 'IN 2', direction: 'input', connectorType: 'Phoenix' },
+        { id: 'in-3', label: 'IN 3', direction: 'input', connectorType: 'Phoenix' },
+        { id: 'in-4', label: 'IN 4', direction: 'input', connectorType: 'Phoenix' },
+        { id: 'out-1', label: 'OUT 1', direction: 'output', connectorType: 'Phoenix' },
+        { id: 'out-2', label: 'OUT 2', direction: 'output', connectorType: 'Phoenix' },
+        { id: 'out-3', label: 'OUT 3', direction: 'output', connectorType: 'Phoenix' },
+        { id: 'out-4', label: 'OUT 4', direction: 'output', connectorType: 'Phoenix' },
+      ],
+    },
+  },
+  {
+    libraryId: 'lib-jbl-eon615',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'JBL',
+      model: 'EON615',
+      category: 'loudspeaker',
+      location: '',
+      ports: [{ id: 'in', label: 'IN', direction: 'input', connectorType: 'Speakon' }],
+    },
+  },
+  {
+    libraryId: 'lib-jbl-eon710',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'JBL',
+      model: 'EON710',
+      category: 'loudspeaker',
+      location: '',
+      ports: [
+        { id: 'in', label: 'IN', direction: 'input', connectorType: 'XLR' },
+        { id: 'link-out', label: 'LINK', direction: 'output', connectorType: 'XLR' },
+      ],
+    },
+  },
+  {
+    libraryId: 'lib-qsc-k12-2',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'QSC',
+      model: 'K12.2',
+      category: 'loudspeaker',
+      location: '',
+      ports: [
+        { id: 'in', label: 'IN', direction: 'input', connectorType: 'XLR' },
+        { id: 'link-out', label: 'LINK', direction: 'output', connectorType: 'XLR' },
+      ],
+    },
+  },
+  {
+    libraryId: 'lib-nec-e325',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'NEC',
+      model: 'E325',
+      category: 'display',
+      location: '',
+      ports: [{ id: 'hdmi-in', label: 'HDMI', direction: 'input', connectorType: 'HDMI' }],
+    },
+  },
+  {
+    libraryId: 'lib-samsung-qm55b',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'Samsung',
+      model: 'QM55B',
+      category: 'display',
+      location: '',
+      ports: [
+        { id: 'hdmi-in-1', label: 'HDMI 1', direction: 'input', connectorType: 'HDMI' },
+        { id: 'hdmi-in-2', label: 'HDMI 2', direction: 'input', connectorType: 'HDMI' },
+      ],
+    },
+  },
+  {
+    libraryId: 'lib-lg-75ur640s',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'LG',
+      model: '75UR640S',
+      category: 'display',
+      location: '',
+      ports: [
+        { id: 'hdmi-in-1', label: 'HDMI 1', direction: 'input', connectorType: 'HDMI' },
+        { id: 'hdmi-in-2', label: 'HDMI 2', direction: 'input', connectorType: 'HDMI' },
+      ],
+    },
+  },
+  {
+    libraryId: 'lib-ptzoptics-move-4k',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'PTZOptics',
+      model: 'Move 4K',
+      category: 'camera',
+      location: '',
+      ports: [
+        { id: 'hdmi-out', label: 'HDMI', direction: 'output', connectorType: 'HDMI' },
+        { id: 'lan', label: 'NDI', direction: 'output', connectorType: 'RJ45' },
+      ],
+    },
+  },
+  {
+    libraryId: 'lib-sony-brc-x400',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'Sony',
+      model: 'BRC-X400',
+      category: 'camera',
+      location: '',
+      ports: [
+        { id: 'hdmi-out', label: 'HDMI', direction: 'output', connectorType: 'HDMI' },
+        { id: 'lan', label: 'LAN', direction: 'output', connectorType: 'RJ45' },
+      ],
+    },
+  },
+  {
+    libraryId: 'lib-extron-dtp-crosspoint',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'Extron',
+      model: 'DTP CrossPoint 84',
+      category: 'switcher',
+      location: '',
+      ports: [
+        { id: 'in-1', label: 'IN 1', direction: 'input', connectorType: 'HDMI' },
+        { id: 'in-2', label: 'IN 2', direction: 'input', connectorType: 'HDMI' },
+        { id: 'in-3', label: 'IN 3', direction: 'input', connectorType: 'HDMI' },
+        { id: 'in-4', label: 'IN 4', direction: 'input', connectorType: 'HDMI' },
+        { id: 'out-1', label: 'OUT 1', direction: 'output', connectorType: 'HDMI' },
+        { id: 'out-2', label: 'OUT 2', direction: 'output', connectorType: 'HDMI' },
+        { id: 'out-3', label: 'OUT 3', direction: 'output', connectorType: 'HDMI' },
+        { id: 'out-4', label: 'OUT 4', direction: 'output', connectorType: 'HDMI' },
+      ],
+    },
+  },
+  {
+    libraryId: 'lib-crestron-hd-md-400',
+    template: {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'Crestron',
+      model: 'HD-MD-400-C-E',
+      category: 'switcher',
+      location: '',
+      ports: [
+        { id: 'in-1', label: 'IN 1', direction: 'input', connectorType: 'HDMI' },
+        { id: 'in-2', label: 'IN 2', direction: 'input', connectorType: 'HDMI' },
+        { id: 'in-3', label: 'IN 3', direction: 'input', connectorType: 'HDMI' },
+        { id: 'in-4', label: 'IN 4', direction: 'input', connectorType: 'HDMI' },
+        { id: 'hdmi-out', label: 'HDMI', direction: 'output', connectorType: 'HDMI' },
+      ],
+    },
+  },
+];

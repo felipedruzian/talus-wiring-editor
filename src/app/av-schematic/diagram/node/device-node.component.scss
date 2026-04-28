@@ -63,11 +63,19 @@
   font-weight: 500;
   font-size: 14px;
   color: var(--ngd-txt-primary-default);
+
+  &:empty::before {
+    content: '\00A0';
+  }
 }
 
 .device-node__info {
   font-size: 10px;
   color: var(--ngd-txt-secondary-default);
+
+  &:empty::before {
+    content: '\00A0';
+  }
 }
 
 .device-node__separator {

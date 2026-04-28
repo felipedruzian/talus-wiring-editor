@@ -1,0 +1,94 @@
+:host {
+  display: block;
+}
+
+.device-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ngd-primitive-4rule-8);
+  padding: var(--ngd-primitive-4rule-8) var(--ngd-primitive-4rule-12);
+  background: var(--ngd-ui-bg-tertiary-default);
+  border: 1px solid var(--ngd-ui-stroke-primary-default);
+  border-radius: var(--ngd-token-radius-element-8);
+  cursor: grab;
+  transition: border-color 150ms ease, background 150ms ease;
+
+  &:hover {
+    border-color: var(--av-color-accent);
+    background: color-mix(in srgb, var(--av-color-accent) 6%, var(--ngd-ui-bg-tertiary-default));
+  }
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+.device-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.device-row__manufacturer {
+  color: var(--ngd-txt-secondary-default);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-row__model {
+  color: var(--ngd-txt-primary-default);
+  font-weight: 500;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-row__chip {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: var(--ngd-ui-bg-primary-default);
+  border: 1px solid var(--ngd-ui-stroke-primary-default);
+  color: var(--ngd-txt-secondary-default);
+  flex-shrink: 0;
+  text-transform: capitalize;
+}
+
+.device-preview {
+  width: var(--av-node-width);
+  background: var(--ngd-node-bg-primary-default);
+  border: 1px solid var(--av-color-accent);
+  border-radius: var(--ngd-token-radius-element-12);
+  color: var(--ngd-txt-primary-default);
+  font-size: 0.75rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+
+.device-preview__header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: var(--ngd-primitive-4rule-4) var(--ngd-primitive-4rule-12)
+    var(--ngd-primitive-4rule-8);
+  background: var(--ngd-ui-bg-tertiary-default);
+  border-radius: var(--ngd-token-radius-element-12);
+  text-align: center;
+}
+
+.device-preview__id {
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--ngd-txt-primary-default);
+}
+
+.device-preview__info {
+  font-size: 10px;
+  color: var(--ngd-txt-secondary-default);
+}

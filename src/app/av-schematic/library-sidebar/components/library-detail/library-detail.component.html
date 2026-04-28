@@ -1,0 +1,22 @@
+<div class="detail-toolbar">
+  <button class="back-button p10" type="button" (click)="onBack()" aria-label="Back to library">
+    <span aria-hidden="true">&larr;</span>
+    <span>Back</span>
+  </button>
+  <span class="detail-title h10">{{ title() }}</span>
+</div>
+
+<div class="detail-form">
+  <app-device-form [entityId]="libraryId()" [nodeData]="initialTemplate()" />
+</div>
+
+<div class="detail-actions">
+  <button class="save-button p10" type="button" (click)="onSave()" [disabled]="!canSave()">
+    Save
+  </button>
+  @if (mode() === 'edit') {
+    <button class="remove-button p10" type="button" (click)="onRemove()">
+      Remove from library
+    </button>
+  }
+</div>

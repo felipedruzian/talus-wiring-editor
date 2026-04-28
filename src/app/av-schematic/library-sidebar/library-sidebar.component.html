@@ -1,0 +1,20 @@
+<aside class="sidebar" aria-labelledby="library-sidebar-title">
+  <app-sidebar-header
+    title="Library"
+    titleId="library-sidebar-title"
+    iconClass="icon-library"
+    ariaLabel="Toggle library panel"
+    [isExpanded]="isExpanded()"
+    (toggle)="onHeaderToggle()"
+  />
+  @if (isExpanded()) {
+    <div class="sidebar-separator"></div>
+    <div class="sidebar-content sidebar-enter">
+      @if (editingDeviceId(); as libraryId) {
+        <app-library-detail [libraryId]="libraryId" />
+      } @else {
+        <app-library-list />
+      }
+    </div>
+  }
+</aside>

@@ -1,5 +1,5 @@
 import { InjectionToken } from '@angular/core';
-import { type DeviceNodeData, type DevicePort } from '../../../diagram/model/interfaces';
+import { type DeviceNodeData, type DevicePort } from '../../diagram/model/interfaces';
 
 export interface DeviceFormData {
   deviceId: string;
@@ -11,13 +11,18 @@ export interface DeviceFormData {
 }
 
 export interface DeviceFieldChange {
-  nodeId: string;
+  entityId: string;
   fields: (keyof DeviceFormData)[];
   formData: DeviceFormData;
 }
 
 export const ON_DEVICE_FIELD_CHANGE = new InjectionToken<(change: DeviceFieldChange) => void>(
   'ON_DEVICE_FIELD_CHANGE',
+);
+
+export const DEVICE_FORM_HIDDEN_FIELDS = new InjectionToken<readonly (keyof DeviceFormData)[]>(
+  'DEVICE_FORM_HIDDEN_FIELDS',
+  { factory: () => [] },
 );
 
 export const EMPTY_DEVICE_FORM: DeviceFormData = {

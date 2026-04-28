@@ -10,7 +10,7 @@ import {
 import {
   formDataToDeviceData,
   type DeviceFieldChange,
-} from './components/device-form/device-form.mappers';
+} from '../shared/device-form/device-form.mappers';
 import {
   formDataToWireData,
   type WireFieldChange,
@@ -35,21 +35,21 @@ export class ElementMutationService {
   }
 
   handleDeviceFieldChange(change: DeviceFieldChange): void {
-    const node = this.modelService.getNodeById<DeviceNodeData>(change.nodeId);
+    const node = this.modelService.getNodeById<DeviceNodeData>(change.entityId);
     if (!node) return;
     const updatedData = formDataToDeviceData(change.formData, node.data);
 
     const orphanedEdgeIds = change.fields.includes('ports')
-      ? this.findOrphanedEdgeIds(change.nodeId, node.data.ports, updatedData.ports)
+      ? this.findOrphanedEdgeIds(change.entityId, node.data.ports, updatedData.ports)
       : [];
 
     if (orphanedEdgeIds.length > 0) {
       const changes = new ModelChanges();
-      changes.addNodeUpdates({ id: change.nodeId, data: updatedData });
+      changes.addNodeUpdates({ id: change.entityId, data: updatedData });
       changes.addDeleteEdgeIds(...orphanedEdgeIds);
       void this.modelApplyService.apply(changes);
     } else {
-      this.modelService.updateNodeData(change.nodeId, updatedData);
+      this.modelService.updateNodeData(change.entityId, updatedData);
     }
   }
 

@@ -1,0 +1,20 @@
+<div class="list-scroll">
+  @if (devices().length === 0) {
+    <div class="empty-state p10">
+      No devices in library yet. Use the button below to create one.
+    </div>
+  } @else {
+    <ul class="device-list">
+      @for (device of devices(); track device.libraryId) {
+        <li>
+          <app-library-list-item [device]="device" />
+        </li>
+      }
+    </ul>
+  }
+</div>
+<div class="list-actions">
+  <button class="add-button p10" type="button" (click)="onAddDevice()">
+    + Add device
+  </button>
+</div>

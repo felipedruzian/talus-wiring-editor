@@ -17,7 +17,7 @@ export const diagramModel: {
       position: { x: 60, y: 80 },
       data: {
         type: 'device',
-        deviceId: 'MIC-01',
+        deviceId: 'MIC-1',
         manufacturer: 'Shure',
         model: 'SM58',
         category: 'microphone',
@@ -31,7 +31,7 @@ export const diagramModel: {
       position: { x: 60, y: 380 },
       data: {
         type: 'device',
-        deviceId: 'MEDIA-01',
+        deviceId: 'MEDIA-1',
         manufacturer: 'BrightSign',
         model: 'HD224',
         category: 'media-player',
@@ -48,7 +48,7 @@ export const diagramModel: {
       position: { x: 580, y: 60 },
       data: {
         type: 'device',
-        deviceId: 'MIXER-01',
+        deviceId: 'MIXER-1',
         manufacturer: 'Yamaha',
         model: 'MG10XU',
         category: 'mixer',
@@ -71,7 +71,7 @@ export const diagramModel: {
       position: { x: 1100, y: 120 },
       data: {
         type: 'device',
-        deviceId: 'AMP-01',
+        deviceId: 'AMP-1',
         manufacturer: 'Crown',
         model: 'XLi 1500',
         category: 'amplifier',
@@ -90,7 +90,7 @@ export const diagramModel: {
       position: { x: 1620, y: 40 },
       data: {
         type: 'device',
-        deviceId: 'SPK-01',
+        deviceId: 'SPK-1',
         manufacturer: 'JBL',
         model: 'EON615',
         category: 'loudspeaker',
@@ -104,7 +104,7 @@ export const diagramModel: {
       position: { x: 1620, y: 280 },
       data: {
         type: 'device',
-        deviceId: 'SPK-02',
+        deviceId: 'SPK-2',
         manufacturer: 'JBL',
         model: 'EON615',
         category: 'loudspeaker',
@@ -118,7 +118,7 @@ export const diagramModel: {
       position: { x: 580, y: 540 },
       data: {
         type: 'device',
-        deviceId: 'DISPLAY-01',
+        deviceId: 'DISPLAY-1',
         manufacturer: 'NEC',
         model: 'E325',
         category: 'display',
