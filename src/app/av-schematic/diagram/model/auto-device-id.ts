@@ -1,24 +1,14 @@
 import { type Node } from 'ng-diagram';
+import {
+  DEVICE_CATEGORY_PREFIXES,
+  FALLBACK_DEVICE_PREFIX,
+} from './device-categories';
 import { isDeviceNode } from './guards';
-
-const CATEGORY_TO_PREFIX: Record<string, string> = {
-  microphone: 'MIC',
-  'wireless-mic': 'WMIC',
-  'media-player': 'MEDIA',
-  mixer: 'MIXER',
-  amplifier: 'AMP',
-  loudspeaker: 'SPK',
-  display: 'DISPLAY',
-  camera: 'CAM',
-  switcher: 'SW',
-};
-
-const FALLBACK_PREFIX = 'DEV';
 
 const prefixForCategory = (category: string | undefined): string => {
   const key = category?.trim().toLowerCase();
-  if (!key) return FALLBACK_PREFIX;
-  return CATEGORY_TO_PREFIX[key] ?? FALLBACK_PREFIX;
+  if (!key) return FALLBACK_DEVICE_PREFIX;
+  return DEVICE_CATEGORY_PREFIXES[key] ?? FALLBACK_DEVICE_PREFIX;
 };
 
 /**

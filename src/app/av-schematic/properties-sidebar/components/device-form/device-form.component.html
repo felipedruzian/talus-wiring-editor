@@ -37,12 +37,11 @@
     </app-form-field>
 
     <app-form-field label="Category" fieldId="category">
-      <input
-        id="category"
-        type="text"
-        class="form-input p10"
+      <app-combobox
+        inputId="category"
+        placeholder="Pick or enter category"
+        [options]="categories"
         [formField]="fieldTree.category"
-        placeholder="Enter category"
       />
     </app-form-field>
 

@@ -9,8 +9,10 @@ import {
   untracked,
 } from '@angular/core';
 import { FormField } from '@angular/forms/signals';
+import { DEVICE_CATEGORIES } from '../../../diagram/model/device-categories';
 import { type DeviceNodeData } from '../../../diagram/model/interfaces';
 import { AutofocusDirective } from '../../../shared/autofocus/autofocus.directive';
+import { ComboboxComponent } from '../../../shared/combobox/combobox.component';
 import { PortsEditorComponent } from '../../../shared/ports-editor/ports-editor.component';
 import { FormFieldComponent } from '../form-field/form-field.component';
 import { deviceDataToFormData, type DeviceFormData } from './device-form.mappers';
@@ -18,7 +20,13 @@ import { DeviceFormService } from './device-form.service';
 
 @Component({
   selector: 'app-device-form',
-  imports: [FormField, FormFieldComponent, AutofocusDirective, PortsEditorComponent],
+  imports: [
+    FormField,
+    FormFieldComponent,
+    AutofocusDirective,
+    PortsEditorComponent,
+    ComboboxComponent,
+  ],
   templateUrl: './device-form.component.html',
   styleUrl: './device-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -36,6 +44,7 @@ export class DeviceFormComponent {
   protected readonly autofocusManufacturer = computed(() =>
     this.showDeviceId() ? null : this.nodeId(),
   );
+  protected readonly categories = DEVICE_CATEGORIES;
 
   constructor() {
     this.syncFormWithInputs();
