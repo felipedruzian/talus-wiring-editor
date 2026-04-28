@@ -2,7 +2,11 @@ import { inject, Injectable } from '@angular/core';
 import { NgDiagramModelService } from 'ng-diagram';
 import { ModelApplyService } from '../diagram/model/model-apply.service';
 import { ModelChanges } from '../diagram/model/model-changes';
-import { type DeviceNodeData, type WireEdgeData } from '../diagram/model/interfaces';
+import {
+  type DevicePort,
+  type DeviceNodeData,
+  type WireEdgeData,
+} from '../diagram/model/interfaces';
 import {
   formDataToDeviceData,
   type DeviceFieldChange,
@@ -34,7 +38,38 @@ export class ElementMutationService {
     const node = this.modelService.getNodeById<DeviceNodeData>(change.nodeId);
     if (!node) return;
     const updatedData = formDataToDeviceData(change.formData, node.data);
-    this.modelService.updateNodeData(change.nodeId, updatedData);
+
+    const orphanedEdgeIds = change.fields.includes('ports')
+      ? this.findOrphanedEdgeIds(change.nodeId, node.data.ports, updatedData.ports)
+      : [];
+
+    if (orphanedEdgeIds.length > 0) {
+      const changes = new ModelChanges();
+      changes.addNodeUpdates({ id: change.nodeId, data: updatedData });
+      changes.addDeleteEdgeIds(...orphanedEdgeIds);
+      void this.modelApplyService.apply(changes);
+    } else {
+      this.modelService.updateNodeData(change.nodeId, updatedData);
+    }
+  }
+
+  private findOrphanedEdgeIds(
+    nodeId: string,
+    oldPorts: readonly DevicePort[],
+    newPorts: readonly DevicePort[],
+  ): string[] {
+    const newIds = new Set(newPorts.map((p) => p.id));
+    const removedIds = new Set(oldPorts.filter((p) => !newIds.has(p.id)).map((p) => p.id));
+    if (removedIds.size === 0) return [];
+
+    return this.modelService
+      .getConnectedEdges(nodeId)
+      .filter(
+        (edge) =>
+          (edge.source === nodeId && removedIds.has(edge.sourcePort ?? '')) ||
+          (edge.target === nodeId && removedIds.has(edge.targetPort ?? '')),
+      )
+      .map((edge) => edge.id);
   }
 
   handleWireFieldChange(change: WireFieldChange): void {

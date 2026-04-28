@@ -34,7 +34,6 @@ export class PortsEditorComponent implements FormValueControl<DevicePort[]> {
   }
 
   protected removePort(id: string): void {
-    // TODO: cascade-delete wires connected to this port (currently leaves orphans).
     this.value.update((ports) => ports.filter((p) => p.id !== id));
   }
 
