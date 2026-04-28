@@ -17,7 +17,7 @@
     <div class="port-column port-column--input">
       @for (port of inputPorts(); track port.id + '@' + $index; let last = $last) {
         <div class="port-row" [class.port-row--last]="last">
-          <ng-diagram-port [id]="port.id" type="target" side="left">
+          <ng-diagram-port [id]="port.id" type="both" side="left">
             <div
               class="port-shape port-shape--input"
               [style.height]="$even ? null : 'calc(var(--av-port-height) + 1px)'"
@@ -42,7 +42,7 @@
               <span class="port-connector-type">{{ port.connectorType }}</span>
             }
           </div>
-          <ng-diagram-port [id]="port.id" type="source" side="right">
+          <ng-diagram-port [id]="port.id" type="both" side="right">
             <div
               class="port-shape port-shape--output"
               [style.height]="$even ? null : 'calc(var(--av-port-height) + 1px)'"
