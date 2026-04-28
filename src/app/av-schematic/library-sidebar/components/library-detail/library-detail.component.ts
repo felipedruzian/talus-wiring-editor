@@ -9,17 +9,16 @@ import {
   untracked,
 } from '@angular/core';
 import { type DeviceNodeData } from '../../../diagram/model/interfaces';
-import { DeviceFormComponent } from '../../../properties-sidebar/components/device-form/device-form.component';
+import { DeviceFormComponent } from '../../../shared/device-form/device-form.component';
 import {
+  DEVICE_FORM_HIDDEN_FIELDS,
   ON_DEVICE_FIELD_CHANGE,
   type DeviceFieldChange,
-  type DeviceFormData,
-} from '../../../properties-sidebar/components/device-form/device-form.mappers';
-import { DeviceFormService } from '../../../properties-sidebar/components/device-form/device-form.service';
+} from '../../../shared/device-form/device-form.mappers';
+import { DeviceFormService } from '../../../shared/device-form/device-form.service';
 import { LibraryDraftService } from '../../library-draft.service';
-import { createBlankTemplate, LibraryService } from '../../library.service';
-
-const HIDDEN_FIELDS: readonly (keyof DeviceFormData)[] = ['deviceId', 'location'];
+import { LibraryService } from '../../library.service';
+import { createBlankTemplate } from '../../seed-library';
 
 @Component({
   selector: 'app-library-detail',
@@ -30,6 +29,7 @@ const HIDDEN_FIELDS: readonly (keyof DeviceFormData)[] = ['deviceId', 'location'
   providers: [
     LibraryDraftService,
     DeviceFormService,
+    { provide: DEVICE_FORM_HIDDEN_FIELDS, useValue: ['deviceId', 'location'] },
     {
       provide: ON_DEVICE_FIELD_CHANGE,
       useFactory: () => {
@@ -45,7 +45,6 @@ export class LibraryDetailComponent {
 
   readonly libraryId = input.required<string>();
 
-  protected readonly hiddenFields = HIDDEN_FIELDS;
   protected readonly mode = this.libraryService.editingMode;
 
   // Stable per editing session — only changes when libraryId/mode flip,
@@ -56,6 +55,11 @@ export class LibraryDetailComponent {
   protected readonly title = computed(() =>
     this.mode() === 'create' ? 'New device' : 'Edit device',
   );
+
+  protected readonly canSave = computed(() => {
+    const draft = this.draftService.draft();
+    return draft.manufacturer.trim() !== '' || draft.model.trim() !== '';
+  });
 
   constructor() {
     effect(() => {
@@ -74,6 +78,7 @@ export class LibraryDetailComponent {
   }
 
   protected onSave(): void {
+    if (!this.canSave()) return;
     this.libraryService.commitDraft(this.libraryId(), this.draftService.draft());
   }
 

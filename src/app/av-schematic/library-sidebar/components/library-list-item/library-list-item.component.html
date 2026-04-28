@@ -1,5 +1,12 @@
 <ng-diagram-palette-item [item]="paletteItem()">
-  <div class="device-row" (click)="onOpenDetail()" role="button" tabindex="0">
+  <div
+    class="device-row"
+    role="button"
+    tabindex="0"
+    (click)="onOpenDetail()"
+    (keydown.enter)="onOpenDetail()"
+    (keydown.space)="onOpenDetail(); $event.preventDefault()"
+  >
     <div class="device-row__main">
       @if (device().template.manufacturer) {
         <span class="device-row__manufacturer p10">{{ device().template.manufacturer }}</span>

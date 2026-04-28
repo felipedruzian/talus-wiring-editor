@@ -2,20 +2,7 @@ import { computed, Injectable, signal } from '@angular/core';
 import { type DeviceNodeData } from '../diagram/model/interfaces';
 import { SEED_LIBRARY, type LibraryDevice } from './seed-library';
 
-const generateLibraryId = (): string =>
-  'lib-custom-' + Math.random().toString(36).slice(2, 8);
-
-export const createBlankTemplate = (): DeviceNodeData => ({
-  type: 'device',
-  deviceId: '',
-  manufacturer: '',
-  model: '',
-  category: '',
-  location: '',
-  ports: [],
-});
-
-export type LibraryEditMode = 'create' | 'edit';
+type LibraryEditMode = 'create' | 'edit';
 
 @Injectable()
 export class LibraryService {
@@ -38,11 +25,9 @@ export class LibraryService {
     this.isExpanded.update((v) => !v);
   }
 
-  beginCreate(): string {
-    const libraryId = generateLibraryId();
-    this.editingDeviceId.set(libraryId);
+  beginCreate(): void {
+    this.editingDeviceId.set(`lib-custom-${crypto.randomUUID()}`);
     this.editingMode.set('create');
-    return libraryId;
   }
 
   beginEdit(libraryId: string): void {

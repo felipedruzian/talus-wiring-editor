@@ -55,7 +55,7 @@ This template wires up a focused subset of the ng-diagram public surface. Useful
 | Custom edge template | `NgDiagramEdgeTemplateMap`, `NgDiagramEdgeTemplate<TData>`, `NgDiagramBaseEdgeComponent` | `diagram/wire-edge.component.ts` |
 | Edge labels | `NgDiagramBaseEdgeLabelComponent`, `EdgeLabelPosition` (absolute `'30px'` and `'-30px'`) | `diagram/wire-edge.component.html` |
 | Connection ports | `<ng-diagram-port>` (`NgDiagramPortComponent`) | `diagram/node/device-node.component.html` |
-| Palette items | `<ng-diagram-palette-item>` (`NgDiagramPaletteItemComponent`), `<ng-diagram-palette-item-preview>` (`NgDiagramPaletteItemPreviewComponent`), `NgDiagramPaletteItem` | `library-sidebar/components/library-list-item/*` |
+| Palette items | `<ng-diagram-palette-item>` (`NgDiagramPaletteItemComponent`), `<ng-diagram-palette-item-preview>` (`NgDiagramPaletteItemPreviewComponent`), `NgDiagramPaletteItem` (defaults to `BasePaletteItemData` which requires a `label` — we cast at the boundary since our nodes have no label) | `library-sidebar/components/library-list-item/*` |
 | Palette drop | `paletteItemDropped` output, `PaletteItemDroppedEvent` (used to auto-fill missing `deviceId`) | `diagram/diagram.component.ts` |
 | Edge routing | `NgDiagramConfig.edgeRouting` (`orthogonal` with `firstLastSegmentLength`, `maxCornerRadius`) | `diagram/diagram.component.ts` |
 | Linking | `NgDiagramConfig.linking.finalEdgeDataBuilder` (assigns wire type and generates a wireId) | `diagram/diagram.component.ts` |
@@ -160,7 +160,7 @@ Left-side collapsible panel that holds **device templates** — recipes (no `id`
 | `library-sidebar/library.service.ts` | Page-scoped state: `devices`, `isExpanded`, `editingDeviceId`, `editingMode`. `beginCreate()` / `beginEdit()` / `commitDraft()` / `closeDetail()` / `removeDevice()` |
 | `library-sidebar/library-draft.service.ts` | Per-detail-session draft buffer. While the detail view is open, every form change writes here (not to the library). **Save** commits via `LibraryService.commitDraft`; **Back** simply tears the component down and the draft with it |
 | `library-sidebar/components/library-list-item/*` | Each row wraps its content in `<ng-diagram-palette-item [item]="…">` with a custom `<ng-diagram-palette-item-preview>` ghost card. `<ng-diagram>` auto-handles the drop |
-| `library-sidebar/components/library-detail/*` | Reuses `<app-device-form>` with a local `DeviceFormService` provider and an overridden `ON_DEVICE_FIELD_CHANGE` token that writes to the draft service. Hides `deviceId` and `location` (`hiddenFields="['deviceId', 'location']"`) |
+| `library-sidebar/components/library-detail/*` | Reuses `<app-device-form>` with a local `DeviceFormService` provider and an overridden `ON_DEVICE_FIELD_CHANGE` token that writes to the draft service. Hides `deviceId` and `location` by providing `DEVICE_FORM_HIDDEN_FIELDS = ['deviceId', 'location']` |
 | `diagram/model/device-categories.ts` | Canonical category dictionary — `DEVICE_CATEGORY_PREFIXES` (`microphone` → `MIC`, `camera` → `CAM`, …), `DEVICE_CATEGORIES` (the keys, used by the combobox), `FALLBACK_DEVICE_PREFIX = 'DEV'` |
 | `diagram/model/auto-device-id.ts` | `generateDeviceId(category, existingNodes)` — returns `<PREFIX>-<N>` where `N` is the smallest positive integer not already in use by a device of that prefix. Called from `(paletteItemDropped)` in `DiagramComponent` |
 
@@ -259,13 +259,11 @@ src/app/av-schematic/
 │   └── components/
 │       ├── sidebar-header/               # Generic toggle header (title/icon inputs — reused by library)
 │       ├── sidebar-placeholder/          # Empty / multi states
-│       ├── form-field/                   # Label + projected input wrapper
-│       ├── device-form/                  # Device fields (signals form, supports hiddenFields)
 │       └── wire-form/                    # Wire fields (signals form)
 ├── library-sidebar/                      # Left panel: drag-drop palette of device templates
 │   ├── library.service.ts                # Devices, expand/collapse, editing mode (create/edit)
 │   ├── library-draft.service.ts          # Per-detail-session draft buffer (Save commits; Back discards)
-│   ├── seed-library.ts                   # Initial templates (deviceId / location intentionally empty)
+│   ├── seed-library.ts                   # Initial templates + createBlankTemplate factory
 │   └── components/
 │       ├── library-list/                 # Scrollable list + "Add device" button
 │       ├── library-list-item/            # Draggable row wrapping <ng-diagram-palette-item>
@@ -273,7 +271,10 @@ src/app/av-schematic/
 ├── shared/
 │   ├── autofocus/                        # Re-focus directive on selection change
 │   ├── combobox/                         # Editable combobox (FormValueControl<string>)
-│   └── ports-editor/                     # Two-column ports editor (FormValueControl<DevicePort[]>)
+│   ├── device-form/                      # Device fields (signals form). DEVICE_FORM_HIDDEN_FIELDS DI token controls visibility per-host
+│   ├── form-field/                       # Label + projected input wrapper
+│   ├── ports-editor/                     # Two-column ports editor (FormValueControl<DevicePort[]>)
+│   └── sidebar-shell/                    # SCSS partial — common :host / .sidebar / animation rules
 ├── top-navbar/                           # Navigation bar + theme toggle
 ├── toolbar/                              # Placeholder toolbar
 └── minimap-panel/                        # Minimap with zoom controls

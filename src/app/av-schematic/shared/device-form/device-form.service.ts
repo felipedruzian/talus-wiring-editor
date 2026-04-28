@@ -1,13 +1,14 @@
 import { effect, inject, Injectable, signal, untracked } from '@angular/core';
 import { debounce, form } from '@angular/forms/signals';
 import {
+  DEVICE_FORM_HIDDEN_FIELDS,
   EMPTY_DEVICE_FORM,
   ON_DEVICE_FIELD_CHANGE,
   type DeviceFormData,
 } from './device-form.mappers';
 
 const DEBOUNCE_TIME_MS = 300;
-const DEBOUNCED_FIELDS: (keyof DeviceFormData)[] = [
+const ALL_FIELDS: readonly (keyof DeviceFormData)[] = [
   'deviceId',
   'manufacturer',
   'model',
@@ -19,36 +20,41 @@ const DEBOUNCED_FIELDS: (keyof DeviceFormData)[] = [
 @Injectable()
 export class DeviceFormService {
   private readonly onFieldChange = inject(ON_DEVICE_FIELD_CHANGE);
+  private readonly hiddenFields = inject(DEVICE_FORM_HIDDEN_FIELDS);
+
+  private readonly visibleFields: readonly (keyof DeviceFormData)[] = ALL_FIELDS.filter(
+    (f) => !this.hiddenFields.includes(f),
+  );
 
   readonly formModel = signal<DeviceFormData>({ ...EMPTY_DEVICE_FORM });
 
-  readonly fieldTree = form(this.formModel, (schemaPath) => {
-    debounce(schemaPath.deviceId, DEBOUNCE_TIME_MS);
-    debounce(schemaPath.manufacturer, DEBOUNCE_TIME_MS);
-    debounce(schemaPath.model, DEBOUNCE_TIME_MS);
-    debounce(schemaPath.category, DEBOUNCE_TIME_MS);
-    debounce(schemaPath.location, DEBOUNCE_TIME_MS);
-    debounce(schemaPath.ports, DEBOUNCE_TIME_MS);
+  readonly fieldTree = form(this.formModel, (s) => {
+    if (!this.hiddenFields.includes('deviceId')) debounce(s.deviceId, DEBOUNCE_TIME_MS);
+    if (!this.hiddenFields.includes('manufacturer')) debounce(s.manufacturer, DEBOUNCE_TIME_MS);
+    if (!this.hiddenFields.includes('model')) debounce(s.model, DEBOUNCE_TIME_MS);
+    if (!this.hiddenFields.includes('category')) debounce(s.category, DEBOUNCE_TIME_MS);
+    if (!this.hiddenFields.includes('location')) debounce(s.location, DEBOUNCE_TIME_MS);
+    if (!this.hiddenFields.includes('ports')) debounce(s.ports, DEBOUNCE_TIME_MS);
   });
 
   private lastEmittedModel: DeviceFormData = { ...EMPTY_DEVICE_FORM };
-  private currentNodeId: string | null = null;
+  private currentEntityId: string | null = null;
 
   constructor() {
     this.watchForChanges();
   }
 
-  loadFormData(nodeId: string, data: DeviceFormData): void {
+  loadFormData(entityId: string, data: DeviceFormData): void {
     this.flush();
 
-    this.currentNodeId = nodeId;
+    this.currentEntityId = entityId;
     this.lastEmittedModel = { ...data };
     this.formModel.set(data);
     this.fieldTree().reset();
   }
 
   flush(): void {
-    DEBOUNCED_FIELDS.forEach((fieldName) => {
+    this.visibleFields.forEach((fieldName) => {
       this.fieldTree[fieldName]().markAsTouched();
     });
   }
@@ -68,14 +74,12 @@ export class DeviceFormService {
   }
 
   private emitChange(diffs: (keyof DeviceFormData)[], formData: DeviceFormData): void {
-    if (this.currentNodeId && diffs.length) {
-      this.onFieldChange({ nodeId: this.currentNodeId, fields: diffs, formData });
+    if (this.currentEntityId && diffs.length) {
+      this.onFieldChange({ entityId: this.currentEntityId, fields: diffs, formData });
     }
   }
 
   private getDiffs(model: DeviceFormData): (keyof DeviceFormData)[] {
-    return (Object.keys(model) as (keyof DeviceFormData)[]).filter(
-      (key) => model[key] !== this.lastEmittedModel[key],
-    );
+    return this.visibleFields.filter((key) => model[key] !== this.lastEmittedModel[key]);
   }
 }

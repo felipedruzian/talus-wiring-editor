@@ -63,12 +63,17 @@
   padding: var(--ngd-token-spacing-button-m-v-pad-2);
   transition: background 150ms ease;
 
-  &:hover {
+  &:hover:not(:disabled) {
     background: var(--ngd-button-primary-bg-hover);
   }
 
-  &:active {
+  &:active:not(:disabled) {
     background: var(--ngd-button-primary-bg-active);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
   }
 }
 

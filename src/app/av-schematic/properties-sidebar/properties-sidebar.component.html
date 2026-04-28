@@ -11,7 +11,7 @@
     <div class="sidebar-separator"></div>
     <div class="sidebar-content sidebar-enter">
       @if (state() === 'single-node' && selectedNode(); as node) {
-        <app-device-form [nodeId]="node.id" [nodeData]="node.data" />
+        <app-device-form [entityId]="node.id" [nodeData]="node.data" />
         <div class="sidebar-actions">
           <button class="remove-button p10" type="button" (click)="onRemoveNode()">
             Remove device

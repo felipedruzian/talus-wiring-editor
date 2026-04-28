@@ -5,6 +5,16 @@ export interface LibraryDevice {
   template: DeviceNodeData;
 }
 
+export const createBlankTemplate = (): DeviceNodeData => ({
+  type: 'device',
+  deviceId: '',
+  manufacturer: '',
+  model: '',
+  category: '',
+  location: '',
+  ports: [],
+});
+
 export const SEED_LIBRARY: LibraryDevice[] = [
   {
     libraryId: 'lib-shure-sm58',

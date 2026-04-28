@@ -9,13 +9,13 @@ import {
   untracked,
 } from '@angular/core';
 import { FormField } from '@angular/forms/signals';
-import { DEVICE_CATEGORIES } from '../../../diagram/model/device-categories';
-import { type DeviceNodeData } from '../../../diagram/model/interfaces';
-import { AutofocusDirective } from '../../../shared/autofocus/autofocus.directive';
-import { ComboboxComponent } from '../../../shared/combobox/combobox.component';
-import { PortsEditorComponent } from '../../../shared/ports-editor/ports-editor.component';
+import { DEVICE_CATEGORIES } from '../../diagram/model/device-categories';
+import { type DeviceNodeData } from '../../diagram/model/interfaces';
+import { AutofocusDirective } from '../autofocus/autofocus.directive';
+import { ComboboxComponent } from '../combobox/combobox.component';
 import { FormFieldComponent } from '../form-field/form-field.component';
-import { deviceDataToFormData, type DeviceFormData } from './device-form.mappers';
+import { PortsEditorComponent } from '../ports-editor/ports-editor.component';
+import { deviceDataToFormData, DEVICE_FORM_HIDDEN_FIELDS } from './device-form.mappers';
 import { DeviceFormService } from './device-form.service';
 
 @Component({
@@ -33,16 +33,16 @@ import { DeviceFormService } from './device-form.service';
 })
 export class DeviceFormComponent {
   private readonly formService = inject(DeviceFormService);
+  private readonly hiddenFields = inject(DEVICE_FORM_HIDDEN_FIELDS);
 
-  readonly nodeId = input.required<string>();
+  readonly entityId = input.required<string>();
   readonly nodeData = input.required<DeviceNodeData>();
-  readonly hiddenFields = input<readonly (keyof DeviceFormData)[]>([]);
 
   protected readonly fieldTree = this.formService.fieldTree;
-  protected readonly showDeviceId = computed(() => !this.hiddenFields().includes('deviceId'));
-  protected readonly showLocation = computed(() => !this.hiddenFields().includes('location'));
+  protected readonly showDeviceId = !this.hiddenFields.includes('deviceId');
+  protected readonly showLocation = !this.hiddenFields.includes('location');
   protected readonly autofocusManufacturer = computed(() =>
-    this.showDeviceId() ? null : this.nodeId(),
+    this.showDeviceId ? null : this.entityId(),
   );
   protected readonly categories = DEVICE_CATEGORIES;
 
@@ -56,11 +56,11 @@ export class DeviceFormComponent {
 
   private syncFormWithInputs(): void {
     effect(() => {
-      const nodeId = this.nodeId();
+      const entityId = this.entityId();
       const nodeData = this.nodeData();
 
       untracked(() => {
-        this.formService.loadFormData(nodeId, deviceDataToFormData(nodeData));
+        this.formService.loadFormData(entityId, deviceDataToFormData(nodeData));
       });
     });
   }

@@ -3,8 +3,8 @@ import { type DeviceNodeData } from '../diagram/model/interfaces';
 import {
   formDataToDeviceData,
   type DeviceFieldChange,
-} from '../properties-sidebar/components/device-form/device-form.mappers';
-import { createBlankTemplate } from './library.service';
+} from '../shared/device-form/device-form.mappers';
+import { createBlankTemplate } from './seed-library';
 
 /**
  * Holds the in-progress edit/create buffer for a single library detail session.

@@ -2,14 +2,14 @@
   <span class="h10 section-title">Device</span>
 
   <div class="section-content">
-    @if (showDeviceId()) {
+    @if (showDeviceId) {
       <app-form-field label="Device ID" fieldId="deviceId">
         <input
           id="deviceId"
           type="text"
           class="form-input p10"
           [formField]="fieldTree.deviceId"
-          [appAutofocus]="nodeId()"
+          [appAutofocus]="entityId()"
           placeholder="Enter device ID"
         />
       </app-form-field>
@@ -45,7 +45,7 @@
       />
     </app-form-field>
 
-    @if (showLocation()) {
+    @if (showLocation) {
       <app-form-field label="Location" fieldId="location">
         <input
           id="location"

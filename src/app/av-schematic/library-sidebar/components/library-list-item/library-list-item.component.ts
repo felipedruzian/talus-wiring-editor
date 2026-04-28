@@ -37,11 +37,6 @@ export class LibraryListItemComponent {
     return c ? c.replace(/-/g, ' ') : '';
   });
 
-  protected readonly displayName = computed(() => {
-    const t = this.device().template;
-    return t.manufacturer || t.model ? `${t.manufacturer} ${t.model}`.trim() : 'Unnamed device';
-  });
-
   protected onOpenDetail(): void {
     this.libraryService.beginEdit(this.device().libraryId);
   }

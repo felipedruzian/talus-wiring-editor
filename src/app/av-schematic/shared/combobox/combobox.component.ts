@@ -84,6 +84,10 @@ export class ComboboxComponent implements FormValueControl<string> {
   protected onKeydown(event: KeyboardEvent): void {
     switch (event.key) {
       case 'Tab':
+        // Free-text combobox: Tab keeps whatever was typed rather than
+        // committing the focused option. The typed value is already in
+        // `value` (set on each input event), so just close the panel and
+        // let Tab move focus normally.
         if (this.isOpen()) this.closePanel();
         return;
       case 'Escape':
