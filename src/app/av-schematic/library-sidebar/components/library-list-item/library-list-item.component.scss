@@ -49,12 +49,6 @@
   white-space: nowrap;
 }
 
-.device-row__meta {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
 .device-row__chip {
   font-size: 10px;
   padding: 2px 6px;
@@ -62,6 +56,8 @@
   background: var(--ngd-ui-bg-primary-default);
   border: 1px solid var(--ngd-ui-stroke-primary-default);
   color: var(--ngd-txt-secondary-default);
+  flex-shrink: 0;
+  text-transform: capitalize;
 }
 
 .device-preview {

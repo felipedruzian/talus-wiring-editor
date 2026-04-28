@@ -32,12 +32,10 @@ export class LibraryListItemComponent {
       }) as unknown as NgDiagramPaletteItem,
   );
 
-  protected readonly inputPortCount = computed(
-    () => this.device().template.ports.filter((p) => p.direction === 'input').length,
-  );
-  protected readonly outputPortCount = computed(
-    () => this.device().template.ports.filter((p) => p.direction === 'output').length,
-  );
+  protected readonly categoryLabel = computed(() => {
+    const c = this.device().template.category?.trim();
+    return c ? c.replace(/-/g, ' ') : '';
+  });
 
   protected readonly displayName = computed(() => {
     const t = this.device().template;
