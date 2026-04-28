@@ -1,0 +1,37 @@
+@let open = isOpen();
+<div class="export-menu" (keydown)="onKeydown($event)">
+  <button
+    type="button"
+    class="trigger"
+    aria-label="Export diagram"
+    aria-haspopup="menu"
+    [attr.aria-expanded]="open"
+    [disabled]="!canExport()"
+    (click)="toggle()"
+  >
+    <span class="icon icon-download" aria-hidden="true"></span>
+  </button>
+
+  @if (open) {
+    <div class="panel" role="menu">
+      <button
+        type="button"
+        class="panel-item"
+        role="menuitem"
+        [disabled]="isExporting()"
+        (click)="exportPng()"
+      >
+        Export to PNG
+      </button>
+      <button
+        type="button"
+        class="panel-item"
+        role="menuitem"
+        disabled
+        (click)="exportDxf()"
+      >
+        Export to DXF
+      </button>
+    </div>
+  }
+</div>

@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  OnDestroy,
+  OnInit,
+  inject,
+} from '@angular/core';
 import {
   DiagramInitEvent,
   initializeModel,
@@ -14,6 +21,7 @@ import {
   type SelectionGestureEndedEvent,
 } from 'ng-diagram';
 import { AV_SCHEMATIC_CONFIG } from '../av-schematic.config';
+import { DiagramExportService } from '../export/diagram-export.service';
 import { PropertiesSidebarService } from '../properties-sidebar/properties-sidebar.service';
 import { generateDeviceId } from './model/auto-device-id';
 import { isDeviceNode, isWireEdge } from './model/guards';
@@ -38,12 +46,14 @@ const generateWireId = (): string =>
   styleUrl: './diagram.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class DiagramComponent {
+export class DiagramComponent implements OnInit, OnDestroy {
   private readonly avConfig = inject(AV_SCHEMATIC_CONFIG);
   private readonly viewportService = inject(NgDiagramViewportService);
   private readonly sidebarService = inject(PropertiesSidebarService);
   private readonly nodeVisibilityConfigService = inject(NodeVisibilityConfigService);
   private readonly modelService = inject(NgDiagramModelService);
+  private readonly elementRef = inject(ElementRef<HTMLElement>);
+  private readonly exportService = inject(DiagramExportService);
 
   config = {
     edgeRouting: {
@@ -86,6 +96,17 @@ export class DiagramComponent {
   ]);
 
   model = initializeModel(diagramModel);
+
+  ngOnInit(): void {
+    this.exportService.register({
+      element: this.elementRef,
+      modelService: this.modelService,
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.exportService.unregister();
+  }
 
   onDiagramInit(_: DiagramInitEvent): void {
     this.zoomToFit();
