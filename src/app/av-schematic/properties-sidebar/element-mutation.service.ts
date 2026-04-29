@@ -78,4 +78,11 @@ export class ElementMutationService {
     const updatedData = formDataToWireData(change.formData, edge.data);
     this.modelService.updateEdgeData(change.edgeId, updatedData);
   }
+
+  resetEdgeRouting(edgeId: string): void {
+    this.modelService.updateEdge(edgeId, {
+      points: undefined,
+      routingMode: 'auto',
+    });
+  }
 }
