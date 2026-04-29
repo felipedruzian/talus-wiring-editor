@@ -9,3 +9,18 @@
   user-select: none;
   pointer-events: none;
 }
+
+.bend-handle {
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+
+  &--vertex {
+    background: var(--ngd-node-bg-primary-default);
+    border: 1px solid var(--av-color-accent);
+  }
+}
