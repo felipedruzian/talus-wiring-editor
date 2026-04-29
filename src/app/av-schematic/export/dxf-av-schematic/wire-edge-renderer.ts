@@ -32,12 +32,16 @@ export const renderWireEdge: DxfEdgeRenderer = (ctx, edge) => {
   const points = edge.points ?? [];
   if (points.length < 2) return;
 
-  const last = points.length - 1;
+  const lastIndex = points.length - 1;
   const adjusted = [...points];
   adjusted[0] = extendToward(points[0], points[1], WIRE_ENDPOINT_EXTENSION);
-  adjusted[last] = extendToward(points[last], points[last - 1], WIRE_ENDPOINT_EXTENSION);
+  adjusted[lastIndex] = extendToward(
+    points[lastIndex],
+    points[lastIndex - 1],
+    WIRE_ENDPOINT_EXTENSION,
+  );
 
-  const mapped = adjusted.map((p) => ctx.mapper.mapPoint(p.x, p.y));
+  const mapped = adjusted.map((point) => ctx.mapper.mapPoint(point.x, point.y));
   ctx.doc.addEntity(new DxfLwPolyline(LAYERS.WIRES, mapped, false, undefined, LINE_WEIGHT.WIRE));
 
   renderWireLabels(ctx, adjusted, edge.data as WireEdgeData);
@@ -58,12 +62,12 @@ const renderWireLabels = (
 };
 
 const renderLabel = (ctx: DxfRenderContext, anchor: Point, text: string): void => {
-  const pos = ctx.mapper.mapPoint(anchor.x, anchor.y);
+  const mappedPoint = ctx.mapper.mapPoint(anchor.x, anchor.y);
   const heightMm = ctx.mapper.mapLength(FONT_WIRE_LABEL);
   // halign=1 (center), valign=1 (bottom) — text sits centered above the wire,
   // bottom edge of the glyphs flush with the wire line.
   ctx.doc.addEntity(
-    new DxfText(LAYERS.WIRES, text, pos.x, pos.y, heightMm, TEXT_STYLE.STANDARD, 1, 1),
+    new DxfText(LAYERS.WIRES, text, mappedPoint.x, mappedPoint.y, heightMm, TEXT_STYLE.STANDARD, 1, 1),
   );
 };
 
@@ -77,25 +81,28 @@ const pointAtDistance = (
 
   let remaining = distance;
   for (let i = 0; i < ordered.length - 1; i++) {
-    const a = ordered[i];
-    const b = ordered[i + 1];
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const segLen = Math.hypot(dx, dy);
-    if (remaining <= segLen) {
-      const t = segLen === 0 ? 0 : remaining / segLen;
-      return { x: a.x + dx * t, y: a.y + dy * t };
+    const from = ordered[i];
+    const to = ordered[i + 1];
+    const deltaX = to.x - from.x;
+    const deltaY = to.y - from.y;
+    const segmentLength = Math.hypot(deltaX, deltaY);
+    if (remaining <= segmentLength) {
+      const progress = segmentLength === 0 ? 0 : remaining / segmentLength;
+      return { x: from.x + deltaX * progress, y: from.y + deltaY * progress };
     }
-    remaining -= segLen;
+    remaining -= segmentLength;
   }
   // Path is shorter than `distance` — fall back to the far end.
   return ordered[ordered.length - 1];
 };
 
 const extendToward = (point: Point, neighbor: Point, distance: number): Point => {
-  const dx = neighbor.x - point.x;
-  const dy = neighbor.y - point.y;
-  const len = Math.hypot(dx, dy);
-  if (len === 0) return point;
-  return { x: point.x + (dx / len) * distance, y: point.y + (dy / len) * distance };
+  const deltaX = neighbor.x - point.x;
+  const deltaY = neighbor.y - point.y;
+  const length = Math.hypot(deltaX, deltaY);
+  if (length === 0) return point;
+  return {
+    x: point.x + (deltaX / length) * distance,
+    y: point.y + (deltaY / length) * distance,
+  };
 };

@@ -49,43 +49,51 @@ interface PortRect {
  */
 export const renderDeviceNode: DxfNodeRenderer = (ctx, node) => {
   const data = node.data as DeviceNodeData;
-  const nx = node.position.x;
-  const ny = node.position.y;
-  const w = node.size?.width ?? DEFAULT_NODE_WIDTH;
+  const nodeX = node.position.x;
+  const nodeY = node.position.y;
+  const nodeWidth = node.size?.width ?? DEFAULT_NODE_WIDTH;
 
   const inputData = data.ports.filter((p) => p.direction === 'input');
   const outputData = data.ports.filter((p) => p.direction === 'output');
-  const inputRects = collectPortRects(inputData, node, nx, ny, true);
-  const outputRects = collectPortRects(outputData, node, nx, ny, false);
+  const inputRects = collectPortRects(inputData, node, nodeX, nodeY, true);
+  const outputRects = collectPortRects(outputData, node, nodeX, nodeY, false);
 
-  const h = node.size?.height ?? estimateDefaultHeight(data, inputRects, outputRects);
-  const sectionTopY = computeSectionTopY(inputRects, outputRects, ny, h);
+  const nodeHeight = node.size?.height ?? estimateDefaultHeight(data, inputRects, outputRects);
+  const sectionTopY = computeSectionTopY(inputRects, outputRects, nodeY, nodeHeight);
 
-  renderBox(ctx, nx, ny, w, h);
-  renderHeader(ctx, data, nx, ny, w, sectionTopY);
+  renderBox(ctx, nodeX, nodeY, nodeWidth, nodeHeight);
+  renderHeader(ctx, data, nodeX, nodeY, nodeWidth, sectionTopY);
 
-  drawLine(ctx, nx, sectionTopY, nx + w, sectionTopY, LAYERS.DEVICES, LINE_WEIGHT.FRAME);
+  drawLine(ctx, nodeX, sectionTopY, nodeX + nodeWidth, sectionTopY, LAYERS.DEVICES, LINE_WEIGHT.FRAME);
   if (inputRects.length + outputRects.length > 0) {
-    drawLine(ctx, nx + w / 2, sectionTopY, nx + w / 2, ny + h, LAYERS.DEVICES, LINE_WEIGHT.FRAME);
+    drawLine(
+      ctx,
+      nodeX + nodeWidth / 2,
+      sectionTopY,
+      nodeX + nodeWidth / 2,
+      nodeY + nodeHeight,
+      LAYERS.DEVICES,
+      LINE_WEIGHT.FRAME,
+    );
   }
 
-  renderColumn(ctx, inputRects, nx, w, true);
-  renderColumn(ctx, outputRects, nx, w, false);
+  renderColumn(ctx, inputRects, nodeX, nodeWidth, true);
+  renderColumn(ctx, outputRects, nodeX, nodeWidth, false);
 };
 
 const collectPortRects = (
   ports: readonly DevicePort[],
   node: Node,
-  nx: number,
-  ny: number,
+  nodeX: number,
+  nodeY: number,
   isInput: boolean,
 ): PortRect[] => {
   const measuredById = new Map<string, Port>();
-  for (const mp of node.measuredPorts ?? []) {
-    measuredById.set(mp.id, mp);
+  for (const measuredPort of node.measuredPorts ?? []) {
+    measuredById.set(measuredPort.id, measuredPort);
   }
 
-  const w = node.size?.width ?? DEFAULT_NODE_WIDTH;
+  const nodeWidth = node.size?.width ?? DEFAULT_NODE_WIDTH;
 
   return ports.map((port, index) => {
     const measured = measuredById.get(port.id);
@@ -100,8 +108,8 @@ const collectPortRects = (
       // Rect is rendered at fixed PORT_WIDTH × PORT_HEIGHT so all ports look
       // identical (the device-node template uses a 1px height parity toggle
       // as a workaround for an ng-diagram measurement issue).
-      const centerY = ny + measured.position.y + measured.size.height / 2;
-      const centerX = isInput ? nx - PORT_WIDTH / 2 : nx + w + PORT_WIDTH / 2;
+      const centerY = nodeY + measured.position.y + measured.size.height / 2;
+      const centerX = isInput ? nodeX - PORT_WIDTH / 2 : nodeX + nodeWidth + PORT_WIDTH / 2;
       return {
         port,
         x: centerX - PORT_WIDTH / 2,
@@ -112,20 +120,20 @@ const collectPortRects = (
         centerY,
       };
     }
-    return fallbackPortRect(port, index, nx, ny, w, isInput);
+    return fallbackPortRect(port, index, nodeX, nodeY, nodeWidth, isInput);
   });
 };
 
 const fallbackPortRect = (
   port: DevicePort,
   index: number,
-  nx: number,
-  ny: number,
-  w: number,
+  nodeX: number,
+  nodeY: number,
+  nodeWidth: number,
   isInput: boolean,
 ): PortRect => {
-  const centerY = ny + 60 + (index + 0.5) * FALLBACK_PORT_ROW_HEIGHT;
-  const centerX = isInput ? nx - PORT_WIDTH / 2 : nx + w + PORT_WIDTH / 2;
+  const centerY = nodeY + 60 + (index + 0.5) * FALLBACK_PORT_ROW_HEIGHT;
+  const centerX = isInput ? nodeX - PORT_WIDTH / 2 : nodeX + nodeWidth + PORT_WIDTH / 2;
   return {
     port,
     x: centerX - PORT_WIDTH / 2,
@@ -147,25 +155,25 @@ const fallbackPortRect = (
 const computeSectionTopY = (
   inputRects: readonly PortRect[],
   outputRects: readonly PortRect[],
-  ny: number,
-  h: number,
+  nodeY: number,
+  nodeHeight: number,
 ): number => {
   if (inputRects.length === 0 && outputRects.length === 0) {
-    return ny + h - 1;
+    return nodeY + nodeHeight - 1;
   }
   const inputTop = firstRowTop(inputRects);
   const outputTop = firstRowTop(outputRects);
   const candidates = [inputTop, outputTop].filter((y): y is number => y !== null);
-  return Math.max(ny, Math.min(...candidates));
+  return Math.max(nodeY, Math.min(...candidates));
 };
 
 const firstRowTop = (rects: readonly PortRect[]): number | null => {
   if (rects.length === 0) return null;
-  const rowH =
+  const rowHeight =
     rects.length >= 2
       ? rects[1].centerY - rects[0].centerY
       : FALLBACK_PORT_ROW_HEIGHT;
-  return rects[0].centerY - rowH / 2;
+  return rects[0].centerY - rowHeight / 2;
 };
 
 const estimateDefaultHeight = (
@@ -173,28 +181,28 @@ const estimateDefaultHeight = (
   inputRects: readonly PortRect[],
   outputRects: readonly PortRect[],
 ): number => {
-  const headerH =
+  const headerHeight =
     HEADER_PADDING_TOP +
     Math.ceil(FONT_DEVICE_ID * TEXT_LINE_HEIGHT_RATIO) +
     Math.ceil(FONT_INFO * TEXT_LINE_HEIGHT_RATIO) +
     Math.ceil(FONT_INFO * TEXT_LINE_HEIGHT_RATIO) +
     HEADER_PADDING_BOTTOM;
   const rows = Math.max(inputRects.length, outputRects.length, 1);
-  return headerH + 1 + rows * FALLBACK_PORT_ROW_HEIGHT;
+  return headerHeight + 1 + rows * FALLBACK_PORT_ROW_HEIGHT;
 };
 
 const renderBox = (
   ctx: DxfRenderContext,
-  nx: number,
-  ny: number,
-  w: number,
-  h: number,
+  nodeX: number,
+  nodeY: number,
+  nodeWidth: number,
+  nodeHeight: number,
 ): void => {
   const corners = [
-    ctx.mapper.mapPoint(nx, ny),
-    ctx.mapper.mapPoint(nx + w, ny),
-    ctx.mapper.mapPoint(nx + w, ny + h),
-    ctx.mapper.mapPoint(nx, ny + h),
+    ctx.mapper.mapPoint(nodeX, nodeY),
+    ctx.mapper.mapPoint(nodeX + nodeWidth, nodeY),
+    ctx.mapper.mapPoint(nodeX + nodeWidth, nodeY + nodeHeight),
+    ctx.mapper.mapPoint(nodeX, nodeY + nodeHeight),
   ];
   ctx.doc.addEntity(new DxfLwPolyline(LAYERS.DEVICES, corners, true, undefined, LINE_WEIGHT.FRAME));
 };
@@ -202,9 +210,9 @@ const renderBox = (
 const renderHeader = (
   ctx: DxfRenderContext,
   data: DeviceNodeData,
-  nx: number,
-  ny: number,
-  w: number,
+  nodeX: number,
+  nodeY: number,
+  nodeWidth: number,
   sectionTopY: number,
 ): void => {
   const lines: TextLine[] = [];
@@ -219,46 +227,55 @@ const renderHeader = (
   }
   if (lines.length === 0) return;
 
-  const totalContentH = lines.reduce(
+  const totalContentHeight = lines.reduce(
     (sum, line) => sum + line.fontSize * TEXT_LINE_HEIGHT_RATIO,
     0,
   );
-  const availableH = sectionTopY - ny;
+  const availableHeight = sectionTopY - nodeY;
   const startY =
-    totalContentH + HEADER_PADDING_TOP + HEADER_PADDING_BOTTOM <= availableH
-      ? ny + HEADER_PADDING_TOP
-      : ny + Math.max(0, (availableH - totalContentH) / 2);
+    totalContentHeight + HEADER_PADDING_TOP + HEADER_PADDING_BOTTOM <= availableHeight
+      ? nodeY + HEADER_PADDING_TOP
+      : nodeY + Math.max(0, (availableHeight - totalContentHeight) / 2);
 
   let cursorY = startY;
   for (const line of lines) {
-    const lineH = line.fontSize * TEXT_LINE_HEIGHT_RATIO;
-    const centerY = cursorY + lineH / 2;
-    const pos = ctx.mapper.mapPoint(nx + w / 2, centerY);
+    const lineHeight = line.fontSize * TEXT_LINE_HEIGHT_RATIO;
+    const centerY = cursorY + lineHeight / 2;
+    const mappedPoint = ctx.mapper.mapPoint(nodeX + nodeWidth / 2, centerY);
     const heightMm = ctx.mapper.mapLength(line.fontSize);
     ctx.doc.addEntity(
-      new DxfText(LAYERS.DEVICES, line.text, pos.x, pos.y, heightMm, line.style ?? TEXT_STYLE.STANDARD, 1, 2),
+      new DxfText(
+        LAYERS.DEVICES,
+        line.text,
+        mappedPoint.x,
+        mappedPoint.y,
+        heightMm,
+        line.style ?? TEXT_STYLE.STANDARD,
+        1,
+        2,
+      ),
     );
-    cursorY += lineH;
+    cursorY += lineHeight;
   }
 };
 
 const renderColumn = (
   ctx: DxfRenderContext,
   rects: readonly PortRect[],
-  nx: number,
-  nodeW: number,
+  nodeX: number,
+  nodeWidth: number,
   isInput: boolean,
 ): void => {
   for (let i = 0; i < rects.length; i++) {
     const rect = rects[i];
     renderPortRect(ctx, rect);
-    renderPortLabel(ctx, rect, nx, nodeW, isInput);
+    renderPortLabel(ctx, rect, nodeX, nodeWidth, isInput);
 
     if (i < rects.length - 1) {
       const dividerY = (rect.centerY + rects[i + 1].centerY) / 2;
-      const x1 = isInput ? nx : nx + nodeW / 2;
-      const x2 = isInput ? nx + nodeW / 2 : nx + nodeW;
-      drawLine(ctx, x1, dividerY, x2, dividerY, LAYERS.DEVICES, LINE_WEIGHT.SUBTLE);
+      const fromX = isInput ? nodeX : nodeX + nodeWidth / 2;
+      const toX = isInput ? nodeX + nodeWidth / 2 : nodeX + nodeWidth;
+      drawLine(ctx, fromX, dividerY, toX, dividerY, LAYERS.DEVICES, LINE_WEIGHT.SUBTLE);
     }
   }
 };
@@ -276,31 +293,31 @@ const renderPortRect = (ctx: DxfRenderContext, rect: PortRect): void => {
 const renderPortLabel = (
   ctx: DxfRenderContext,
   rect: PortRect,
-  nx: number,
-  nodeW: number,
+  nodeX: number,
+  nodeWidth: number,
   isInput: boolean,
 ): void => {
   const lines: TextLine[] = [{ text: rect.port.label, fontSize: FONT_LABEL }];
   if (rect.port.connectorType) {
     lines.push({ text: rect.port.connectorType, fontSize: FONT_CONNECTOR });
   }
-  const anchorX = isInput ? nx + ROW_PADDING_X : nx + nodeW - ROW_PADDING_X;
+  const anchorX = isInput ? nodeX + ROW_PADDING_X : nodeX + nodeWidth - ROW_PADDING_X;
   const halign: 0 | 2 = isInput ? 0 : 2;
   renderStackedText(ctx, lines, anchorX, rect.centerY, halign, LAYERS.DEVICES);
 };
 
 const drawLine = (
   ctx: DxfRenderContext,
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
   layer: string,
   lineweight: number,
 ): void => {
-  const p1 = ctx.mapper.mapPoint(x1, y1);
-  const p2 = ctx.mapper.mapPoint(x2, y2);
-  ctx.doc.addEntity(new DxfLwPolyline(layer, [p1, p2], false, undefined, lineweight));
+  const from = ctx.mapper.mapPoint(fromX, fromY);
+  const to = ctx.mapper.mapPoint(toX, toY);
+  ctx.doc.addEntity(new DxfLwPolyline(layer, [from, to], false, undefined, lineweight));
 };
 
 interface TextLine {
@@ -318,15 +335,17 @@ const renderStackedText = (
   layer: string,
 ): void => {
   if (lines.length === 0) return;
-  const totalH = lines.reduce((sum, line) => sum + line.fontSize * TEXT_LINE_HEIGHT_RATIO, 0);
-  let cursorY = anchorCenterY - totalH / 2;
+  const totalHeight = lines.reduce((sum, line) => sum + line.fontSize * TEXT_LINE_HEIGHT_RATIO, 0);
+  let cursorY = anchorCenterY - totalHeight / 2;
   for (const line of lines) {
-    const lineH = line.fontSize * TEXT_LINE_HEIGHT_RATIO;
-    const centerY = cursorY + lineH / 2;
-    const pos = ctx.mapper.mapPoint(anchorX, centerY);
+    const lineHeight = line.fontSize * TEXT_LINE_HEIGHT_RATIO;
+    const centerY = cursorY + lineHeight / 2;
+    const mappedPoint = ctx.mapper.mapPoint(anchorX, centerY);
     const heightMm = ctx.mapper.mapLength(line.fontSize);
     const style = line.style ?? TEXT_STYLE.STANDARD;
-    ctx.doc.addEntity(new DxfText(layer, line.text, pos.x, pos.y, heightMm, style, halign, 2));
-    cursorY += lineH;
+    ctx.doc.addEntity(
+      new DxfText(layer, line.text, mappedPoint.x, mappedPoint.y, heightMm, style, halign, 2),
+    );
+    cursorY += lineHeight;
   }
 };
