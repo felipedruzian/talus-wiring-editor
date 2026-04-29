@@ -5,6 +5,7 @@ import { BendPointDragService } from '../diagram/edge-reshaping/bend-point-drag.
 import { EdgeReshapeCommandDispatcher } from '../diagram/edge-reshaping/commands/dispatcher';
 import { EdgeReshapeEventHandler } from '../diagram/edge-reshaping/handlers/edge-reshape.handler';
 import { EdgeEndpointSyncService } from '../diagram/edge-reshaping/middleware/edge-endpoint-sync.service';
+import { EdgeReshapeLifecycleEmitter } from '../diagram/edge-reshaping/middleware/edge-reshape-lifecycle.emitter';
 import { ModelApplyService } from '../diagram/model/model-apply.service';
 import { NodeVisibilityConfigService } from '../diagram/node-visibility/node-visibility-config.service';
 import { PortFocusService } from '../diagram/port-focus.service';
@@ -47,6 +48,7 @@ import { TopNavbarComponent } from '../top-navbar/top-navbar.component';
     LibraryService,
     DiagramExportService,
     BendPointDragService,
+    EdgeReshapeLifecycleEmitter,
     EdgeReshapeCommandDispatcher,
     EdgeReshapeEventHandler,
     EdgeEndpointSyncService,
