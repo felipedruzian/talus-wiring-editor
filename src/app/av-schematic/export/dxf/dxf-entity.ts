@@ -49,11 +49,20 @@ export class DxfLwPolyline extends DxfEntity {
   }
 }
 
-/** Single-line text entity. halign: 0=left, 1=center, 2=right. valign: 0=baseline, 1=bottom, 2=middle, 3=top. */
+/**
+ * Single-line text entity. halign: 0=left, 1=center, 2=right.
+ * valign: 0=baseline, 1=bottom, 2=middle, 3=top.
+ *
+ * The constructor sanitizes `text` (see `sanitizeDxfText` below) so user
+ * strings can't trip AutoCAD's `%%c` / `%%d` / `%%p` format codes or break
+ * the DXF group-code framing with embedded newlines.
+ */
 export class DxfText extends DxfEntity {
+  public readonly text: string;
+
   constructor(
     layerName: string,
-    public readonly text: string,
+    text: string,
     public readonly x: number,
     public readonly y: number,
     public readonly height: number,
@@ -63,6 +72,7 @@ export class DxfText extends DxfEntity {
     public readonly color?: number,
   ) {
     super(layerName);
+    this.text = sanitizeDxfText(text);
   }
 
   serialize(handle: number): string[] {
@@ -93,3 +103,21 @@ export class DxfText extends DxfEntity {
     return lines;
   }
 }
+
+/**
+ * Sanitize a string for safe inclusion in a DXF TEXT entity (group code 1).
+ *
+ * - `%` → `%%%`: AutoCAD treats `%%c` / `%%d` / `%%p` / `%%o` / `%%u` /
+ *   `%%nnn` as format codes (⌀, °, ±, over/underline toggles, ASCII char).
+ *   `%%%` renders as a single literal `%`, and pre-escaping every `%`
+ *   neutralizes any user-typed `%%X` sequence in the same pass.
+ * - C0 control characters (incl. `\n`, `\r`, `\t`) → space: TEXT is
+ *   single-line, and a raw newline would corrupt the DXF group-code/value
+ *   framing (each pair is delimited by a newline).
+ *
+ * Backslash escape sequences (`\C1;` colour, `\P` paragraph, etc.) are
+ * MTEXT-only and are passed through as literal characters by AutoCAD's
+ * TEXT renderer.
+ */
+const sanitizeDxfText = (text: string): string =>
+  text.replace(/%/g, '%%%').replace(/[\x00-\x1f]/g, ' ');
