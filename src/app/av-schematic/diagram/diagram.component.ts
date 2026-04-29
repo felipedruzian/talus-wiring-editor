@@ -1,9 +1,8 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
-  OnDestroy,
-  OnInit,
   inject,
 } from '@angular/core';
 import {
@@ -46,7 +45,7 @@ const generateWireId = (): string =>
   styleUrl: './diagram.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class DiagramComponent implements OnInit, OnDestroy {
+export class DiagramComponent {
   private readonly avConfig = inject(AV_SCHEMATIC_CONFIG);
   private readonly viewportService = inject(NgDiagramViewportService);
   private readonly sidebarService = inject(PropertiesSidebarService);
@@ -54,6 +53,11 @@ export class DiagramComponent implements OnInit, OnDestroy {
   private readonly modelService = inject(NgDiagramModelService);
   private readonly elementRef = inject(ElementRef<HTMLElement>);
   private readonly exportService = inject(DiagramExportService);
+
+  constructor() {
+    this.exportService.setDiagramElement(this.elementRef);
+    inject(DestroyRef).onDestroy(() => this.exportService.clearDiagramElement());
+  }
 
   config = {
     edgeRouting: {
@@ -96,17 +100,6 @@ export class DiagramComponent implements OnInit, OnDestroy {
   ]);
 
   model = initializeModel(diagramModel);
-
-  ngOnInit(): void {
-    this.exportService.register({
-      element: this.elementRef,
-      modelService: this.modelService,
-    });
-  }
-
-  ngOnDestroy(): void {
-    this.exportService.unregister();
-  }
 
   onDiagramInit(_: DiagramInitEvent): void {
     this.zoomToFit();

@@ -1,4 +1,4 @@
-import { ElementRef, Injectable, computed, signal } from '@angular/core';
+import { ElementRef, Injectable, computed, inject, signal } from '@angular/core';
 import { toCanvas } from 'html-to-image';
 import { NgDiagramModelService } from 'ng-diagram';
 import { buildAvDxfConfig } from './dxf-av-schematic/av-dxf-config';
@@ -9,47 +9,42 @@ const EXPORT_PADDING = 50;
 const PNG_PIXEL_RATIO = 2;
 const DIAGRAM_CANVAS_SELECTOR = 'ng-diagram-canvas';
 
-export interface DiagramExportRef {
-  element: ElementRef<HTMLElement>;
-  modelService: NgDiagramModelService;
-}
-
 /**
- * Coordinates exporting the diagram to PNG (and DXF, added in phase 2).
+ * Coordinates exporting the diagram to PNG and DXF.
  *
- * The diagram component registers a ref on init: its host ElementRef plus
- * the diagram-scoped services it needs. Export actions triggered from
- * elsewhere in the UI (e.g. the top-navbar export menu) can then capture
- * the registered diagram without prop-drilling.
+ * Scoped to the av-schematic page (see AvSchematicPageComponent providers),
+ * so it shares a DI scope with NgDiagramModelService and is visible to any
+ * descendant — including the export trigger living in the top navbar.
  *
- * `canExport` reactively tracks whether the current model has any nodes,
- * so menu items can disable themselves automatically.
+ * The diagram component sets its host ElementRef on construction, which is
+ * the only piece of state the service can't reach through DI.
+ *
+ * `canExport` reactively tracks whether the model has any nodes (and the
+ * diagram element is registered), so menu items can disable themselves
+ * automatically.
  */
-@Injectable({ providedIn: 'root' })
+@Injectable()
 export class DiagramExportService {
-  private readonly ref = signal<DiagramExportRef | null>(null);
+  private readonly modelService = inject(NgDiagramModelService);
+  private readonly diagramElement = signal<ElementRef<HTMLElement> | null>(null);
 
-  readonly canExport = computed(() => {
-    const ref = this.ref();
-    return ref ? ref.modelService.nodes().length > 0 : false;
-  });
+  readonly canExport = computed(
+    () => this.diagramElement() !== null && this.modelService.nodes().length > 0,
+  );
 
-  register(ref: DiagramExportRef): void {
-    this.ref.set(ref);
+  setDiagramElement(element: ElementRef<HTMLElement>): void {
+    this.diagramElement.set(element);
   }
 
-  unregister(): void {
-    this.ref.set(null);
+  clearDiagramElement(): void {
+    this.diagramElement.set(null);
   }
 
   async exportPng(): Promise<void> {
-    const ref = this.ref();
-    if (!ref) return;
-
-    const canvasEl = this.getDiagramCanvasEl(ref);
+    const canvasEl = this.getDiagramCanvasEl();
     if (!canvasEl) return;
 
-    const region = this.computeExportRegion(ref);
+    const region = this.computeExportRegion();
     if (!region) return;
 
     const backgroundColor = this.resolveBackgroundColor(canvasEl);
@@ -70,13 +65,10 @@ export class DiagramExportService {
   }
 
   exportDxf(): void {
-    const ref = this.ref();
-    if (!ref) return;
-
-    const nodes = ref.modelService.nodes();
+    const nodes = this.modelService.nodes();
     if (nodes.length === 0) return;
-    const edges = ref.modelService.edges();
-    const bounds = ref.modelService.computePartsBounds(nodes, edges);
+    const edges = this.modelService.edges();
+    const bounds = this.modelService.computePartsBounds(nodes, edges);
 
     const doc = new DxfExporter(buildAvDxfConfig()).export(nodes, edges, bounds);
     const content = new DxfWriter().serialize(doc);
@@ -84,8 +76,9 @@ export class DiagramExportService {
     this.downloadText(content, 'av-schematic.dxf', 'application/dxf');
   }
 
-  private getDiagramCanvasEl(ref: DiagramExportRef): HTMLElement | null {
-    return ref.element.nativeElement.querySelector(DIAGRAM_CANVAS_SELECTOR);
+  private getDiagramCanvasEl(): HTMLElement | null {
+    const element = this.diagramElement();
+    return element?.nativeElement.querySelector(DIAGRAM_CANVAS_SELECTOR) ?? null;
   }
 
   /**
@@ -106,12 +99,12 @@ export class DiagramExportService {
     return '#ffffff';
   }
 
-  private computeExportRegion(ref: DiagramExportRef) {
-    const nodes = ref.modelService.nodes();
+  private computeExportRegion() {
+    const nodes = this.modelService.nodes();
     if (nodes.length === 0) return null;
 
-    const edges = ref.modelService.edges();
-    const bounds = ref.modelService.computePartsBounds(nodes, edges);
+    const edges = this.modelService.edges();
+    const bounds = this.modelService.computePartsBounds(nodes, edges);
 
     return {
       x: bounds.x - EXPORT_PADDING,
