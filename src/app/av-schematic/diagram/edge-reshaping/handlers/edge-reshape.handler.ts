@@ -1,26 +1,32 @@
 import { Injectable, inject } from '@angular/core';
-import { NgDiagramViewportService, type Point } from 'ng-diagram';
+import {
+  NgDiagramModelService,
+  NgDiagramViewportService,
+  type Point,
+} from 'ng-diagram';
 import { BendPointDragService } from '../bend-point-drag.service';
 import { EdgeReshapeCommandDispatcher } from '../commands/dispatcher';
 import {
+  getEdgePortOrientations,
   insertCollocatedBends,
   moveBend,
   removeSegment,
   segmentToRemoveForBend,
+  type Orientation,
 } from '../logic';
+
+const fallbackOrientation: Orientation = 'horizontal';
 
 /**
  * Translates pointer-phase events from `EdgeReshapeDirective` into reshape
- * commands. Mirrors the ResizeEventHandler pattern from ng-diagram: the
- * handler holds gesture intent, the dispatcher routes the resulting commands.
- *
- * The 'horizontal' literal passed to moveBend / removeSegment matches today's
- * left/right port invariant; step 7 replaces it with a real port-side lookup.
+ * commands. Looks up source-port orientation per gesture so moveBend and
+ * removeSegment work for any port side, not just AV's left/right invariant.
  */
 @Injectable()
 export class EdgeReshapeEventHandler {
   private readonly state = inject(BendPointDragService);
   private readonly viewport = inject(NgDiagramViewportService);
+  private readonly modelService = inject(NgDiagramModelService);
   private readonly dispatcher = inject(EdgeReshapeCommandDispatcher);
 
   onVertexStart(
@@ -70,8 +76,9 @@ export class EdgeReshapeEventHandler {
     const drag = this.state.get(pointerId);
     if (!drag) return;
 
+    const sourceOrientation = this.sourceOrientationFor(drag.edgeId);
     const flowPos = this.viewport.clientToFlowPosition({ x: clientX, y: clientY });
-    const next = moveBend(drag.originalPoints, drag.bendIndex, flowPos, 'horizontal');
+    const next = moveBend(drag.originalPoints, drag.bendIndex, flowPos, sourceOrientation);
 
     this.state.updateLastComputed(pointerId, next);
     this.dispatcher.dispatch({
@@ -103,7 +110,8 @@ export class EdgeReshapeEventHandler {
   ): void {
     const segmentIndex = segmentToRemoveForBend(points, bendIndex);
     if (segmentIndex < 0) return;
-    const patch = removeSegment(points, segmentIndex, 'horizontal');
+    const sourceOrientation = this.sourceOrientationFor(edgeId);
+    const patch = removeSegment(points, segmentIndex, sourceOrientation);
     if (!patch.points) return;
 
     this.dispatcher.dispatch({
@@ -112,5 +120,11 @@ export class EdgeReshapeEventHandler {
       points: patch.points,
       finalize: true,
     });
+  }
+
+  private sourceOrientationFor(edgeId: string): Orientation {
+    const edge = this.modelService.getEdgeById(edgeId);
+    if (!edge) return fallbackOrientation;
+    return getEdgePortOrientations(this.modelService.nodes(), edge).source;
   }
 }

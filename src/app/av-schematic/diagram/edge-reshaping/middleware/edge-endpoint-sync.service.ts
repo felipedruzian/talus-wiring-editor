@@ -1,0 +1,171 @@
+import { Injectable, OnDestroy, effect, inject } from '@angular/core';
+import {
+  NgDiagramModelService,
+  NgDiagramService,
+  type Edge,
+  type Node,
+  type Point,
+} from 'ng-diagram';
+import { EdgeReshapeCommandDispatcher } from '../commands/dispatcher';
+import {
+  getDefaultMinInteriorBends,
+  getEdgePortOrientations,
+  getPortFlowPosition,
+  reflowEndpoint,
+  simplifyPath,
+} from '../logic';
+
+interface PortSnapshot {
+  source: Point;
+  target: Point;
+}
+
+const samePoint = (a: Point, b: Point): boolean => a.x === b.x && a.y === b.y;
+
+const samePath = (a: readonly Point[], b: readonly Point[]): boolean => {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].x !== b[i].x || a[i].y !== b[i].y) return false;
+  }
+  return true;
+};
+
+/**
+ * Watches manual-routed edges and reflows their endpoints whenever a
+ * connected node moves. Replaces the per-edge `effect()` that used to live
+ * in WireEdgeComponent.
+ *
+ * Mid-drag the path is reflowed but NOT simplified — collinear merges and
+ * endpoint nudges run only once when the drag ends, mirroring the bend-drag
+ * behaviour. Drag boundaries come from `nodeDragStarted` / `nodeDragEnded`
+ * on `NgDiagramService`.
+ *
+ * Porting target: when this lands inside ng-diagram, the state-observing
+ * `effect()` becomes a middleware that listens for the `moveNode` /
+ * node-drag-end commands. The middleware sees the affected nodes directly
+ * (no per-edge port snapshot map needed) and dispatches `reshapeEdge`
+ * through the command handler. The Angular service form is the equivalent
+ * shape on the application side until then.
+ */
+@Injectable()
+export class EdgeEndpointSyncService implements OnDestroy {
+  private readonly modelService = inject(NgDiagramModelService);
+  private readonly diagramService = inject(NgDiagramService);
+  private readonly dispatcher = inject(EdgeReshapeCommandDispatcher);
+
+  private readonly lastKnownPorts = new Map<string, PortSnapshot>();
+  private readonly unsubscribers: Array<() => void> = [];
+  private dragging = false;
+  private listenersAttached = false;
+
+  constructor() {
+    effect(() => {
+      if (!this.diagramService.isInitialized()) return;
+
+      if (!this.listenersAttached) {
+        this.listenersAttached = true;
+        this.unsubscribers.push(
+          this.diagramService.addEventListener('nodeDragStarted', () => {
+            this.dragging = true;
+          }),
+          this.diagramService.addEventListener('nodeDragEnded', (event) => {
+            this.dragging = false;
+            this.finalizeForNodes(event.nodes);
+          }),
+        );
+      }
+
+      const nodes = this.modelService.nodes();
+      const edges = this.modelService.edges();
+
+      const liveEdgeIds = new Set<string>();
+      for (const edge of edges) {
+        liveEdgeIds.add(edge.id);
+        if (edge.routingMode !== 'manual' || !edge.points || edge.points.length < 3) {
+          this.lastKnownPorts.delete(edge.id);
+          continue;
+        }
+        this.processEdge(edge, nodes, /* simplify */ !this.dragging);
+      }
+
+      for (const trackedId of this.lastKnownPorts.keys()) {
+        if (!liveEdgeIds.has(trackedId)) this.lastKnownPorts.delete(trackedId);
+      }
+    });
+  }
+
+  ngOnDestroy(): void {
+    for (const unsub of this.unsubscribers) unsub();
+    this.unsubscribers.length = 0;
+  }
+
+  private processEdge(edge: Edge, nodes: readonly Node[], simplify: boolean): void {
+    const sourceNode = nodes.find((n) => n.id === edge.source);
+    const targetNode = nodes.find((n) => n.id === edge.target);
+    if (!sourceNode || !targetNode) return;
+
+    const sourcePos = getPortFlowPosition(sourceNode, edge.sourcePort);
+    const targetPos = getPortFlowPosition(targetNode, edge.targetPort);
+    if (!sourcePos || !targetPos) return;
+
+    const last = this.lastKnownPorts.get(edge.id);
+    if (last && samePoint(sourcePos, last.source) && samePoint(targetPos, last.target)) {
+      return;
+    }
+
+    this.lastKnownPorts.set(edge.id, { source: sourcePos, target: targetPos });
+    if (!last) return;
+
+    const orientations = getEdgePortOrientations(nodes, edge);
+    let next: readonly Point[] = edge.points!;
+
+    if (!samePoint(sourcePos, last.source)) {
+      const reflowed = reflowEndpoint(next, 'source', sourcePos, orientations.source);
+      if (reflowed) next = reflowed;
+    }
+    if (!samePoint(targetPos, last.target)) {
+      const reflowed = reflowEndpoint(next, 'target', targetPos, orientations.target);
+      if (reflowed) next = reflowed;
+    }
+
+    const finalPoints = simplify
+      ? simplifyPath(next, orientations.source, orientations.target, {
+          minInteriorBends: getDefaultMinInteriorBends(orientations.source, orientations.target),
+        })
+      : next;
+
+    if (samePath(finalPoints, edge.points!)) return;
+
+    this.dispatcher.dispatch({
+      type: 'reshapeEdge',
+      edgeId: edge.id,
+      points: [...finalPoints],
+      finalize: false,
+    });
+  }
+
+  private finalizeForNodes(draggedNodes: readonly Node[]): void {
+    if (draggedNodes.length === 0) return;
+    const draggedIds = new Set(draggedNodes.map((n) => n.id));
+    const edges = this.modelService.edges();
+    const nodes = this.modelService.nodes();
+
+    for (const edge of edges) {
+      if (edge.routingMode !== 'manual' || !edge.points || edge.points.length < 3) continue;
+      if (!draggedIds.has(edge.source) && !draggedIds.has(edge.target)) continue;
+
+      const orientations = getEdgePortOrientations(nodes, edge);
+      const simplified = simplifyPath(edge.points, orientations.source, orientations.target, {
+        minInteriorBends: getDefaultMinInteriorBends(orientations.source, orientations.target),
+      });
+
+      if (samePath(simplified, edge.points)) continue;
+      this.dispatcher.dispatch({
+        type: 'reshapeEdge',
+        edgeId: edge.id,
+        points: simplified,
+        finalize: false,
+      });
+    }
+  }
+}

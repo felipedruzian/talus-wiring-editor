@@ -1,5 +1,10 @@
 import { type NgDiagramModelService, type Point } from 'ng-diagram';
-import { simplifyPath } from '../logic';
+import {
+  getDefaultMinInteriorBends,
+  getEdgePortOrientations,
+  simplifyPath,
+  type Orientation,
+} from '../logic';
 
 export interface ReshapeEdgeCommand {
   type: 'reshapeEdge';
@@ -8,21 +13,29 @@ export interface ReshapeEdgeCommand {
   finalize: boolean;
 }
 
+const fallback = { source: 'horizontal' as Orientation, target: 'horizontal' as Orientation };
+
 /**
  * Writes the new path to the model. When `finalize` is true (drag end /
- * one-shot operations like remove-segment), runs the normalization pipeline
- * first — collinear merge, alternation snap, endpoint nudge. Continue-phase
- * dispatches use raw points so the gesture stays direct.
- *
- * The 'horizontal' literal for source/target orientations is the AV
- * left/right invariant; step 7 wires real port-side lookups.
+ * one-shot operations like remove-segment), runs the normalization pipeline:
+ * collinear merge, alternation snap, endpoint nudge — using the actual
+ * port-side orientations of the edge.
  */
 export const reshapeEdge = (
   modelService: NgDiagramModelService,
   command: ReshapeEdgeCommand,
 ): void => {
-  const points = command.finalize
-    ? simplifyPath(command.points, 'horizontal', 'horizontal', { minInteriorBends: 2 })
-    : command.points;
+  let points = command.points;
+
+  if (command.finalize) {
+    const edge = modelService.getEdgeById(command.edgeId);
+    const orientations = edge
+      ? getEdgePortOrientations(modelService.nodes(), edge)
+      : fallback;
+    points = simplifyPath(points, orientations.source, orientations.target, {
+      minInteriorBends: getDefaultMinInteriorBends(orientations.source, orientations.target),
+    });
+  }
+
   modelService.updateEdge(command.edgeId, { points, routingMode: 'manual' });
 };
