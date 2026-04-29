@@ -27,3 +27,4 @@ export { removeStraightSegments } from './remove-straight-segments';
 export { correctPath } from './correct-path';
 export { simplifyPath, type SimplifyOptions } from './simplify-path';
 export { getDefaultMinInteriorBends } from './get-default-min-interior-bends';
+export { insertCollocatedBends, type CollocatedInsertion } from './insert-collocated-bends';

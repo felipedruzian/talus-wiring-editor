@@ -1,101 +1,39 @@
-import { Injectable, inject } from '@angular/core';
-import {
-  NgDiagramModelService,
-  NgDiagramViewportService,
-  type Point,
-} from 'ng-diagram';
-import {
-  insertPoint,
-  moveBend,
-  removeSegment,
-  segmentMidpoint,
-  segmentToRemoveForBend,
-} from './logic';
+import { Injectable } from '@angular/core';
+import { type Point } from 'ng-diagram';
 
-interface DragState {
+export interface DragState {
   edgeId: string;
   bendIndex: number;
   pointerId: number;
   originalPoints: readonly Point[];
+  lastComputedPoints: readonly Point[];
 }
 
+/**
+ * In-flight drag state for an edge-reshape gesture. Intentionally minimal:
+ * just a single-slot store keyed by pointerId. The handler reads/writes
+ * here; commands and the dispatcher don't touch this. When the feature
+ * lands inside ng-diagram, this collapses into `ActionStateManager.edgeReshape`.
+ */
 @Injectable()
 export class BendPointDragService {
-  private readonly modelService = inject(NgDiagramModelService);
-  private readonly viewportService = inject(NgDiagramViewportService);
+  private state: DragState | null = null;
 
-  private dragState: DragState | null = null;
-
-  beginVertexDrag(
-    edgeId: string,
-    bendIndex: number,
-    currentPoints: readonly Point[],
-    pointerId: number,
-  ): void {
-    if (currentPoints.length < 3) return;
-    this.dragState = {
-      edgeId,
-      bendIndex,
-      pointerId,
-      originalPoints: currentPoints.slice(),
-    };
+  set(state: DragState): void {
+    this.state = state;
   }
 
-  beginInsertAndDrag(
-    edgeId: string,
-    segmentIndex: number,
-    currentPoints: readonly Point[],
-    pointerId: number,
-  ): void {
-    if (segmentIndex < 0 || segmentIndex >= currentPoints.length - 1) return;
-
-    const midpoint = segmentMidpoint(
-      currentPoints[segmentIndex],
-      currentPoints[segmentIndex + 1],
-    );
-    const firstInsertAt = segmentIndex + 1;
-    const withFirst = insertPoint(currentPoints, firstInsertAt, midpoint);
-    const newPoints = insertPoint(withFirst, firstInsertAt + 1, midpoint);
-
-    this.modelService.updateEdge(edgeId, {
-      points: newPoints,
-      routingMode: 'manual',
-    });
-
-    this.dragState = {
-      edgeId,
-      bendIndex: firstInsertAt + 1,
-      pointerId,
-      originalPoints: newPoints,
-    };
+  get(pointerId: number): DragState | null {
+    return this.state?.pointerId === pointerId ? this.state : null;
   }
 
-  applyDragMove(clientX: number, clientY: number, pointerId: number): void {
-    const state = this.dragState;
-    if (!state || state.pointerId !== pointerId) return;
-
-    const flowPos = this.viewportService.clientToFlowPosition({ x: clientX, y: clientY });
-    const nextPoints = moveBend(state.originalPoints, state.bendIndex, flowPos, 'horizontal');
-
-    this.modelService.updateEdge(state.edgeId, {
-      points: nextPoints,
-      routingMode: 'manual',
-    });
+  updateLastComputed(pointerId: number, points: readonly Point[]): void {
+    if (this.state?.pointerId === pointerId) {
+      this.state = { ...this.state, lastComputedPoints: points };
+    }
   }
 
-  endDrag(pointerId: number): void {
-    if (!this.dragState || this.dragState.pointerId !== pointerId) return;
-    this.dragState = null;
-  }
-
-  removeSegmentAtBend(
-    edgeId: string,
-    bendIndex: number,
-    currentPoints: readonly Point[],
-  ): void {
-    const segmentIndex = segmentToRemoveForBend(currentPoints, bendIndex);
-    if (segmentIndex < 0) return;
-    const patch = removeSegment(currentPoints, segmentIndex, 'horizontal');
-    this.modelService.updateEdge(edgeId, patch);
+  clear(pointerId: number): void {
+    if (this.state?.pointerId === pointerId) this.state = null;
   }
 }
