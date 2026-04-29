@@ -10,6 +10,7 @@ Features:
 
 - Custom `DeviceNode` template with header (deviceId / manufacturer / model) and per-side input/output port columns
 - Custom `WireEdge` template with orthogonal routing and dual wire-id labels (near both ends)
+- **Manual edge routing** — when a wire is selected, drag the round handles on each bend to reshape the path (axis-locked to keep adjacent segments orthogonal); drag the dashed midpoint handles to insert an L-shaped detour; right-click a bend to remove a whole segment; "Reset routing" in the sidebar returns the wire to ng-diagram's auto-routed Z-shape. Wires keep their bends when connected nodes are dragged — only the port-side endpoint follows the moving node.
 - Per-port double-click to smoothly pan to the node connected on the other side
 - Connector-type display per port (XLR, HDMI, Speakon, …)
 - Selection and edge-highlighted states
@@ -59,6 +60,7 @@ This template wires up a focused subset of the ng-diagram public surface. Useful
 | Palette items | `<ng-diagram-palette-item>` (`NgDiagramPaletteItemComponent`), `<ng-diagram-palette-item-preview>` (`NgDiagramPaletteItemPreviewComponent`), `NgDiagramPaletteItem` (defaults to `BasePaletteItemData` which requires a `label` — we cast at the boundary since our nodes have no label) | `library-sidebar/components/library-list-item/*` |
 | Palette drop | `paletteItemDropped` output, `PaletteItemDroppedEvent` (used to auto-fill missing `deviceId`) | `diagram/diagram.component.ts` |
 | Edge routing | `NgDiagramConfig.edgeRouting` (`orthogonal` with `firstLastSegmentLength`, `maxCornerRadius`) | `diagram/diagram.component.ts` |
+| Manual edge points | `Edge.points`, `Edge.routingMode: 'manual'` | `diagram/edge-routing/*` |
 | Linking | `NgDiagramConfig.linking.finalEdgeDataBuilder` (assigns wire type and generates a wireId) | `diagram/diagram.component.ts` |
 | Model init | `initializeModel()` | `diagram/diagram.component.ts` |
 | Model reads | `NgDiagramModelService` (`getNodeById`, `getEdgeById`, `getConnectedEdges`) | `diagram/port-focus.service.ts`, `diagram/model/model-apply.service.ts` |
@@ -234,7 +236,9 @@ The `dxf/` folder has no knowledge of devices, ports, or wires — it could be l
 
 ### Layout
 
-No automatic layout is included. Device positions are explicit in `data.ts`. Wire routing is delegated to ng-diagram's built-in orthogonal routing, configured in `diagram/diagram.component.ts`:
+No automatic node layout is included. Device positions are explicit in `data.ts`. Wire routing has two modes:
+
+**Auto routing (default).** ng-diagram's built-in orthogonal algorithm, configured in `diagram/diagram.component.ts`:
 
 ```ts
 edgeRouting: {
@@ -246,7 +250,21 @@ edgeRouting: {
 },
 ```
 
-`firstLastSegmentLength` guarantees enough straight horizontal space at each end of the wire to fit the label. Automatic node layout (e.g., ELK or a custom signal-flow layout) is a likely future addition.
+`firstLastSegmentLength` guarantees enough straight horizontal space at each end of the wire to fit the label.
+
+**Manual routing.** As soon as the user grabs a bend handle, the wire flips to `routingMode: 'manual'` and ng-diagram renders through user-supplied `points` instead of recomputing a path on every change. The pieces:
+
+| File | Role |
+|---|---|
+| `diagram/edge-routing/edge-points.ts` | Pure helpers: `moveBend` (axis-lock + neighbour propagation), `insertPoint`, `removeSegment`, `segmentToRemoveForBend`, `reflowEndpoint`. Orientation classification uses segment-index parity (`H,V,H,V,…` from segment 0) so the algorithm doesn't get confused by zero-length segments mid-gesture |
+| `diagram/edge-routing/bend-point-drag.service.ts` | Page-scoped service. Document-level `pointermove`/`pointerup` listeners mean a gesture can outlive the DOM element it started on — that's what lets a midpoint ghost morph into a real vertex handle without breaking the drag |
+| `diagram/wire-edge.component.ts` | Renders vertex / ghost handles inside the edge template (anchored at `positionOnEdge: '0px'` and CSS-translated by the bend's flow offset). Hosts the reflow `effect()` that watches connected node positions and moves only the port-side endpoint when a node is dragged, leaving every interior bend in place |
+
+**Insert / delete semantics.** Insertions add **two** bends at the same point on the chosen segment, so dragging either one grows a perpendicular detour without ever leaving the orthogonal grid. Deletions remove an **entire segment** (both its endpoint bends) and snap the bridging segment back to a 90° angle. A wire with the auto-routed minimum (2 interior bends) refuses further deletion.
+
+**Edge-side reflow on node move.** The `WireEdgeComponent` captures the source/target port offset (relative to its node origin) the first time the edge enters manual mode, then on any node-position signal change recomputes the desired endpoint as `node.position + capturedOffset` and writes back through `updateEdge`. Absolute positioning, not delta accumulation — the only reactive subscription on the rest of the diagram is the model's existing `nodes()` signal.
+
+Automatic node layout (e.g., ELK or a custom signal-flow layout) is a likely future addition.
 
 ## Architecture
 
