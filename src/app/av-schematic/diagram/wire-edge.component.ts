@@ -16,23 +16,34 @@ import {
   type Point,
 } from 'ng-diagram';
 import { BendPointDragService } from './edge-reshaping/bend-point-drag.service';
-import { reflowEndpoint, segmentMidpoint } from './edge-reshaping/logic';
+import {
+  EdgeReshapeDirective,
+  type EdgeReshapePointerEvent,
+} from './edge-reshaping/directives/edge-reshape.directive';
+import { getHandlerPositions, reflowEndpoint } from './edge-reshaping/logic';
 import { type WireEdgeData } from './model/interfaces';
 
-interface BendHandle {
+interface BendHandleView {
   id: string;
   index: number;
   transform: string;
 }
 
-interface GhostHandle {
+interface GhostHandleView {
   id: string;
   segmentIndex: number;
   transform: string;
 }
 
+const handleTransform = (x: number, y: number, originX: number, originY: number): string =>
+  `translate(${x - originX}px, ${y - originY}px) translate(-50%, -50%)`;
+
 @Component({
-  imports: [NgDiagramBaseEdgeComponent, NgDiagramBaseEdgeLabelComponent],
+  imports: [
+    NgDiagramBaseEdgeComponent,
+    NgDiagramBaseEdgeLabelComponent,
+    EdgeReshapeDirective,
+  ],
   templateUrl: './wire-edge.component.html',
   styleUrl: './wire-edge.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -70,35 +81,33 @@ export class WireEdgeComponent implements NgDiagramEdgeTemplate<WireEdgeData> {
 
   protected readonly strokeWidth = computed(() => (this.edge().selected ? 2 : 1));
 
-  protected readonly bendHandles = computed<BendHandle[]>(() => {
-    if (!this.edge().selected) return [];
+  private readonly handlerPositions = computed(() => {
+    if (!this.edge().selected) return { bends: [], ghosts: [] };
     const points = this.baseEdge()?.points();
-    if (!points || points.length < 3) return [];
+    if (!points) return { bends: [], ghosts: [] };
+    return getHandlerPositions(points);
+  });
 
+  protected readonly bendHandles = computed<BendHandleView[]>(() => {
+    const points = this.baseEdge()?.points();
+    if (!points || points.length === 0) return [];
     const source = points[0];
-    return points.slice(1, -1).map((p, i) => ({
-      id: `bend-${i + 1}`,
-      index: i + 1,
-      transform: `translate(${p.x - source.x}px, ${p.y - source.y}px) translate(-50%, -50%)`,
+    return this.handlerPositions().bends.map((b) => ({
+      id: `bend-${b.pointIndex}`,
+      index: b.pointIndex,
+      transform: handleTransform(b.x, b.y, source.x, source.y),
     }));
   });
 
-  protected readonly ghostHandles = computed<GhostHandle[]>(() => {
-    if (!this.edge().selected) return [];
+  protected readonly ghostHandles = computed<GhostHandleView[]>(() => {
     const points = this.baseEdge()?.points();
-    if (!points || points.length < 4) return [];
-
+    if (!points || points.length === 0) return [];
     const source = points[0];
-    const result: GhostHandle[] = [];
-    for (let i = 1; i <= points.length - 3; i++) {
-      const mid = segmentMidpoint(points[i], points[i + 1]);
-      result.push({
-        id: `ghost-${i}`,
-        segmentIndex: i,
-        transform: `translate(${mid.x - source.x}px, ${mid.y - source.y}px) translate(-50%, -50%)`,
-      });
-    }
-    return result;
+    return this.handlerPositions().ghosts.map((g) => ({
+      id: `ghost-${g.segmentIndex}`,
+      segmentIndex: g.segmentIndex,
+      transform: handleTransform(g.x, g.y, source.x, source.y),
+    }));
   });
 
   constructor() {
@@ -167,10 +176,24 @@ export class WireEdgeComponent implements NgDiagramEdgeTemplate<WireEdgeData> {
     });
   }
 
-  protected onBendPointerDown(event: PointerEvent, bendIndex: number): void {
+  protected onVertexStart(event: EdgeReshapePointerEvent, bendIndex: number): void {
     const points = this.baseEdge()?.points();
     if (!points) return;
-    this.dragService.startVertexDrag(event, this.edge().id, bendIndex, points);
+    this.dragService.beginVertexDrag(this.edge().id, bendIndex, points, event.pointerId);
+  }
+
+  protected onGhostStart(event: EdgeReshapePointerEvent, segmentIndex: number): void {
+    const points = this.baseEdge()?.points();
+    if (!points) return;
+    this.dragService.beginInsertAndDrag(this.edge().id, segmentIndex, points, event.pointerId);
+  }
+
+  protected onReshapeContinue(event: EdgeReshapePointerEvent): void {
+    this.dragService.applyDragMove(event.clientX, event.clientY, event.pointerId);
+  }
+
+  protected onReshapeEnd(event: EdgeReshapePointerEvent): void {
+    this.dragService.endDrag(event.pointerId);
   }
 
   protected onBendContextMenu(event: MouseEvent, bendIndex: number): void {
@@ -179,11 +202,5 @@ export class WireEdgeComponent implements NgDiagramEdgeTemplate<WireEdgeData> {
     const points = this.baseEdge()?.points();
     if (!points) return;
     this.dragService.removeSegmentAtBend(this.edge().id, bendIndex, points);
-  }
-
-  protected onGhostPointerDown(event: PointerEvent, segmentIndex: number): void {
-    const points = this.baseEdge()?.points();
-    if (!points) return;
-    this.dragService.startInsertAndDrag(event, this.edge().id, segmentIndex, points);
   }
 }

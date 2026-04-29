@@ -15,7 +15,10 @@
       <span
         class="bend-handle bend-handle--vertex"
         [style.transform]="handle.transform"
-        (pointerdown)="onBendPointerDown($event, handle.index)"
+        edgeReshape
+        (reshapeStart)="onVertexStart($event, handle.index)"
+        (reshapeContinue)="onReshapeContinue($event)"
+        (reshapeEnd)="onReshapeEnd($event)"
         (contextmenu)="onBendContextMenu($event, handle.index)"
       ></span>
     </ng-diagram-base-edge-label>
@@ -26,7 +29,10 @@
       <span
         class="bend-handle bend-handle--ghost"
         [style.transform]="ghost.transform"
-        (pointerdown)="onGhostPointerDown($event, ghost.segmentIndex)"
+        edgeReshape
+        (reshapeStart)="onGhostStart($event, ghost.segmentIndex)"
+        (reshapeContinue)="onReshapeContinue($event)"
+        (reshapeEnd)="onReshapeEnd($event)"
       ></span>
     </ng-diagram-base-edge-label>
   }
