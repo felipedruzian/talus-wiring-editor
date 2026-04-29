@@ -5,22 +5,18 @@ import { type DxfDocument } from './dxf-document';
  * Produces AutoCAD 2013 (AC1027) compatible output.
  */
 export class DxfWriter {
-  private handle = 0x100;
-
   serialize(doc: DxfDocument): string {
-    this.handle = 0x100;
+    let handle = 0x100;
+    const nextHandle = () => handle++;
+
     const parts: string[] = [];
     this.writeHeader(parts, doc);
-    this.writeTables(parts, doc);
+    this.writeTables(parts, doc, nextHandle);
     this.writeBlocks(parts);
-    this.writeEntities(parts, doc);
+    this.writeEntities(parts, doc, nextHandle);
     this.writeObjects(parts);
     this.writeEof(parts);
     return parts.join('\n');
-  }
-
-  private nextHandle(): number {
-    return this.handle++;
   }
 
   private writeHeader(parts: string[], doc: DxfDocument): void {
@@ -29,34 +25,34 @@ export class DxfWriter {
 
     for (const [name, pairs] of doc.getHeaderVars()) {
       parts.push(`  9\n${name}`);
-      for (const p of pairs) {
-        parts.push(p);
+      for (const pair of pairs) {
+        parts.push(`  ${pair.code}\n${pair.value}`);
       }
     }
 
     parts.push('  0\nENDSEC');
   }
 
-  private writeTables(parts: string[], doc: DxfDocument): void {
+  private writeTables(parts: string[], doc: DxfDocument, nextHandle: () => number): void {
     parts.push('  0\nSECTION');
     parts.push('  2\nTABLES');
 
-    this.writeLineTypeTable(parts);
-    this.writeLayerTable(parts, doc);
-    this.writeStyleTable(parts, doc);
+    this.writeLineTypeTable(parts, nextHandle);
+    this.writeLayerTable(parts, doc, nextHandle);
+    this.writeStyleTable(parts, doc, nextHandle);
 
     parts.push('  0\nENDSEC');
   }
 
-  private writeLineTypeTable(parts: string[]): void {
+  private writeLineTypeTable(parts: string[], nextHandle: () => number): void {
     parts.push('  0\nTABLE');
     parts.push('  2\nLTYPE');
-    parts.push(`  5\n${this.nextHandle().toString(16).toUpperCase()}`);
+    parts.push(`  5\n${nextHandle().toString(16).toUpperCase()}`);
     parts.push('  100\nAcDbSymbolTable');
     parts.push('  70\n1');
 
     parts.push('  0\nLTYPE');
-    parts.push(`  5\n${this.nextHandle().toString(16).toUpperCase()}`);
+    parts.push(`  5\n${nextHandle().toString(16).toUpperCase()}`);
     parts.push('  100\nAcDbSymbolTableRecord');
     parts.push('  100\nAcDbLinetypeTableRecord');
     parts.push('  2\nContinuous');
@@ -69,33 +65,33 @@ export class DxfWriter {
     parts.push('  0\nENDTAB');
   }
 
-  private writeLayerTable(parts: string[], doc: DxfDocument): void {
+  private writeLayerTable(parts: string[], doc: DxfDocument, nextHandle: () => number): void {
     const layers = doc.getLayers();
 
     parts.push('  0\nTABLE');
     parts.push('  2\nLAYER');
-    parts.push(`  5\n${this.nextHandle().toString(16).toUpperCase()}`);
+    parts.push(`  5\n${nextHandle().toString(16).toUpperCase()}`);
     parts.push('  100\nAcDbSymbolTable');
     parts.push(`  70\n${layers.length}`);
 
     for (const layer of layers) {
-      parts.push(...layer.serialize(this.nextHandle()));
+      parts.push(...layer.serialize(nextHandle()));
     }
 
     parts.push('  0\nENDTAB');
   }
 
-  private writeStyleTable(parts: string[], doc: DxfDocument): void {
+  private writeStyleTable(parts: string[], doc: DxfDocument, nextHandle: () => number): void {
     const styles = doc.getTextStyles();
 
     parts.push('  0\nTABLE');
     parts.push('  2\nSTYLE');
-    parts.push(`  5\n${this.nextHandle().toString(16).toUpperCase()}`);
+    parts.push(`  5\n${nextHandle().toString(16).toUpperCase()}`);
     parts.push('  100\nAcDbSymbolTable');
     parts.push(`  70\n${styles.length}`);
 
     for (const style of styles) {
-      parts.push(...style.serialize(this.nextHandle()));
+      parts.push(...style.serialize(nextHandle()));
     }
 
     parts.push('  0\nENDTAB');
@@ -107,12 +103,12 @@ export class DxfWriter {
     parts.push('  0\nENDSEC');
   }
 
-  private writeEntities(parts: string[], doc: DxfDocument): void {
+  private writeEntities(parts: string[], doc: DxfDocument, nextHandle: () => number): void {
     parts.push('  0\nSECTION');
     parts.push('  2\nENTITIES');
 
     for (const entity of doc.getEntities()) {
-      parts.push(...entity.serialize(this.nextHandle()));
+      parts.push(...entity.serialize(nextHandle()));
     }
 
     parts.push('  0\nENDSEC');

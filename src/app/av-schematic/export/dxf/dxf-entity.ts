@@ -1,3 +1,5 @@
+import { formatCoord } from './dxf-format';
+
 /**
  * DXF entity primitives. This module knows nothing about ng-diagram or
  * av-schematic — only how to serialize a DXF entity record. Add a new
@@ -43,7 +45,7 @@ export class DxfLwPolyline extends DxfEntity {
       this.pair(70, this.closed ? 1 : 0),
     );
     for (const p of this.points) {
-      lines.push(this.pair(10, p.x), this.pair(20, p.y));
+      lines.push(this.pair(10, formatCoord(p.x)), this.pair(20, formatCoord(p.y)));
     }
     return lines;
   }
@@ -88,16 +90,18 @@ export class DxfText extends DxfEntity {
     }
     lines.push(
       this.pair(100, 'AcDbText'),
-      this.pair(10, this.x),
-      this.pair(20, this.y),
-      this.pair(40, this.height),
+      this.pair(10, formatCoord(this.x)),
+      this.pair(20, formatCoord(this.y)),
+      this.pair(40, formatCoord(this.height)),
       this.pair(1, this.text),
       this.pair(7, this.styleName),
       this.pair(72, this.halign),
     );
+    // Second AcDbText subclass marker — required by the DXF spec before the
+    // 73 (valign) group; AutoCAD R2000+ readers depend on it.
     lines.push(this.pair(100, 'AcDbText'));
     if (aligned) {
-      lines.push(this.pair(11, this.x), this.pair(21, this.y));
+      lines.push(this.pair(11, formatCoord(this.x)), this.pair(21, formatCoord(this.y)));
     }
     lines.push(this.pair(73, this.valign));
     return lines;

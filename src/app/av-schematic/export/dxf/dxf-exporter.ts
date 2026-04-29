@@ -1,6 +1,7 @@
 import type { Edge, Node } from 'ng-diagram';
 import { CoordinateMapper } from './dxf-coordinate-mapper';
 import { DxfDocument } from './dxf-document';
+import { formatCoord } from './dxf-format';
 import type { DxfExportConfig, DxfHeaderPair, DxfRenderContext } from './dxf-types';
 
 export interface DiagramBounds {
@@ -87,15 +88,15 @@ export class DxfExporter {
       $INSUNITS: [{ code: 70, value: 4 }],
       $MEASUREMENT: [{ code: 70, value: 1 }],
       $LWDISPLAY: [{ code: 290, value: 1 }],
-      $LIMMIN: [{ code: 10, value: 0 }, { code: 20, value: 0 }],
-      $LIMMAX: [{ code: 10, value: widthMm }, { code: 20, value: heightMm }],
-      $EXTMIN: [{ code: 10, value: 0 }, { code: 20, value: 0 }],
-      $EXTMAX: [{ code: 10, value: widthMm }, { code: 20, value: heightMm }],
+      $LIMMIN: [{ code: 10, value: formatCoord(0) }, { code: 20, value: formatCoord(0) }],
+      $LIMMAX: [{ code: 10, value: formatCoord(widthMm) }, { code: 20, value: formatCoord(heightMm) }],
+      $EXTMIN: [{ code: 10, value: formatCoord(0) }, { code: 20, value: formatCoord(0) }],
+      $EXTMAX: [{ code: 10, value: formatCoord(widthMm) }, { code: 20, value: formatCoord(heightMm) }],
     };
 
     const merged = { ...defaults, ...(this.config.headerVars ?? {}) };
     for (const [name, pairs] of Object.entries(merged)) {
-      doc.setHeaderVar(name, pairs.map((p) => `  ${p.code}\n${p.value}`));
+      doc.setHeaderVar(name, pairs);
     }
   }
 

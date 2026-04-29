@@ -1,6 +1,7 @@
 import { type DxfEntity } from './dxf-entity';
 import { type DxfLayer } from './dxf-layer';
 import { type DxfTextStyle } from './dxf-text-style';
+import { type DxfHeaderPair } from './dxf-types';
 
 /**
  * Holds the in-memory DXF document — layers, text styles, entities, header
@@ -11,7 +12,7 @@ export class DxfDocument {
   private readonly layers: DxfLayer[] = [];
   private readonly textStyles: DxfTextStyle[] = [];
   private readonly entities: DxfEntity[] = [];
-  private readonly headerVars = new Map<string, string[]>();
+  private readonly headerVars = new Map<string, readonly DxfHeaderPair[]>();
 
   addLayer(layer: DxfLayer): void {
     this.layers.push(layer);
@@ -25,7 +26,7 @@ export class DxfDocument {
     this.entities.push(entity);
   }
 
-  setHeaderVar(name: string, pairs: string[]): void {
+  setHeaderVar(name: string, pairs: readonly DxfHeaderPair[]): void {
     this.headerVars.set(name, pairs);
   }
 
@@ -41,7 +42,7 @@ export class DxfDocument {
     return this.entities;
   }
 
-  getHeaderVars(): ReadonlyMap<string, string[]> {
+  getHeaderVars(): ReadonlyMap<string, readonly DxfHeaderPair[]> {
     return this.headerVars;
   }
 }

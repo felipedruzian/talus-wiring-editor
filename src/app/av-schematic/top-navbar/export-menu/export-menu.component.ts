@@ -1,8 +1,8 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  DestroyRef,
   ElementRef,
+  effect,
   inject,
   signal,
 } from '@angular/core';
@@ -13,41 +13,42 @@ import { DiagramExportService } from '../../export/diagram-export.service';
   templateUrl: './export-menu.component.html',
   styleUrl: './export-menu.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { style: 'display: contents' },
 })
 export class ExportMenuComponent {
   private readonly elRef = inject(ElementRef<HTMLElement>);
-  private readonly destroyRef = inject(DestroyRef);
   private readonly exportService = inject(DiagramExportService);
 
   protected readonly isOpen = signal(false);
   protected readonly isExporting = signal(false);
   protected readonly canExport = this.exportService.canExport;
 
-  private removeDocumentClick: (() => void) | null = null;
-
   constructor() {
-    this.destroyRef.onDestroy(() => this.removeDocumentClick?.());
+    effect((onCleanup) => {
+      if (!this.isOpen()) return;
+      const handler = (event: MouseEvent) => {
+        if (!this.elRef.nativeElement.contains(event.target as Node)) {
+          this.isOpen.set(false);
+        }
+      };
+      document.addEventListener('click', handler);
+      onCleanup(() => document.removeEventListener('click', handler));
+    });
   }
 
   protected toggle(): void {
-    if (this.isOpen()) {
-      this.closePanel();
-    } else {
-      this.openPanel();
-    }
+    this.isOpen.update((open) => !open);
   }
 
   protected onKeydown(event: KeyboardEvent): void {
     if (event.key === 'Escape' && this.isOpen()) {
       event.preventDefault();
-      this.closePanel();
+      this.isOpen.set(false);
     }
   }
 
   protected async exportPng(): Promise<void> {
     if (!this.canExport() || this.isExporting()) return;
-    this.closePanel();
+    this.isOpen.set(false);
     this.isExporting.set(true);
     try {
       await this.exportService.exportPng();
@@ -58,29 +59,7 @@ export class ExportMenuComponent {
 
   protected exportDxf(): void {
     if (!this.canExport() || this.isExporting()) return;
-    this.closePanel();
-    this.exportService.exportDxf();
-  }
-
-  private openPanel(): void {
-    this.isOpen.set(true);
-    this.removeDocumentClick?.();
-    this.removeDocumentClick = this.listenForOutsideClicks();
-  }
-
-  private closePanel(): void {
-    this.removeDocumentClick?.();
-    this.removeDocumentClick = null;
     this.isOpen.set(false);
-  }
-
-  private listenForOutsideClicks(): () => void {
-    const handler = (event: MouseEvent) => {
-      if (!this.elRef.nativeElement.contains(event.target as Node)) {
-        this.closePanel();
-      }
-    };
-    document.addEventListener('click', handler);
-    return () => document.removeEventListener('click', handler);
+    this.exportService.exportDxf();
   }
 }

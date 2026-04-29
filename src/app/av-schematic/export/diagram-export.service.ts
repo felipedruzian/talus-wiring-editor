@@ -54,7 +54,6 @@ export class DiagramExportService {
       width: region.width,
       height: region.height,
       pixelRatio: PNG_PIXEL_RATIO,
-      cacheBust: false,
       style: {
         transform: `translate(${-region.x}px, ${-region.y}px) scale(1)`,
         transformOrigin: 'top left',

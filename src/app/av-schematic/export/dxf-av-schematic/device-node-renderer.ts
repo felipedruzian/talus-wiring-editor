@@ -20,6 +20,20 @@ import {
   TEXT_STYLE,
 } from './av-dxf-constants';
 
+/**
+ * Height of a fully-populated 3-line header (deviceId + manufacturer + model).
+ * Used by both the fallback port layout (when measurements are missing) and
+ * the default-height estimate. The actual rendered header may be shorter if
+ * some fields are blank — that's fine; the reserved space just leaves a bit
+ * more room above the first port row.
+ */
+const HEADER_HEIGHT =
+  HEADER_PADDING_TOP +
+  Math.ceil(FONT_DEVICE_ID * TEXT_LINE_HEIGHT_RATIO) +
+  Math.ceil(FONT_INFO * TEXT_LINE_HEIGHT_RATIO) +
+  Math.ceil(FONT_INFO * TEXT_LINE_HEIGHT_RATIO) +
+  HEADER_PADDING_BOTTOM;
+
 interface PortRect {
   readonly port: DevicePort;
   /** Diagram x of the port-shape's left edge. */
@@ -58,7 +72,7 @@ export const renderDeviceNode: DxfNodeRenderer = (ctx, node) => {
   const inputRects = collectPortRects(inputData, node, nodeX, nodeY, true);
   const outputRects = collectPortRects(outputData, node, nodeX, nodeY, false);
 
-  const nodeHeight = node.size?.height ?? estimateDefaultHeight(data, inputRects, outputRects);
+  const nodeHeight = node.size?.height ?? estimateDefaultHeight(inputRects, outputRects);
   const sectionTopY = computeSectionTopY(inputRects, outputRects, nodeY, nodeHeight);
 
   renderBox(ctx, nodeX, nodeY, nodeWidth, nodeHeight);
@@ -132,7 +146,7 @@ const fallbackPortRect = (
   nodeWidth: number,
   isInput: boolean,
 ): PortRect => {
-  const centerY = nodeY + 60 + (index + 0.5) * FALLBACK_PORT_ROW_HEIGHT;
+  const centerY = nodeY + HEADER_HEIGHT + (index + 0.5) * FALLBACK_PORT_ROW_HEIGHT;
   const centerX = isInput ? nodeX - PORT_WIDTH / 2 : nodeX + nodeWidth + PORT_WIDTH / 2;
   return {
     port,
@@ -177,18 +191,11 @@ const firstRowTop = (rects: readonly PortRect[]): number | null => {
 };
 
 const estimateDefaultHeight = (
-  data: DeviceNodeData,
   inputRects: readonly PortRect[],
   outputRects: readonly PortRect[],
 ): number => {
-  const headerHeight =
-    HEADER_PADDING_TOP +
-    Math.ceil(FONT_DEVICE_ID * TEXT_LINE_HEIGHT_RATIO) +
-    Math.ceil(FONT_INFO * TEXT_LINE_HEIGHT_RATIO) +
-    Math.ceil(FONT_INFO * TEXT_LINE_HEIGHT_RATIO) +
-    HEADER_PADDING_BOTTOM;
   const rows = Math.max(inputRects.length, outputRects.length, 1);
-  return headerHeight + 1 + rows * FALLBACK_PORT_ROW_HEIGHT;
+  return HEADER_HEIGHT + 1 + rows * FALLBACK_PORT_ROW_HEIGHT;
 };
 
 const renderBox = (
