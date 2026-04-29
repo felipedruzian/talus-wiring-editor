@@ -61,3 +61,7 @@ export const FONT_DEVICE_ID = 14;
 export const FONT_INFO = 10;
 export const FONT_LABEL = 12;
 export const FONT_CONNECTOR = 10;
+export const FONT_WIRE_LABEL = 10;
+
+/** Mirrors the [positionOnEdge]="'30px'" / "'-30px'" markers in wire-edge.component.html. */
+export const WIRE_LABEL_DISTANCE_FROM_END = 30;
