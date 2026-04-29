@@ -10,6 +10,7 @@ import { ViewportOverlayDirective } from '../diagram/node-visibility/viewport-ov
 import { LibrarySidebarComponent } from '../library-sidebar/library-sidebar.component';
 import { LibraryService } from '../library-sidebar/library.service';
 import { MinimapPanelComponent } from '../minimap-panel/minimap-panel.component';
+import { DiagramExportService } from '../export/diagram-export.service';
 import { ElementMutationService } from '../properties-sidebar/element-mutation.service';
 import { PropertiesSidebarComponent } from '../properties-sidebar/properties-sidebar.component';
 import { PropertiesSidebarService } from '../properties-sidebar/properties-sidebar.service';
@@ -40,6 +41,7 @@ import { TopNavbarComponent } from '../top-navbar/top-navbar.component';
     ViewportAnimationService,
     PortFocusService,
     LibraryService,
+    DiagramExportService,
   ],
 })
 export class AvSchematicPageComponent {}

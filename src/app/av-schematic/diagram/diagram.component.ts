@@ -1,4 +1,10 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  ElementRef,
+  inject,
+} from '@angular/core';
 import {
   DiagramInitEvent,
   initializeModel,
@@ -14,6 +20,7 @@ import {
   type SelectionGestureEndedEvent,
 } from 'ng-diagram';
 import { AV_SCHEMATIC_CONFIG } from '../av-schematic.config';
+import { DiagramExportService } from '../export/diagram-export.service';
 import { PropertiesSidebarService } from '../properties-sidebar/properties-sidebar.service';
 import { generateDeviceId } from './model/auto-device-id';
 import { isDeviceNode, isWireEdge } from './model/guards';
@@ -44,6 +51,13 @@ export class DiagramComponent {
   private readonly sidebarService = inject(PropertiesSidebarService);
   private readonly nodeVisibilityConfigService = inject(NodeVisibilityConfigService);
   private readonly modelService = inject(NgDiagramModelService);
+  private readonly elementRef = inject(ElementRef<HTMLElement>);
+  private readonly exportService = inject(DiagramExportService);
+
+  constructor() {
+    this.exportService.setDiagramElement(this.elementRef);
+    inject(DestroyRef).onDestroy(() => this.exportService.clearDiagramElement());
+  }
 
   config = {
     edgeRouting: {

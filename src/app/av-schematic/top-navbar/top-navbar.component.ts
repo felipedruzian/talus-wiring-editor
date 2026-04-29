@@ -1,9 +1,10 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ExportMenuComponent } from './export-menu/export-menu.component';
 import { ThemeToggleComponent } from './theme-toggle.component';
 
 @Component({
   selector: 'app-top-navbar',
-  imports: [ThemeToggleComponent],
+  imports: [ExportMenuComponent, ThemeToggleComponent],
   templateUrl: './top-navbar.component.html',
   styleUrl: './top-navbar.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
