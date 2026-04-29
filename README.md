@@ -21,6 +21,7 @@ Features:
 - Auto-generated `deviceId` on drop, by category prefix (`MIC-1`, `CAM-1`, … `DEV-1` for unmapped/empty categories) — picks the smallest integer not already used by another device of the same prefix
 - Editable category **combobox** (predefined list with free-text input — pick from the dictionary or type a custom category)
 - Dark/light theme
+- **Export to PNG** (raster, theme-aware) and **Export to DXF** (vector, for AutoCAD / BricsCAD / LibreCAD) from a top-navbar dropdown
 
 ## Getting Started
 
@@ -188,6 +189,47 @@ Color and dimension tokens are defined in `src/tokens.css`:
 
 Global stylesheet entry point: `src/styles.css` (imports `tokens.css`, typography, and `ng-diagram/styles.css`).
 
+### Export (PNG and DXF)
+
+`src/app/av-schematic/export/` houses both formats. The trigger is a download icon in the top navbar (`top-navbar/export-menu/`) — disabled until the diagram has at least one node.
+
+**PNG** is a raster capture via [`html-to-image`](https://www.npmjs.com/package/html-to-image): `computePartsBounds(nodes, edges)` plus 50px padding defines the region; the canvas is rendered at 2× pixel ratio with the active theme's background color (read from `<html>`).
+
+**DXF** is a clean, vector, layer-aware drawing for CAD tools, generated entirely client-side (no library dependency). It is split into two layers so the architecture stays clear:
+
+```
+export/
+├── diagram-export.service.ts       — exportPng() + exportDxf() entry points
+├── dxf/                            — generic, domain-free DXF library
+│   ├── dxf-entity.ts               — DxfLwPolyline, DxfText
+│   ├── dxf-document.ts             — layers, text styles, entities, header vars
+│   ├── dxf-layer.ts, dxf-text-style.ts
+│   ├── dxf-coordinate-mapper.ts    — px→mm with Y-flip
+│   ├── dxf-types.ts                — renderer signatures + DxfExportConfig
+│   ├── dxf-exporter.ts             — orchestrator: dispatches by node.type / edge.type
+│   └── dxf-writer.ts               — DXF ASCII serializer (AutoCAD 2013, AC1027)
+└── dxf-av-schematic/               — av-schematic-specific renderers
+    ├── av-dxf-constants.ts         — layers, lineweights, sizes, fonts
+    ├── av-dxf-config.ts            — buildAvDxfConfig() — wires renderers in
+    ├── device-node-renderer.ts     — renders a `deviceNode` to DXF
+    └── wire-edge-renderer.ts       — renders a `wireEdge` to DXF
+```
+
+The `dxf/` folder has no knowledge of devices, ports, or wires — it could be lifted into a standalone package as-is. All av-schematic specifics live in `dxf-av-schematic/`.
+
+**Layers and lineweights.** Two layers (`DEVICES`, `WIRES`) so a CAD user can hide one or the other. Visual hierarchy is expressed through DXF lineweights (group code 370): `WIRE` 0.35mm, `FRAME` / `DETAIL` 0.25mm, `SUBTLE` 0.13mm. Tunable in `av-dxf-constants.ts`.
+
+**Coordinate scale.** A fixed `0.3 mm/px` (DXF mm per diagram px), not paper-fitted. This keeps a device's physical size constant regardless of overall diagram size — large diagrams produce a large extent, which is normal for CAD (the tool tiles/zooms).
+
+**Wire endpoints.** `wire-edge-renderer.ts` emits one `LWPOLYLINE` per edge from `edge.points` — ng-diagram populates these from the routed/measured DOM, so wire ends meet port rectangles regardless of routing mode (orthogonal today, point-following in the future — same code).
+
+#### Adding a renderer for a new node or edge type
+
+1. Write a renderer function in `dxf-av-schematic/` matching the `DxfNodeRenderer` / `DxfEdgeRenderer` signature from `dxf/dxf-types.ts`. Use `ctx.mapper.mapPoint` / `mapLength` to convert px coordinates to mm, and `ctx.doc.addEntity(...)` to emit `DxfLwPolyline` or `DxfText` records on the appropriate layer.
+2. Register it in `av-dxf-config.ts` under the matching `node.type` / `edge.type` key.
+
+`DxfExporter` will dispatch automatically — no changes are needed in `dxf/`. `device-node-renderer.ts` and `wire-edge-renderer.ts` are the reference implementations to copy from.
+
 ### Layout
 
 No automatic layout is included. Device positions are explicit in `data.ts`. Wire routing is delegated to ng-diagram's built-in orthogonal routing, configured in `diagram/diagram.component.ts`:
@@ -260,6 +302,10 @@ src/app/av-schematic/
 │       ├── sidebar-header/               # Generic toggle header (title/icon inputs — reused by library)
 │       ├── sidebar-placeholder/          # Empty / multi states
 │       └── wire-form/                    # Wire fields (signals form)
+├── export/                               # PNG + DXF export (see "Export" section)
+│   ├── diagram-export.service.ts         # exportPng() + exportDxf() entry points
+│   ├── dxf/                              # Generic, domain-free DXF library
+│   └── dxf-av-schematic/                 # av-schematic-specific node/edge renderers
 ├── library-sidebar/                      # Left panel: drag-drop palette of device templates
 │   ├── library.service.ts                # Devices, expand/collapse, editing mode (create/edit)
 │   ├── library-draft.service.ts          # Per-detail-session draft buffer (Save commits; Back discards)
@@ -285,6 +331,7 @@ src/app/av-schematic/
 - **Angular 21** — standalone components, signals, OnPush change detection
 - **`@angular/forms/signals`** — sidebar forms (signal-backed `form()`, per-field `debounce()`)
 - **ng-diagram** — diagram rendering, viewport management, selection, edge routing
+- **html-to-image** — PNG capture (DXF has no library dependency, written as ASCII directly)
 - **Prettier** — code formatting
 
 ## Known ng-diagram Issues

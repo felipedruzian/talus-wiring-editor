@@ -1,0 +1,95 @@
+/**
+ * DXF entity primitives. This module knows nothing about ng-diagram or
+ * av-schematic — only how to serialize a DXF entity record. Add a new
+ * subclass here to support a new DXF entity type (e.g. CIRCLE, ARC).
+ */
+export abstract class DxfEntity {
+  constructor(public readonly layerName: string) {}
+
+  abstract serialize(handle: number): string[];
+
+  protected pair(code: number, value: string | number): string {
+    return `  ${code}\n${value}`;
+  }
+}
+
+export class DxfLwPolyline extends DxfEntity {
+  constructor(
+    layerName: string,
+    public readonly points: { x: number; y: number }[],
+    public readonly closed = false,
+    public readonly color?: number,
+    public readonly lineweight?: number,
+  ) {
+    super(layerName);
+  }
+
+  serialize(handle: number): string[] {
+    const lines = [
+      this.pair(0, 'LWPOLYLINE'),
+      this.pair(5, handle.toString(16).toUpperCase()),
+      this.pair(100, 'AcDbEntity'),
+      this.pair(8, this.layerName),
+    ];
+    if (this.color !== undefined) {
+      lines.push(this.pair(62, this.color));
+    }
+    if (this.lineweight !== undefined) {
+      lines.push(this.pair(370, this.lineweight));
+    }
+    lines.push(
+      this.pair(100, 'AcDbPolyline'),
+      this.pair(90, this.points.length),
+      this.pair(70, this.closed ? 1 : 0),
+    );
+    for (const p of this.points) {
+      lines.push(this.pair(10, p.x), this.pair(20, p.y));
+    }
+    return lines;
+  }
+}
+
+/** Single-line text entity. halign: 0=left, 1=center, 2=right. valign: 0=baseline, 1=bottom, 2=middle, 3=top. */
+export class DxfText extends DxfEntity {
+  constructor(
+    layerName: string,
+    public readonly text: string,
+    public readonly x: number,
+    public readonly y: number,
+    public readonly height: number,
+    public readonly styleName = 'STANDARD',
+    public readonly halign: 0 | 1 | 2 = 0,
+    public readonly valign: 0 | 1 | 2 | 3 = 0,
+    public readonly color?: number,
+  ) {
+    super(layerName);
+  }
+
+  serialize(handle: number): string[] {
+    const aligned = this.halign !== 0 || this.valign !== 0;
+    const lines = [
+      this.pair(0, 'TEXT'),
+      this.pair(5, handle.toString(16).toUpperCase()),
+      this.pair(100, 'AcDbEntity'),
+      this.pair(8, this.layerName),
+    ];
+    if (this.color !== undefined) {
+      lines.push(this.pair(62, this.color));
+    }
+    lines.push(
+      this.pair(100, 'AcDbText'),
+      this.pair(10, this.x),
+      this.pair(20, this.y),
+      this.pair(40, this.height),
+      this.pair(1, this.text),
+      this.pair(7, this.styleName),
+      this.pair(72, this.halign),
+    );
+    lines.push(this.pair(100, 'AcDbText'));
+    if (aligned) {
+      lines.push(this.pair(11, this.x), this.pair(21, this.y));
+    }
+    lines.push(this.pair(73, this.valign));
+    return lines;
+  }
+}

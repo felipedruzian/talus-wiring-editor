@@ -1,6 +1,9 @@
 import { ElementRef, Injectable, computed, signal } from '@angular/core';
 import { toCanvas } from 'html-to-image';
 import { NgDiagramModelService } from 'ng-diagram';
+import { buildAvDxfConfig } from './dxf-av-schematic/av-dxf-config';
+import { DxfExporter } from './dxf/dxf-exporter';
+import { DxfWriter } from './dxf/dxf-writer';
 
 const EXPORT_PADDING = 50;
 const PNG_PIXEL_RATIO = 2;
@@ -66,6 +69,21 @@ export class DiagramExportService {
     this.downloadDataUrl(canvas.toDataURL('image/png'), 'av-schematic.png');
   }
 
+  exportDxf(): void {
+    const ref = this.ref();
+    if (!ref) return;
+
+    const nodes = ref.modelService.nodes();
+    if (nodes.length === 0) return;
+    const edges = ref.modelService.edges();
+    const bounds = ref.modelService.computePartsBounds(nodes, edges);
+
+    const doc = new DxfExporter(buildAvDxfConfig()).export(nodes, edges, bounds);
+    const content = new DxfWriter().serialize(doc);
+
+    this.downloadText(content, 'av-schematic.dxf', 'application/dxf');
+  }
+
   private getDiagramCanvasEl(ref: DiagramExportRef): HTMLElement | null {
     return ref.element.nativeElement.querySelector(DIAGRAM_CANVAS_SELECTOR);
   }
@@ -108,5 +126,15 @@ export class DiagramExportService {
     link.download = filename;
     link.href = dataUrl;
     link.click();
+  }
+
+  private downloadText(content: string, filename: string, mimeType: string): void {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.download = filename;
+    link.href = url;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 }

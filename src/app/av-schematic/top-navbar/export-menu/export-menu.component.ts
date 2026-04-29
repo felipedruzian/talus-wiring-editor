@@ -57,7 +57,9 @@ export class ExportMenuComponent {
   }
 
   protected exportDxf(): void {
-    // Phase 2 — wire up to exportService.exportDxf().
+    if (!this.canExport() || this.isExporting()) return;
+    this.closePanel();
+    this.exportService.exportDxf();
   }
 
   private openPanel(): void {

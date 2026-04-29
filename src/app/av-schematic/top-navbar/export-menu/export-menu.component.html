@@ -27,7 +27,7 @@
         type="button"
         class="panel-item"
         role="menuitem"
-        disabled
+        [disabled]="isExporting()"
         (click)="exportDxf()"
       >
         Export to DXF
