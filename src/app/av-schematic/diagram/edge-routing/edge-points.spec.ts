@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { deletePoint, insertPoint, moveBend, reflowEndpoint } from './edge-points';
+import {
+  deletePoint,
+  insertPoint,
+  moveBend,
+  reflowEndpoint,
+  removeSegment,
+  segmentMidpoint,
+  segmentToRemoveForBend,
+} from './edge-points';
 
 describe('insertPoint', () => {
   it('inserts at the given index without mutating the input', () => {
@@ -32,6 +40,97 @@ describe('deletePoint', () => {
       { x: 100, y: 0 },
     ]);
     expect(original).toHaveLength(3);
+  });
+});
+
+describe('segmentMidpoint', () => {
+  it('returns the average of two points', () => {
+    expect(segmentMidpoint({ x: 0, y: 0 }, { x: 100, y: 200 })).toEqual({ x: 50, y: 100 });
+  });
+});
+
+describe('removeSegment', () => {
+  // 4 interior bends so removal leaves 2 (the minimum allowed).
+  // segments: 0=H, 1=V, 2=H (detour), 3=V, 4=H
+  const fourBendPath = [
+    { x: 0, y: 0 },
+    { x: 80, y: 0 },     // b1 (H stub from src ends here)
+    { x: 80, y: 100 },   // b2 (V from b1, starts H detour)
+    { x: 220, y: 100 },  // b3 (ends H detour, starts V)
+    { x: 220, y: 200 },  // b4 (V from b3, H stub to tgt starts)
+    { x: 300, y: 200 },
+  ];
+
+  it('removes the requested segment and snaps the bridging segment to V', () => {
+    // Remove segment 2 (the H detour between b2 and b3 — both interior).
+    // Bridging segment now at index 1, expected V → b1.x must equal b4.x.
+    const result = removeSegment(fourBendPath, 2);
+    expect(result.routingMode).toBe('manual');
+    expect(result.points).toEqual([
+      { x: 0, y: 0 },
+      { x: 220, y: 0 },   // b1 snapped to b4.x
+      { x: 220, y: 200 }, // b4 unchanged
+      { x: 300, y: 200 },
+    ]);
+  });
+
+  it('refuses removal when the path has only 2 interior bends', () => {
+    const zShape = [
+      { x: 0, y: 0 },
+      { x: 80, y: 0 },
+      { x: 80, y: 200 },
+      { x: 220, y: 200 },
+    ];
+    expect(removeSegment(zShape, 1)).toEqual({
+      points: zShape,
+      routingMode: 'manual',
+    });
+  });
+
+  it('refuses removal of a port-adjacent segment (segment 0)', () => {
+    expect(removeSegment(fourBendPath, 0)).toEqual({
+      points: fourBendPath,
+      routingMode: 'manual',
+    });
+  });
+
+  it('refuses removal of the last segment (touches target port)', () => {
+    expect(removeSegment(fourBendPath, fourBendPath.length - 2)).toEqual({
+      points: fourBendPath,
+      routingMode: 'manual',
+    });
+  });
+
+  it('does not mutate the input array', () => {
+    const snapshot = JSON.stringify(fourBendPath);
+    removeSegment(fourBendPath, 2);
+    expect(JSON.stringify(fourBendPath)).toBe(snapshot);
+  });
+});
+
+describe('segmentToRemoveForBend', () => {
+  const fourBendPath = [
+    { x: 0, y: 0 },
+    { x: 80, y: 0 },
+    { x: 80, y: 100 },
+    { x: 220, y: 100 },
+    { x: 220, y: 200 },
+    { x: 300, y: 200 },
+  ];
+
+  it('prefers the segment after the bend when both sides are removable', () => {
+    expect(segmentToRemoveForBend(fourBendPath, 2)).toBe(2);
+    expect(segmentToRemoveForBend(fourBendPath, 3)).toBe(3);
+  });
+
+  it('falls back to the segment before for the last interior bend', () => {
+    // Bend 4: segment after (index 4) is the target stub → not removable.
+    expect(segmentToRemoveForBend(fourBendPath, 4)).toBe(3);
+  });
+
+  it('returns -1 when the bend index is outside the interior range', () => {
+    expect(segmentToRemoveForBend(fourBendPath, 0)).toBe(-1);
+    expect(segmentToRemoveForBend(fourBendPath, fourBendPath.length - 1)).toBe(-1);
   });
 });
 

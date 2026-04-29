@@ -15,14 +15,23 @@
   position: absolute;
   top: 0;
   left: 0;
-  width: 8px;
-  height: 8px;
   border-radius: 50%;
   cursor: move;
   touch-action: none;
 
   &--vertex {
+    width: 8px;
+    height: 8px;
     background: var(--ngd-node-bg-primary-default);
     border: 1px solid var(--av-color-accent);
+  }
+
+  &--ghost {
+    width: 6px;
+    height: 6px;
+    background: transparent;
+    border: 1px dashed var(--av-color-accent);
+    opacity: 0.6;
+    cursor: crosshair;
   }
 }

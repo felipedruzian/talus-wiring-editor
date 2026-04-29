@@ -13,11 +13,18 @@ import {
   type NgDiagramEdgeTemplate,
 } from 'ng-diagram';
 import { BendPointDragService } from './edge-routing/bend-point-drag.service';
+import { segmentMidpoint } from './edge-routing/edge-points';
 import { type WireEdgeData } from './model/interfaces';
 
 interface BendHandle {
   id: string;
   index: number;
+  transform: string;
+}
+
+interface GhostHandle {
+  id: string;
+  segmentIndex: number;
   transform: string;
 }
 
@@ -42,36 +49,53 @@ export class WireEdgeComponent implements NgDiagramEdgeTemplate<WireEdgeData> {
 
   protected readonly bendHandles = computed<BendHandle[]>(() => {
     if (!this.edge().selected) return [];
-    const baseEdge = this.baseEdge();
-    if (!baseEdge) return [];
-
-    const points = baseEdge.points();
+    const points = this.baseEdge()?.points();
     if (!points || points.length < 3) return [];
 
     const source = points[0];
+    return points.slice(1, -1).map((p, i) => ({
+      id: `bend-${i + 1}`,
+      index: i + 1,
+      transform: `translate(${p.x - source.x}px, ${p.y - source.y}px) translate(-50%, -50%)`,
+    }));
+  });
 
-    return points.slice(1, -1).map((p, i) => {
-      const dx = p.x - source.x;
-      const dy = p.y - source.y;
-      return {
-        id: `bend-${i + 1}`,
-        index: i + 1,
-        transform: `translate(${dx}px, ${dy}px) translate(-50%, -50%)`,
-      };
-    });
+  protected readonly ghostHandles = computed<GhostHandle[]>(() => {
+    if (!this.edge().selected) return [];
+    const points = this.baseEdge()?.points();
+    if (!points || points.length < 4) return [];
+
+    const source = points[0];
+    const result: GhostHandle[] = [];
+    // Skip the first and last segments (they connect to a port endpoint).
+    for (let i = 1; i <= points.length - 3; i++) {
+      const mid = segmentMidpoint(points[i], points[i + 1]);
+      result.push({
+        id: `ghost-${i}`,
+        segmentIndex: i,
+        transform: `translate(${mid.x - source.x}px, ${mid.y - source.y}px) translate(-50%, -50%)`,
+      });
+    }
+    return result;
   });
 
   protected onBendPointerDown(event: PointerEvent, bendIndex: number): void {
     const points = this.baseEdge()?.points();
     if (!points) return;
-    this.dragService.start(event, this.edge().id, bendIndex, points);
+    this.dragService.startVertexDrag(event, this.edge().id, bendIndex, points);
   }
 
-  protected onBendPointerMove(event: PointerEvent): void {
-    this.dragService.move(event);
+  protected onBendContextMenu(event: MouseEvent, bendIndex: number): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const points = this.baseEdge()?.points();
+    if (!points) return;
+    this.dragService.removeSegmentAtBend(this.edge().id, bendIndex, points);
   }
 
-  protected onBendPointerUp(event: PointerEvent): void {
-    this.dragService.end(event);
+  protected onGhostPointerDown(event: PointerEvent, segmentIndex: number): void {
+    const points = this.baseEdge()?.points();
+    if (!points) return;
+    this.dragService.startInsertAndDrag(event, this.edge().id, segmentIndex, points);
   }
 }
