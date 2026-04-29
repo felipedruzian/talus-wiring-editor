@@ -45,6 +45,14 @@ export const PORT_HEIGHT_PX = 13;
 /** Mirrors `.port-row { min-height: 36px }` — fallback when measuredPorts is missing. */
 export const FALLBACK_PORT_ROW_HEIGHT_PX = 36;
 
+/**
+ * How far past `edge.points[0]` / `points[last]` to extend the wire so it
+ * reaches the outer edge of the snapped port rectangle. ng-diagram routes to
+ * the port's measured center, which sits ~5px inside the snapped outer edge
+ * (PORT_WIDTH/2 + the 1px node border).
+ */
+export const WIRE_ENDPOINT_EXTENSION_PX = 5;
+
 export const HEADER_PADDING_TOP_PX = 4;
 export const HEADER_PADDING_BOTTOM_PX = 8;
 export const ROW_PADDING_TOP_PX = 4;

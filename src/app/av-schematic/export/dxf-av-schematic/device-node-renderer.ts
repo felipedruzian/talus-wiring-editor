@@ -85,15 +85,23 @@ const collectPortRects = (
     measuredById.set(mp.id, mp);
   }
 
+  const w = node.size?.width ?? DEFAULT_NODE_WIDTH_PX;
+
   return ports.map((port, index) => {
     const measured = measuredById.get(port.id);
     if (measured?.position && measured.size && measured.size.width > 0 && measured.size.height > 0) {
-      // Use the measured center, but render with a fixed PORT_WIDTH × PORT_HEIGHT
-      // rect. The device-node template applies a 1px parity toggle to port-shape
-      // height (workaround for an ng-diagram measurement issue), which would
-      // otherwise show up as alternating port sizes in the DXF.
-      const centerX = nx + measured.position.x + measured.size.width / 2;
+      // Y comes from the measurement so port rects align with `edge.points`.
+      // X is snapped to the node outline so the port-shape's adjacent edge
+      // sits flush against the device frame:
+      //   - In the DOM, the port-shape's edge aligns with the node's *inner*
+      //     border (1px inside the outer edge).
+      //   - In the DXF, the device frame is drawn at the outer edge — snapping
+      //     X here cancels that 1px gap.
+      // Rect is rendered at fixed PORT_WIDTH × PORT_HEIGHT so all ports look
+      // identical (the device-node template uses a 1px height parity toggle
+      // as a workaround for an ng-diagram measurement issue).
       const centerY = ny + measured.position.y + measured.size.height / 2;
+      const centerX = isInput ? nx - PORT_WIDTH_PX / 2 : nx + w + PORT_WIDTH_PX / 2;
       return {
         port,
         x: centerX - PORT_WIDTH_PX / 2,
@@ -104,7 +112,7 @@ const collectPortRects = (
         centerY,
       };
     }
-    return fallbackPortRect(port, index, nx, ny, node.size?.width ?? DEFAULT_NODE_WIDTH_PX, isInput);
+    return fallbackPortRect(port, index, nx, ny, w, isInput);
   });
 };
 
