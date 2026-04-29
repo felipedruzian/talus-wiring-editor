@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { provideNgDiagram } from 'ng-diagram';
 import { DiagramComponent } from '../diagram/diagram.component';
-import { BendPointDragService } from '../diagram/edge-routing/bend-point-drag.service';
+import { BendPointDragService } from '../diagram/edge-reshaping/bend-point-drag.service';
 import { ModelApplyService } from '../diagram/model/model-apply.service';
 import { NodeVisibilityConfigService } from '../diagram/node-visibility/node-visibility-config.service';
 import { PortFocusService } from '../diagram/port-focus.service';

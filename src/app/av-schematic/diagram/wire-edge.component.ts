@@ -15,8 +15,8 @@ import {
   type NgDiagramEdgeTemplate,
   type Point,
 } from 'ng-diagram';
-import { BendPointDragService } from './edge-routing/bend-point-drag.service';
-import { reflowEndpoint, segmentMidpoint } from './edge-routing/edge-points';
+import { BendPointDragService } from './edge-reshaping/bend-point-drag.service';
+import { reflowEndpoint, segmentMidpoint } from './edge-reshaping/logic';
 import { type WireEdgeData } from './model/interfaces';
 
 interface BendHandle {
@@ -138,7 +138,7 @@ export class WireEdgeComponent implements NgDiagramEdgeTemplate<WireEdgeData> {
         };
         const head = nextPoints[0];
         if (desired.x !== head.x || desired.y !== head.y) {
-          const reflowed = reflowEndpoint(nextPoints, 'source', desired);
+          const reflowed = reflowEndpoint(nextPoints, 'source', desired, 'horizontal');
           if (reflowed) {
             nextPoints = reflowed;
             changed = true;
@@ -153,7 +153,7 @@ export class WireEdgeComponent implements NgDiagramEdgeTemplate<WireEdgeData> {
         };
         const tail = nextPoints[nextPoints.length - 1];
         if (desired.x !== tail.x || desired.y !== tail.y) {
-          const reflowed = reflowEndpoint(nextPoints, 'target', desired);
+          const reflowed = reflowEndpoint(nextPoints, 'target', desired, 'horizontal');
           if (reflowed) {
             nextPoints = reflowed;
             changed = true;

@@ -10,7 +10,7 @@ import {
   removeSegment,
   segmentMidpoint,
   segmentToRemoveForBend,
-} from './edge-points';
+} from './logic';
 
 interface DragState {
   edgeId: string;
@@ -51,11 +51,6 @@ export class BendPointDragService implements OnDestroy {
   ): void {
     if (segmentIndex < 0 || segmentIndex >= currentPoints.length - 1) return;
 
-    // Insert TWO bends at the midpoint. They form a degenerate zero-length
-    // segment between them whose intended orientation is perpendicular to the
-    // original segment. Dragging either bend pulls them apart along that
-    // perpendicular axis, growing an L-shaped detour without ever leaving the
-    // orthogonal grid.
     const midpoint = segmentMidpoint(
       currentPoints[segmentIndex],
       currentPoints[segmentIndex + 1],
@@ -69,9 +64,6 @@ export class BendPointDragService implements OnDestroy {
       routingMode: 'manual',
     });
 
-    // Drag the second of the two new bends so the user pulls the detour out
-    // of the original segment intuitively (the new perpendicular grows
-    // beyond the click point).
     this.beginDrag(event, edgeId, firstInsertAt + 1, newPoints);
   }
 
@@ -82,7 +74,7 @@ export class BendPointDragService implements OnDestroy {
   ): void {
     const segmentIndex = segmentToRemoveForBend(currentPoints, bendIndex);
     if (segmentIndex < 0) return;
-    const patch = removeSegment(currentPoints, segmentIndex);
+    const patch = removeSegment(currentPoints, segmentIndex, 'horizontal');
     this.modelService.updateEdge(edgeId, patch);
   }
 
@@ -116,7 +108,7 @@ export class BendPointDragService implements OnDestroy {
       y: event.clientY,
     });
 
-    const nextPoints = moveBend(state.originalPoints, state.bendIndex, flowPos);
+    const nextPoints = moveBend(state.originalPoints, state.bendIndex, flowPos, 'horizontal');
 
     this.modelService.updateEdge(state.edgeId, {
       points: nextPoints,
