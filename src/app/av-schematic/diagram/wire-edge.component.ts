@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  inject,
   input,
   viewChild,
 } from '@angular/core';
@@ -11,6 +12,7 @@ import {
   type Edge,
   type NgDiagramEdgeTemplate,
 } from 'ng-diagram';
+import { BendPointDragService } from './edge-routing/bend-point-drag.service';
 import { type WireEdgeData } from './model/interfaces';
 
 interface BendHandle {
@@ -26,6 +28,8 @@ interface BendHandle {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class WireEdgeComponent implements NgDiagramEdgeTemplate<WireEdgeData> {
+  private readonly dragService = inject(BendPointDragService);
+
   edge = input.required<Edge<WireEdgeData>>();
 
   private readonly baseEdge = viewChild(NgDiagramBaseEdgeComponent);
@@ -56,4 +60,18 @@ export class WireEdgeComponent implements NgDiagramEdgeTemplate<WireEdgeData> {
       };
     });
   });
+
+  protected onBendPointerDown(event: PointerEvent, bendIndex: number): void {
+    const points = this.baseEdge()?.points();
+    if (!points) return;
+    this.dragService.start(event, this.edge().id, bendIndex, points);
+  }
+
+  protected onBendPointerMove(event: PointerEvent): void {
+    this.dragService.move(event);
+  }
+
+  protected onBendPointerUp(event: PointerEvent): void {
+    this.dragService.end(event);
+  }
 }

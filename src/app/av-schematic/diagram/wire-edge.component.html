@@ -15,6 +15,10 @@
       <span
         class="bend-handle bend-handle--vertex"
         [style.transform]="handle.transform"
+        (pointerdown)="onBendPointerDown($event, handle.index)"
+        (pointermove)="onBendPointerMove($event)"
+        (pointerup)="onBendPointerUp($event)"
+        (pointercancel)="onBendPointerUp($event)"
       ></span>
     </ng-diagram-base-edge-label>
   }

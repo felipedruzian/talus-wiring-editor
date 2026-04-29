@@ -2,6 +2,11 @@ import { type Point } from 'ng-diagram';
 
 export type EdgeEndpointSide = 'source' | 'target';
 
+const EPS = 0.5;
+
+const isHorizontal = (a: Point, b: Point): boolean => Math.abs(a.y - b.y) < EPS;
+const isVertical = (a: Point, b: Point): boolean => Math.abs(a.x - b.x) < EPS;
+
 export const insertPoint = (
   points: readonly Point[],
   index: number,
@@ -19,6 +24,53 @@ export const deletePoint = (
   const next = points.slice();
   next.splice(index, 1);
   return next;
+};
+
+/**
+ * Moves an interior bend to a new flow position while preserving orthogonality
+ * of the adjacent segments. If a segment's other endpoint is the source/target
+ * port (a fixed endpoint), the perpendicular axis is locked instead of
+ * propagating the move into the port. Free interior neighbours are nudged in
+ * the same direction so each segment's H/V character is kept.
+ */
+export const moveBend = (
+  points: readonly Point[],
+  index: number,
+  newPosition: Point,
+): Point[] => {
+  if (index <= 0 || index >= points.length - 1) return points.slice();
+
+  const result = points.slice();
+  const prev = result[index - 1];
+  const curr = result[index];
+  const next = result[index + 1];
+
+  const prevIsEndpoint = index - 1 === 0;
+  const nextIsEndpoint = index + 1 === result.length - 1;
+
+  const prevH = isHorizontal(prev, curr);
+  const prevV = isVertical(prev, curr);
+  const nextH = isHorizontal(curr, next);
+  const nextV = isVertical(curr, next);
+
+  const yLocked = (prevH && prevIsEndpoint) || (nextH && nextIsEndpoint);
+  const xLocked = (prevV && prevIsEndpoint) || (nextV && nextIsEndpoint);
+
+  const newX = xLocked ? curr.x : newPosition.x;
+  const newY = yLocked ? curr.y : newPosition.y;
+
+  result[index] = { x: newX, y: newY };
+
+  if (!prevIsEndpoint) {
+    if (prevH) result[index - 1] = { x: prev.x, y: newY };
+    else if (prevV) result[index - 1] = { x: newX, y: prev.y };
+  }
+  if (!nextIsEndpoint) {
+    if (nextH) result[index + 1] = { x: next.x, y: newY };
+    else if (nextV) result[index + 1] = { x: newX, y: next.y };
+  }
+
+  return result;
 };
 
 /**

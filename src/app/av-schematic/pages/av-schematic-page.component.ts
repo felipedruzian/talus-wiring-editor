@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { provideNgDiagram } from 'ng-diagram';
 import { DiagramComponent } from '../diagram/diagram.component';
+import { BendPointDragService } from '../diagram/edge-routing/bend-point-drag.service';
 import { ModelApplyService } from '../diagram/model/model-apply.service';
 import { NodeVisibilityConfigService } from '../diagram/node-visibility/node-visibility-config.service';
 import { PortFocusService } from '../diagram/port-focus.service';
@@ -42,6 +43,7 @@ import { TopNavbarComponent } from '../top-navbar/top-navbar.component';
     PortFocusService,
     LibraryService,
     DiagramExportService,
+    BendPointDragService,
   ],
 })
 export class AvSchematicPageComponent {}
