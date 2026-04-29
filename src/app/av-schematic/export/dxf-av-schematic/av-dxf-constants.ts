@@ -23,10 +23,11 @@ export const LINE_WEIGHT = {
   SUBTLE: 13,
 } as const;
 
-/** Fixed px→mm scale for DXF export. Keeps device size constant across diagram sizes. */
+/** Conversion factor: DXF millimetres per one diagram unit. Fixed (no paper fitting). */
 export const DXF_SCALE_MM_PER_PX = 0.3;
 
-export const DIAGRAM_PADDING_PX = 50;
+/** Padding around the diagram in diagram units. */
+export const DIAGRAM_PADDING = 50;
 
 /**
  * Approximates the browser's default line-height for the project font (Poppins).
@@ -38,27 +39,25 @@ export const TEXT_LINE_HEIGHT_RATIO = 1.4;
  * Mirrors --av-node-width / --av-port-width / --av-port-height in tokens.css.
  * Used as fallbacks when measurement data is unavailable.
  */
-export const DEFAULT_NODE_WIDTH_PX = 240;
-export const PORT_WIDTH_PX = 8;
-export const PORT_HEIGHT_PX = 13;
+export const DEFAULT_NODE_WIDTH = 240;
+export const PORT_WIDTH = 8;
+export const PORT_HEIGHT = 13;
 
 /** Mirrors `.port-row { min-height: 36px }` — fallback when measuredPorts is missing. */
-export const FALLBACK_PORT_ROW_HEIGHT_PX = 36;
+export const FALLBACK_PORT_ROW_HEIGHT = 36;
 
 /**
- * How far past `edge.points[0]` / `points[last]` to extend the wire so it
- * reaches the outer edge of the snapped port rectangle. ng-diagram routes to
- * the port's measured center, which sits ~5px inside the snapped outer edge
- * (PORT_WIDTH/2 + the 1px node border).
+ * How far to extend wire endpoints toward the next routing point so they
+ * meet the outer edge of the snapped port rectangle. ng-diagram routes to
+ * the port's measured center.
  */
-export const WIRE_ENDPOINT_EXTENSION_PX = 5;
+export const WIRE_ENDPOINT_EXTENSION = 1;
 
-export const HEADER_PADDING_TOP_PX = 4;
-export const HEADER_PADDING_BOTTOM_PX = 8;
-export const ROW_PADDING_TOP_PX = 4;
-export const ROW_PADDING_X_PX = 12;
+export const HEADER_PADDING_TOP = 4;
+export const HEADER_PADDING_BOTTOM = 8;
+export const ROW_PADDING_X = 12;
 
-export const FONT_DEVICE_ID_PX = 14;
-export const FONT_INFO_PX = 10;
-export const FONT_LABEL_PX = 12;
-export const FONT_CONNECTOR_PX = 10;
+export const FONT_DEVICE_ID = 14;
+export const FONT_INFO = 10;
+export const FONT_LABEL = 12;
+export const FONT_CONNECTOR = 10;

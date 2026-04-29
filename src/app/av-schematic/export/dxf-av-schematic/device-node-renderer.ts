@@ -3,19 +3,19 @@ import type { DeviceNodeData, DevicePort } from '../../diagram/model/interfaces'
 import { DxfLwPolyline, DxfText } from '../dxf/dxf-entity';
 import type { DxfNodeRenderer, DxfRenderContext } from '../dxf/dxf-types';
 import {
-  DEFAULT_NODE_WIDTH_PX,
-  FALLBACK_PORT_ROW_HEIGHT_PX,
-  FONT_CONNECTOR_PX,
-  FONT_DEVICE_ID_PX,
-  FONT_INFO_PX,
-  FONT_LABEL_PX,
-  HEADER_PADDING_BOTTOM_PX,
-  HEADER_PADDING_TOP_PX,
+  DEFAULT_NODE_WIDTH,
+  FALLBACK_PORT_ROW_HEIGHT,
+  FONT_CONNECTOR,
+  FONT_DEVICE_ID,
+  FONT_INFO,
+  FONT_LABEL,
+  HEADER_PADDING_BOTTOM,
+  HEADER_PADDING_TOP,
   LAYERS,
   LINE_WEIGHT,
-  PORT_HEIGHT_PX,
-  PORT_WIDTH_PX,
-  ROW_PADDING_X_PX,
+  PORT_HEIGHT,
+  PORT_WIDTH,
+  ROW_PADDING_X,
   TEXT_LINE_HEIGHT_RATIO,
   TEXT_STYLE,
 } from './av-dxf-constants';
@@ -51,7 +51,7 @@ export const renderDeviceNode: DxfNodeRenderer = (ctx, node) => {
   const data = node.data as DeviceNodeData;
   const nx = node.position.x;
   const ny = node.position.y;
-  const w = node.size?.width ?? DEFAULT_NODE_WIDTH_PX;
+  const w = node.size?.width ?? DEFAULT_NODE_WIDTH;
 
   const inputData = data.ports.filter((p) => p.direction === 'input');
   const outputData = data.ports.filter((p) => p.direction === 'output');
@@ -85,7 +85,7 @@ const collectPortRects = (
     measuredById.set(mp.id, mp);
   }
 
-  const w = node.size?.width ?? DEFAULT_NODE_WIDTH_PX;
+  const w = node.size?.width ?? DEFAULT_NODE_WIDTH;
 
   return ports.map((port, index) => {
     const measured = measuredById.get(port.id);
@@ -101,13 +101,13 @@ const collectPortRects = (
       // identical (the device-node template uses a 1px height parity toggle
       // as a workaround for an ng-diagram measurement issue).
       const centerY = ny + measured.position.y + measured.size.height / 2;
-      const centerX = isInput ? nx - PORT_WIDTH_PX / 2 : nx + w + PORT_WIDTH_PX / 2;
+      const centerX = isInput ? nx - PORT_WIDTH / 2 : nx + w + PORT_WIDTH / 2;
       return {
         port,
-        x: centerX - PORT_WIDTH_PX / 2,
-        y: centerY - PORT_HEIGHT_PX / 2,
-        width: PORT_WIDTH_PX,
-        height: PORT_HEIGHT_PX,
+        x: centerX - PORT_WIDTH / 2,
+        y: centerY - PORT_HEIGHT / 2,
+        width: PORT_WIDTH,
+        height: PORT_HEIGHT,
         centerX,
         centerY,
       };
@@ -124,14 +124,14 @@ const fallbackPortRect = (
   w: number,
   isInput: boolean,
 ): PortRect => {
-  const centerY = ny + 60 + (index + 0.5) * FALLBACK_PORT_ROW_HEIGHT_PX;
-  const centerX = isInput ? nx - PORT_WIDTH_PX / 2 : nx + w + PORT_WIDTH_PX / 2;
+  const centerY = ny + 60 + (index + 0.5) * FALLBACK_PORT_ROW_HEIGHT;
+  const centerX = isInput ? nx - PORT_WIDTH / 2 : nx + w + PORT_WIDTH / 2;
   return {
     port,
-    x: centerX - PORT_WIDTH_PX / 2,
-    y: centerY - PORT_HEIGHT_PX / 2,
-    width: PORT_WIDTH_PX,
-    height: PORT_HEIGHT_PX,
+    x: centerX - PORT_WIDTH / 2,
+    y: centerY - PORT_HEIGHT / 2,
+    width: PORT_WIDTH,
+    height: PORT_HEIGHT,
     centerX,
     centerY,
   };
@@ -164,7 +164,7 @@ const firstRowTop = (rects: readonly PortRect[]): number | null => {
   const rowH =
     rects.length >= 2
       ? rects[1].centerY - rects[0].centerY
-      : FALLBACK_PORT_ROW_HEIGHT_PX;
+      : FALLBACK_PORT_ROW_HEIGHT;
   return rects[0].centerY - rowH / 2;
 };
 
@@ -174,13 +174,13 @@ const estimateDefaultHeight = (
   outputRects: readonly PortRect[],
 ): number => {
   const headerH =
-    HEADER_PADDING_TOP_PX +
-    Math.ceil(FONT_DEVICE_ID_PX * TEXT_LINE_HEIGHT_RATIO) +
-    Math.ceil(FONT_INFO_PX * TEXT_LINE_HEIGHT_RATIO) +
-    Math.ceil(FONT_INFO_PX * TEXT_LINE_HEIGHT_RATIO) +
-    HEADER_PADDING_BOTTOM_PX;
+    HEADER_PADDING_TOP +
+    Math.ceil(FONT_DEVICE_ID * TEXT_LINE_HEIGHT_RATIO) +
+    Math.ceil(FONT_INFO * TEXT_LINE_HEIGHT_RATIO) +
+    Math.ceil(FONT_INFO * TEXT_LINE_HEIGHT_RATIO) +
+    HEADER_PADDING_BOTTOM;
   const rows = Math.max(inputRects.length, outputRects.length, 1);
-  return headerH + 1 + rows * FALLBACK_PORT_ROW_HEIGHT_PX;
+  return headerH + 1 + rows * FALLBACK_PORT_ROW_HEIGHT;
 };
 
 const renderBox = (
@@ -209,32 +209,32 @@ const renderHeader = (
 ): void => {
   const lines: TextLine[] = [];
   if (data.deviceId) {
-    lines.push({ text: data.deviceId, fontPx: FONT_DEVICE_ID_PX, style: TEXT_STYLE.BOLD });
+    lines.push({ text: data.deviceId, fontSize: FONT_DEVICE_ID, style: TEXT_STYLE.BOLD });
   }
   if (data.manufacturer) {
-    lines.push({ text: data.manufacturer, fontPx: FONT_INFO_PX });
+    lines.push({ text: data.manufacturer, fontSize: FONT_INFO });
   }
   if (data.model) {
-    lines.push({ text: data.model, fontPx: FONT_INFO_PX });
+    lines.push({ text: data.model, fontSize: FONT_INFO });
   }
   if (lines.length === 0) return;
 
   const totalContentH = lines.reduce(
-    (sum, line) => sum + line.fontPx * TEXT_LINE_HEIGHT_RATIO,
+    (sum, line) => sum + line.fontSize * TEXT_LINE_HEIGHT_RATIO,
     0,
   );
   const availableH = sectionTopY - ny;
   const startY =
-    totalContentH + HEADER_PADDING_TOP_PX + HEADER_PADDING_BOTTOM_PX <= availableH
-      ? ny + HEADER_PADDING_TOP_PX
+    totalContentH + HEADER_PADDING_TOP + HEADER_PADDING_BOTTOM <= availableH
+      ? ny + HEADER_PADDING_TOP
       : ny + Math.max(0, (availableH - totalContentH) / 2);
 
   let cursorY = startY;
   for (const line of lines) {
-    const lineH = line.fontPx * TEXT_LINE_HEIGHT_RATIO;
+    const lineH = line.fontSize * TEXT_LINE_HEIGHT_RATIO;
     const centerY = cursorY + lineH / 2;
     const pos = ctx.mapper.mapPoint(nx + w / 2, centerY);
-    const heightMm = ctx.mapper.mapLength(line.fontPx);
+    const heightMm = ctx.mapper.mapLength(line.fontSize);
     ctx.doc.addEntity(
       new DxfText(LAYERS.DEVICES, line.text, pos.x, pos.y, heightMm, line.style ?? TEXT_STYLE.STANDARD, 1, 2),
     );
@@ -280,11 +280,11 @@ const renderPortLabel = (
   nodeW: number,
   isInput: boolean,
 ): void => {
-  const lines: TextLine[] = [{ text: rect.port.label, fontPx: FONT_LABEL_PX }];
+  const lines: TextLine[] = [{ text: rect.port.label, fontSize: FONT_LABEL }];
   if (rect.port.connectorType) {
-    lines.push({ text: rect.port.connectorType, fontPx: FONT_CONNECTOR_PX });
+    lines.push({ text: rect.port.connectorType, fontSize: FONT_CONNECTOR });
   }
-  const anchorX = isInput ? nx + ROW_PADDING_X_PX : nx + nodeW - ROW_PADDING_X_PX;
+  const anchorX = isInput ? nx + ROW_PADDING_X : nx + nodeW - ROW_PADDING_X;
   const halign: 0 | 2 = isInput ? 0 : 2;
   renderStackedText(ctx, lines, anchorX, rect.centerY, halign, LAYERS.DEVICES);
 };
@@ -305,7 +305,7 @@ const drawLine = (
 
 interface TextLine {
   readonly text: string;
-  readonly fontPx: number;
+  readonly fontSize: number;
   readonly style?: string;
 }
 
@@ -318,13 +318,13 @@ const renderStackedText = (
   layer: string,
 ): void => {
   if (lines.length === 0) return;
-  const totalH = lines.reduce((sum, line) => sum + line.fontPx * TEXT_LINE_HEIGHT_RATIO, 0);
+  const totalH = lines.reduce((sum, line) => sum + line.fontSize * TEXT_LINE_HEIGHT_RATIO, 0);
   let cursorY = anchorCenterY - totalH / 2;
   for (const line of lines) {
-    const lineH = line.fontPx * TEXT_LINE_HEIGHT_RATIO;
+    const lineH = line.fontSize * TEXT_LINE_HEIGHT_RATIO;
     const centerY = cursorY + lineH / 2;
     const pos = ctx.mapper.mapPoint(anchorX, centerY);
-    const heightMm = ctx.mapper.mapLength(line.fontPx);
+    const heightMm = ctx.mapper.mapLength(line.fontSize);
     const style = line.style ?? TEXT_STYLE.STANDARD;
     ctx.doc.addEntity(new DxfText(layer, line.text, pos.x, pos.y, heightMm, style, halign, 2));
     cursorY += lineH;

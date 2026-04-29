@@ -4,7 +4,7 @@ import { DxfTextStyle } from '../dxf/dxf-text-style';
 import type { DxfExportConfig } from '../dxf/dxf-types';
 import {
   ACI,
-  DIAGRAM_PADDING_PX,
+  DIAGRAM_PADDING,
   DXF_SCALE_MM_PER_PX,
   LAYERS,
   TEXT_STYLE,
@@ -22,7 +22,7 @@ import { renderWireEdge } from './wire-edge-renderer';
  */
 export const buildAvDxfConfig = (): DxfExportConfig => ({
   scaleMmPerPx: DXF_SCALE_MM_PER_PX,
-  paddingPx: DIAGRAM_PADDING_PX,
+  paddingPx: DIAGRAM_PADDING,
   layers: [
     new DxfLayer(LAYERS.DEVICES, ACI.WHITE),
     new DxfLayer(LAYERS.WIRES, ACI.WHITE),
