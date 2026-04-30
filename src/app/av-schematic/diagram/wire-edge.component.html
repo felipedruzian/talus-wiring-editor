@@ -33,6 +33,7 @@
         (reshapeStart)="onGhostStart($event, ghost.segmentIndex)"
         (reshapeContinue)="onReshapeContinue($event)"
         (reshapeEnd)="onReshapeEnd($event)"
+        (contextmenu)="onGhostContextMenu($event, ghost.segmentIndex)"
       ></span>
     </ng-diagram-base-edge-label>
   }

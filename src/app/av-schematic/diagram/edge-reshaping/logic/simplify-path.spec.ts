@@ -69,19 +69,42 @@ describe('simplifyPath', () => {
   });
 
   describe('grid snap', () => {
-    it('snaps coordinates to the grid when gridSize is provided', () => {
+    it('leaves endpoints untouched and only snaps the free axis of interior segments', () => {
       const path = [
-        { x: 0, y: 0 },
-        { x: 78, y: 0 },
+        { x: 3, y: 7 },
+        { x: 78, y: 7 },
         { x: 78, y: 197 },
-        { x: 220, y: 197 },
+        { x: 223, y: 197 },
       ];
       const result = simplifyPath(path, 'horizontal', 'horizontal', {
         gridSize: { x: 10, y: 10 },
       });
-      expect(result[1].x).toBe(80);
-      expect(result[2].y).toBe(200);
-      expect(result[3].y).toBe(200);
+      expect(result[0]).toEqual({ x: 3, y: 7 });
+      expect(result[3]).toEqual({ x: 223, y: 197 });
+      expect(result[1]).toEqual({ x: 80, y: 7 });
+      expect(result[2]).toEqual({ x: 80, y: 197 });
+    });
+
+    it('snaps the shared coord of interior segments while keeping first/last bends aligned with their port axis', () => {
+      const path = [
+        { x: 0, y: 0 },
+        { x: 53, y: 0 },
+        { x: 53, y: 47 },
+        { x: 142, y: 47 },
+        { x: 142, y: 100 },
+        { x: 200, y: 100 },
+      ];
+      const result = simplifyPath(path, 'horizontal', 'horizontal', {
+        gridSize: { x: 10, y: 10 },
+      });
+      expect(result[0]).toEqual({ x: 0, y: 0 });
+      expect(result[5]).toEqual({ x: 200, y: 100 });
+      expect(result[1].y).toBe(0);
+      expect(result[4].y).toBe(100);
+      expect(result[1].x).toBe(result[2].x);
+      expect(result[2].y).toBe(result[3].y);
+      expect(result[3].x).toBe(result[4].x);
+      expect(result[2].y % 10).toBe(0);
     });
   });
 });

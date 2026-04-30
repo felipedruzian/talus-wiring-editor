@@ -7,11 +7,10 @@ import {
 import { BendPointDragService } from '../bend-point-drag.service';
 import { EdgeReshapeCommandDispatcher } from '../commands/dispatcher';
 import {
+  getDefaultMinInteriorBends,
   getEdgePortOrientations,
   insertCollocatedBends,
   moveBend,
-  removeSegment,
-  segmentToRemoveForBend,
   type Orientation,
 } from '../logic';
 
@@ -19,8 +18,8 @@ const fallbackOrientation: Orientation = 'horizontal';
 
 /**
  * Translates pointer-phase events from `EdgeReshapeDirective` into reshape
- * commands. Looks up source-port orientation per gesture so moveBend and
- * removeSegment work for any port side, not just AV's left/right invariant.
+ * commands. Looks up source-port orientation per gesture so moveBend works
+ * for any port side, not just AV's left/right invariant.
  */
 @Injectable()
 export class EdgeReshapeEventHandler {
@@ -103,28 +102,46 @@ export class EdgeReshapeEventHandler {
     this.state.clear(pointerId);
   }
 
+  /**
+   * Removes an interior orthogonal segment. Both endpoint bends of the
+   * segment go away; simplifyPath snaps the bridging segment back to
+   * orthogonal alternation. Refused when:
+   * - the segment touches a port stub (segmentIndex 0 or last segment),
+   * - removal would drop interior bends below the per-edge minimum.
+   *
+   * Vertex right-click invokes this with `segmentIndex = bendIndex` —
+   * "remove the segment after the clicked bend." Ghost right-click invokes
+   * it with the ghost's own segment index.
+   */
   onRemoveSegmentRequest(
     edgeId: string,
-    bendIndex: number,
+    segmentIndex: number,
     points: readonly Point[],
   ): void {
-    const segmentIndex = segmentToRemoveForBend(points, bendIndex);
-    if (segmentIndex < 0) return;
-    const sourceOrientation = this.sourceOrientationFor(edgeId);
-    const patch = removeSegment(points, segmentIndex, sourceOrientation);
-    if (!patch.points) return;
+    if (segmentIndex < 1 || segmentIndex > points.length - 3) return;
+
+    const orientations = this.orientationsFor(edgeId);
+    const minBends = getDefaultMinInteriorBends(orientations.source, orientations.target);
+    const remainingInteriorBends = points.length - 2 - 2;
+    if (remainingInteriorBends < minBends) return;
+
+    const next = [...points.slice(0, segmentIndex), ...points.slice(segmentIndex + 2)];
 
     this.dispatcher.dispatch({
       type: 'reshapeEdge',
       edgeId,
-      points: patch.points,
+      points: next,
       finalize: true,
     });
   }
 
   private sourceOrientationFor(edgeId: string): Orientation {
+    return this.orientationsFor(edgeId).source;
+  }
+
+  private orientationsFor(edgeId: string): { source: Orientation; target: Orientation } {
     const edge = this.modelService.getEdgeById(edgeId);
-    if (!edge) return fallbackOrientation;
-    return getEdgePortOrientations(this.modelService.nodes(), edge).source;
+    if (!edge) return { source: fallbackOrientation, target: fallbackOrientation };
+    return getEdgePortOrientations(this.modelService.nodes(), edge);
   }
 }

@@ -1,6 +1,7 @@
 import { type Point } from 'ng-diagram';
 import { ALIGNMENT_TOLERANCE, ENDPOINT_OFFSET, MAX_SAFE_ITERATIONS } from './constants';
 import { correctPath } from './correct-path';
+import { expectedSegmentOrientation } from './expected-segment-orientation';
 import { type Orientation } from './path-types';
 import { removeStraightSegments } from './remove-straight-segments';
 
@@ -17,11 +18,44 @@ const defaults: SimplifyOptions = {
   minInteriorBends: 0,
 };
 
-const snapToGrid = (points: readonly Point[], grid: { x: number; y: number }): Point[] =>
-  points.map((p) => ({
-    x: Math.round(p.x / grid.x) * grid.x,
-    y: Math.round(p.y / grid.y) * grid.y,
-  }));
+/**
+ * Grid-snap that respects orthogonal-edge constraints:
+ * - Source/target endpoints are driven by port positions — never snapped.
+ * - First and last bends share an axis with their port (e.g. H stub →
+ *   first bend's y equals source.y); that axis must stay aligned, not be
+ *   snapped.
+ * - Only the shared coord of an interior segment (one whose neither
+ *   endpoint is a port) is free to snap. Snapping that one coord and
+ *   propagating it to both segment endpoints preserves orthogonality and
+ *   keeps the constrained axes intact.
+ */
+const snapToGrid = (
+  points: readonly Point[],
+  grid: { x: number; y: number },
+  sourceOrientation: Orientation,
+): Point[] => {
+  if (points.length < 4) return points.slice();
+
+  const result = points.map((p) => ({ ...p }));
+
+  for (let segIdx = 1; segIdx <= result.length - 3; segIdx++) {
+    const orient = expectedSegmentOrientation(segIdx, sourceOrientation);
+    const a = result[segIdx];
+    const b = result[segIdx + 1];
+
+    if (orient === 'horizontal') {
+      const snapped = Math.round(a.y / grid.y) * grid.y;
+      a.y = snapped;
+      b.y = snapped;
+    } else {
+      const snapped = Math.round(a.x / grid.x) * grid.x;
+      a.x = snapped;
+      b.x = snapped;
+    }
+  }
+
+  return result;
+};
 
 const samePath = (a: readonly Point[], b: readonly Point[]): boolean => {
   if (a.length !== b.length) return false;
@@ -57,7 +91,7 @@ export const simplifyPath = (
     const candidate = removedInterior >= opts.minInteriorBends ? removed : current;
 
     let next = correctPath(candidate, sourceOrientation, targetOrientation, opts.endpointOffset);
-    if (opts.gridSize) next = snapToGrid(next, opts.gridSize);
+    if (opts.gridSize) next = snapToGrid(next, opts.gridSize, sourceOrientation);
 
     if (samePath(next, current) && next.length === previousLength) return next;
     current = next;

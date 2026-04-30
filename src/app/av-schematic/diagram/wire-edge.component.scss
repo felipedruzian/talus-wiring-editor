@@ -27,11 +27,15 @@
   }
 
   &--ghost {
-    width: 6px;
-    height: 6px;
-    background: transparent;
-    border: 1px dashed var(--av-color-accent);
-    opacity: 0.6;
+    width: 8px;
+    height: 8px;
+    background: var(--av-color-accent);
+    opacity: 0.55;
     cursor: crosshair;
+    transition: opacity 0.1s ease;
+
+    &:hover {
+      opacity: 1;
+    }
   }
 }

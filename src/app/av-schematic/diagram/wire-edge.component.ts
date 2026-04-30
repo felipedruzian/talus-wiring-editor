@@ -114,4 +114,12 @@ export class WireEdgeComponent implements NgDiagramEdgeTemplate<WireEdgeData> {
     if (!points) return;
     this.reshapeHandler.onRemoveSegmentRequest(this.edge().id, bendIndex, points);
   }
+
+  protected onGhostContextMenu(event: MouseEvent, segmentIndex: number): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const points = this.baseEdge()?.points();
+    if (!points) return;
+    this.reshapeHandler.onRemoveSegmentRequest(this.edge().id, segmentIndex, points);
+  }
 }
