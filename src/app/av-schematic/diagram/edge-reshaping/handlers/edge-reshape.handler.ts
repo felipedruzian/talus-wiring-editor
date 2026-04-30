@@ -4,7 +4,6 @@ import {
   NgDiagramViewportService,
   type Point,
 } from 'ng-diagram';
-import { BendPointDragService } from '../bend-point-drag.service';
 import { EdgeReshapeCommandDispatcher } from '../commands/dispatcher';
 import {
   getDefaultMinInteriorBends,
@@ -14,19 +13,32 @@ import {
   type Orientation,
 } from '../logic';
 
+interface DragState {
+  edgeId: string;
+  bendIndex: number;
+  pointerId: number;
+  originalPoints: readonly Point[];
+  lastComputedPoints: readonly Point[];
+}
+
 const fallbackOrientation: Orientation = 'horizontal';
 
 /**
  * Translates pointer-phase events from `EdgeReshapeDirective` into reshape
- * commands. Looks up source-port orientation per gesture so moveBend works
- * for any port side, not just AV's left/right invariant.
+ * commands. Owns the in-flight drag state for the duration of a gesture.
+ *
+ * Porting target: when this lands inside ng-diagram, the inline `state`
+ * field moves to `ActionStateManager.edgeReshape` so other parts of the
+ * system can observe it (mirror of how dragging/resize state lives there
+ * today). Method shapes don't change.
  */
 @Injectable()
 export class EdgeReshapeEventHandler {
-  private readonly state = inject(BendPointDragService);
   private readonly viewport = inject(NgDiagramViewportService);
   private readonly modelService = inject(NgDiagramModelService);
   private readonly dispatcher = inject(EdgeReshapeCommandDispatcher);
+
+  private state: DragState | null = null;
 
   onVertexStart(
     edgeId: string,
@@ -36,13 +48,13 @@ export class EdgeReshapeEventHandler {
   ): void {
     if (points.length < 3) return;
     const snapshot = points.slice();
-    this.state.set({
+    this.state = {
       edgeId,
       bendIndex,
       pointerId,
       originalPoints: snapshot,
       lastComputedPoints: snapshot,
-    });
+    };
     this.dispatcher.dispatch({ type: 'reshapeEdgeStart', edgeId });
   }
 
@@ -55,13 +67,13 @@ export class EdgeReshapeEventHandler {
     const insertion = insertCollocatedBends(points, segmentIndex);
     if (!insertion) return;
 
-    this.state.set({
+    this.state = {
       edgeId,
       bendIndex: insertion.newBendIndex,
       pointerId,
       originalPoints: insertion.points,
       lastComputedPoints: insertion.points,
-    });
+    };
     this.dispatcher.dispatch({ type: 'reshapeEdgeStart', edgeId });
     this.dispatcher.dispatch({
       type: 'reshapeEdge',
@@ -72,14 +84,14 @@ export class EdgeReshapeEventHandler {
   }
 
   onContinue(clientX: number, clientY: number, pointerId: number): void {
-    const drag = this.state.get(pointerId);
+    const drag = this.dragFor(pointerId);
     if (!drag) return;
 
     const sourceOrientation = this.sourceOrientationFor(drag.edgeId);
     const flowPos = this.viewport.clientToFlowPosition({ x: clientX, y: clientY });
     const next = moveBend(drag.originalPoints, drag.bendIndex, flowPos, sourceOrientation);
 
-    this.state.updateLastComputed(pointerId, next);
+    this.state = { ...drag, lastComputedPoints: next };
     this.dispatcher.dispatch({
       type: 'reshapeEdge',
       edgeId: drag.edgeId,
@@ -89,7 +101,7 @@ export class EdgeReshapeEventHandler {
   }
 
   onEnd(pointerId: number): void {
-    const drag = this.state.get(pointerId);
+    const drag = this.dragFor(pointerId);
     if (!drag) return;
 
     this.dispatcher.dispatch({
@@ -99,7 +111,7 @@ export class EdgeReshapeEventHandler {
       finalize: true,
     });
     this.dispatcher.dispatch({ type: 'reshapeEdgeStop', edgeId: drag.edgeId });
-    this.state.clear(pointerId);
+    this.state = null;
   }
 
   /**
@@ -133,6 +145,10 @@ export class EdgeReshapeEventHandler {
       points: next,
       finalize: true,
     });
+  }
+
+  private dragFor(pointerId: number): DragState | null {
+    return this.state?.pointerId === pointerId ? this.state : null;
   }
 
   private sourceOrientationFor(edgeId: string): Orientation {

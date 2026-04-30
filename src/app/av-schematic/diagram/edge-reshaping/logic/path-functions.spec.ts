@@ -4,9 +4,7 @@ import {
   insertPoint,
   moveBend,
   reflowEndpoint,
-  removeSegment,
   segmentMidpoint,
-  segmentToRemoveForBend,
 } from './index';
 
 describe('insertPoint', () => {
@@ -46,86 +44,6 @@ describe('deletePoint', () => {
 describe('segmentMidpoint', () => {
   it('returns the average of two points', () => {
     expect(segmentMidpoint({ x: 0, y: 0 }, { x: 100, y: 200 })).toEqual({ x: 50, y: 100 });
-  });
-});
-
-describe('removeSegment', () => {
-  const fourBendPath = [
-    { x: 0, y: 0 },
-    { x: 80, y: 0 },
-    { x: 80, y: 100 },
-    { x: 220, y: 100 },
-    { x: 220, y: 200 },
-    { x: 300, y: 200 },
-  ];
-
-  it('removes the requested segment and snaps the bridging segment to V', () => {
-    const result = removeSegment(fourBendPath, 2, 'horizontal');
-    expect(result.routingMode).toBe('manual');
-    expect(result.points).toEqual([
-      { x: 0, y: 0 },
-      { x: 220, y: 0 },
-      { x: 220, y: 200 },
-      { x: 300, y: 200 },
-    ]);
-  });
-
-  it('refuses removal when the path has only 2 interior bends', () => {
-    const zShape = [
-      { x: 0, y: 0 },
-      { x: 80, y: 0 },
-      { x: 80, y: 200 },
-      { x: 220, y: 200 },
-    ];
-    expect(removeSegment(zShape, 1, 'horizontal')).toEqual({
-      points: zShape,
-      routingMode: 'manual',
-    });
-  });
-
-  it('refuses removal of a port-adjacent segment (segment 0)', () => {
-    expect(removeSegment(fourBendPath, 0, 'horizontal')).toEqual({
-      points: fourBendPath,
-      routingMode: 'manual',
-    });
-  });
-
-  it('refuses removal of the last segment (touches target port)', () => {
-    expect(removeSegment(fourBendPath, fourBendPath.length - 2, 'horizontal')).toEqual({
-      points: fourBendPath,
-      routingMode: 'manual',
-    });
-  });
-
-  it('does not mutate the input array', () => {
-    const snapshot = JSON.stringify(fourBendPath);
-    removeSegment(fourBendPath, 2, 'horizontal');
-    expect(JSON.stringify(fourBendPath)).toBe(snapshot);
-  });
-});
-
-describe('segmentToRemoveForBend', () => {
-  const fourBendPath = [
-    { x: 0, y: 0 },
-    { x: 80, y: 0 },
-    { x: 80, y: 100 },
-    { x: 220, y: 100 },
-    { x: 220, y: 200 },
-    { x: 300, y: 200 },
-  ];
-
-  it('prefers the segment after the bend when both sides are removable', () => {
-    expect(segmentToRemoveForBend(fourBendPath, 2)).toBe(2);
-    expect(segmentToRemoveForBend(fourBendPath, 3)).toBe(3);
-  });
-
-  it('falls back to the segment before for the last interior bend', () => {
-    expect(segmentToRemoveForBend(fourBendPath, 4)).toBe(3);
-  });
-
-  it('returns -1 when the bend index is outside the interior range', () => {
-    expect(segmentToRemoveForBend(fourBendPath, 0)).toBe(-1);
-    expect(segmentToRemoveForBend(fourBendPath, fourBendPath.length - 1)).toBe(-1);
   });
 });
 

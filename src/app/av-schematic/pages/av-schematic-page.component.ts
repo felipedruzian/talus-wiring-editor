@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { provideNgDiagram } from 'ng-diagram';
 import { DiagramComponent } from '../diagram/diagram.component';
-import { BendPointDragService } from '../diagram/edge-reshaping/bend-point-drag.service';
 import { EdgeReshapeCommandDispatcher } from '../diagram/edge-reshaping/commands/dispatcher';
 import { EdgeReshapeEventHandler } from '../diagram/edge-reshaping/handlers/edge-reshape.handler';
 import { EdgeEndpointSyncService } from '../diagram/edge-reshaping/middleware/edge-endpoint-sync.service';
@@ -47,7 +46,6 @@ import { TopNavbarComponent } from '../top-navbar/top-navbar.component';
     PortFocusService,
     LibraryService,
     DiagramExportService,
-    BendPointDragService,
     EdgeReshapeLifecycleEmitter,
     EdgeReshapeCommandDispatcher,
     EdgeReshapeEventHandler,
