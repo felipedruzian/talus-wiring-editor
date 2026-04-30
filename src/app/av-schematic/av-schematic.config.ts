@@ -2,7 +2,6 @@ import { InjectionToken } from '@angular/core';
 
 export interface AvSchematicConfig {
   viewport: {
-    edgePadding: number;
     zoomToFitPadding: number;
     zoomStep: number;
   };
@@ -10,7 +9,6 @@ export interface AvSchematicConfig {
 
 export const AV_SCHEMATIC_DEFAULTS: AvSchematicConfig = {
   viewport: {
-    edgePadding: 60,
     zoomToFitPadding: 20,
     zoomStep: 0.1,
   },

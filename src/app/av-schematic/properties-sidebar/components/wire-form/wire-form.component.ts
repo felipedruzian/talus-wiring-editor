@@ -37,7 +37,7 @@ export class WireFormComponent {
     this.syncFormWithInputs();
 
     inject(DestroyRef).onDestroy(() => {
-      this.formService.flush();
+      this.formService.commitPendingEdits();
     });
   }
 

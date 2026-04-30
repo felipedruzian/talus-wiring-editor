@@ -28,8 +28,8 @@ export const buildAvDxfConfig = (): DxfExportConfig => ({
     new DxfLayer(LAYERS.WIRES, ACI.WHITE),
   ],
   textStyles: [
-    new DxfTextStyle(TEXT_STYLE.STANDARD, 'Arial'),
-    new DxfTextStyle(TEXT_STYLE.BOLD, 'Arial', true),
+    new DxfTextStyle(TEXT_STYLE.STANDARD),
+    new DxfTextStyle(TEXT_STYLE.BOLD, true),
   ],
   nodeRenderers: {
     [NodeTemplateType.DeviceNode]: renderDeviceNode,

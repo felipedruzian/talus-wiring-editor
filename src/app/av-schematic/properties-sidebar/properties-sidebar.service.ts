@@ -52,8 +52,11 @@ export class PropertiesSidebarService {
   readonly selectedWireDetails = computed<SelectedWireDetails | null>(() => {
     const edge = this.selectedEdge();
     if (!edge) return null;
-    // Read `nodes` so the details stay reactive to model changes.
-    this.modelService.nodes();
+    // `resolveEndpoint` reads nodes via `getNodeById`, which is NOT a signal —
+    // so without an explicit `nodes()` read here, this computed wouldn't
+    // re-run when a connected device's name or ports change. The void
+    // expression registers the dependency without using the value.
+    void this.modelService.nodes();
     return {
       edge,
       source: this.resolveEndpoint(edge.source, edge.sourcePort),

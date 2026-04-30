@@ -1,14 +1,11 @@
 export {
   type EdgeEndpointSide,
-  type EdgeRoutingPatch,
   type Orientation,
   type BendHandle,
   type GhostHandle,
   type HandlerPositions,
-  type ReshapeOptions,
 } from './path-types';
 export {
-  POINT_DISTANCE,
   ENDPOINT_OFFSET,
   ALIGNMENT_TOLERANCE,
   MAX_SAFE_ITERATIONS,

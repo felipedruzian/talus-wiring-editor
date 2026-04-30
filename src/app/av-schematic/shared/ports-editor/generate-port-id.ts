@@ -1,2 +1,3 @@
-export const generatePortId = (): string =>
-  'P-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+import { randomShortId } from '../random-short-id';
+
+export const generatePortId = (): string => randomShortId('P');

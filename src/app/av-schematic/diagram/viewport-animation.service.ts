@@ -1,4 +1,4 @@
-import { inject, Injectable } from '@angular/core';
+import { DestroyRef, inject, Injectable } from '@angular/core';
 import { type Point, NgDiagramViewportService } from 'ng-diagram';
 
 const DURATION_MS = 300;
@@ -11,11 +11,16 @@ const lerp = (from: number, to: number, progress: number): number =>
 /**
  * Pans the viewport from its current position to a target {x, y} over a fixed
  * duration with cubic ease-out. A new call cancels any in-flight animation.
+ * Any pending frame is also cancelled when the providing scope is destroyed.
  */
 @Injectable()
 export class ViewportAnimationService {
   private readonly viewportService = inject(NgDiagramViewportService);
   private rafId: number | null = null;
+
+  constructor() {
+    inject(DestroyRef).onDestroy(() => this.cancelPendingFrame());
+  }
 
   animateTo(target: Point): void {
     const viewport = this.viewportService.viewport();
@@ -24,9 +29,7 @@ export class ViewportAnimationService {
 
     if (fromX === target.x && fromY === target.y) return;
 
-    if (this.rafId !== null) {
-      cancelAnimationFrame(this.rafId);
-    }
+    this.cancelPendingFrame();
 
     const startTime = performance.now();
 
@@ -48,5 +51,12 @@ export class ViewportAnimationService {
     };
 
     this.rafId = requestAnimationFrame(tick);
+  }
+
+  private cancelPendingFrame(): void {
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
   }
 }

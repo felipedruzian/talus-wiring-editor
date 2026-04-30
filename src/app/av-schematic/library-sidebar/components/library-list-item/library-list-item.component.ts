@@ -2,11 +2,10 @@ import { ChangeDetectionStrategy, Component, computed, inject, input } from '@an
 import {
   NgDiagramPaletteItemComponent,
   NgDiagramPaletteItemPreviewComponent,
-  type NgDiagramPaletteItem,
 } from 'ng-diagram';
-import { NodeTemplateType } from '../../../diagram/model/interfaces';
 import { LibraryService } from '../../library.service';
 import { type LibraryDevice } from '../../seed-library';
+import { asDevicePaletteItem } from './palette-item-cast';
 
 @Component({
   selector: 'app-library-list-item',
@@ -20,17 +19,7 @@ export class LibraryListItemComponent {
 
   readonly device = input.required<LibraryDevice>();
 
-  // ng-diagram's `NgDiagramPaletteItem` defaults to `BasePaletteItemData` which requires a
-  // `label: string`. DeviceNodeData has no label — we render our own preview, so the field
-  // is moot. Cast at the library boundary instead of polluting node data with a vestigial
-  // label that would survive every drop and edit.
-  protected readonly paletteItem = computed<NgDiagramPaletteItem>(
-    () =>
-      ({
-        type: NodeTemplateType.DeviceNode,
-        data: structuredClone(this.device().template),
-      }) as unknown as NgDiagramPaletteItem,
-  );
+  protected readonly paletteItem = computed(() => asDevicePaletteItem(this.device().template));
 
   protected readonly categoryLabel = computed(() => {
     const c = this.device().template.category?.trim();

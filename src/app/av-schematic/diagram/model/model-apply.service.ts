@@ -1,12 +1,14 @@
 import { inject, Injectable } from '@angular/core';
 import { NgDiagramModelService, NgDiagramService } from 'ng-diagram';
-import { ModelChanges, type EdgeUpdate, type NodeUpdate } from './model-changes';
+import { ModelChanges } from './model-changes';
+import { resolveUpdates } from './resolve-updates';
 
 /**
  * Applies accumulated model mutations in a single atomic transaction.
  *
  * Structural ops are guarded: skips adds for existing elements and deletes
- * for already-removed elements.
+ * for already-removed elements. Update patches are merged and resolved
+ * against current state via the pure `resolveUpdates` helper.
  */
 @Injectable()
 export class ModelApplyService {
@@ -33,64 +35,17 @@ export class ModelApplyService {
           if (toAdd.length > 0) this.modelService.addEdges(toAdd);
         }
         if (changes.nodeUpdates.length > 0) {
-          this.modelService.updateNodes(this.resolveNodeUpdates(changes.nodeUpdates));
+          this.modelService.updateNodes(
+            resolveUpdates(changes.nodeUpdates, (id) => this.modelService.getNodeById(id)),
+          );
         }
         if (changes.edgeUpdates.length > 0) {
-          this.modelService.updateEdges(this.resolveEdgeUpdates(changes.edgeUpdates));
+          this.modelService.updateEdges(
+            resolveUpdates(changes.edgeUpdates, (id) => this.modelService.getEdgeById(id)),
+          );
         }
       },
       { waitForMeasurements: true },
     );
-  }
-
-  /**
-   * Dedupes patches by id (merging them) and resolves each merged `data`
-   * against the entity's current `data`, so ng-diagram receives a full object.
-   *
-   * Inside `data`: later keys win; `undefined` is preserved.
-   * Top-level: later non-`undefined` values win; `undefined` is dropped.
-   */
-  private resolveUpdates<
-    TData extends object,
-    TPatch extends { id: string; data?: Partial<TData> },
-  >(updates: readonly TPatch[], getById: (id: string) => { data?: TData } | null): TPatch[] {
-    const byId = new Map<string, TPatch>();
-
-    for (const update of updates) {
-      const existing = byId.get(update.id);
-      byId.set(update.id, existing ? this.mergePatch(existing, update) : { ...update });
-    }
-
-    for (const [id, entry] of byId) {
-      if (entry.data) {
-        const current = getById(id);
-        if (current?.data) {
-          entry.data = { ...current.data, ...entry.data };
-        }
-      }
-    }
-
-    return [...byId.values()];
-  }
-
-  private mergePatch<TPatch extends { id: string; data?: object }>(a: TPatch, b: TPatch): TPatch {
-    const merged: Record<string, unknown> = { ...a };
-    for (const [key, value] of Object.entries(b)) {
-      if (key === 'id') continue;
-      if (key === 'data' && value) {
-        merged['data'] = { ...((merged['data'] as object) ?? {}), ...(value as object) };
-      } else if (value !== undefined) {
-        merged[key] = value;
-      }
-    }
-    return merged as TPatch;
-  }
-
-  private resolveNodeUpdates(updates: readonly NodeUpdate[]): NodeUpdate[] {
-    return this.resolveUpdates(updates, (id) => this.modelService.getNodeById(id));
-  }
-
-  private resolveEdgeUpdates(updates: readonly EdgeUpdate[]): EdgeUpdate[] {
-    return this.resolveUpdates(updates, (id) => this.modelService.getEdgeById(id));
   }
 }

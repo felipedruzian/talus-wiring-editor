@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { provideNgDiagram } from 'ng-diagram';
 import { DiagramComponent } from '../diagram/diagram.component';
 import { EdgeReshapeCommandDispatcher } from '../diagram/edge-reshaping/commands/dispatcher';
@@ -18,7 +19,6 @@ import { DiagramExportService } from '../export/diagram-export.service';
 import { ElementMutationService } from '../properties-sidebar/element-mutation.service';
 import { PropertiesSidebarComponent } from '../properties-sidebar/properties-sidebar.component';
 import { PropertiesSidebarService } from '../properties-sidebar/properties-sidebar.service';
-import { ToolbarComponent } from '../toolbar/toolbar.component';
 import { TopNavbarComponent } from '../top-navbar/top-navbar.component';
 
 @Component({
@@ -29,7 +29,6 @@ import { TopNavbarComponent } from '../top-navbar/top-navbar.component';
     PropertiesSidebarComponent,
     TopNavbarComponent,
     MinimapPanelComponent,
-    ToolbarComponent,
     ViewportBoundsDirective,
     ViewportOverlayDirective,
   ],
@@ -53,5 +52,18 @@ import { TopNavbarComponent } from '../top-navbar/top-navbar.component';
   ],
 })
 export class AvSchematicPageComponent {
+  // Side-effect-only inject: the service runs reactive `effect()`s in its
+  // own constructor. Holding the reference is what brings it to life.
   private readonly endpointSync = inject(EdgeEndpointSyncService);
+
+  constructor() {
+    // Demo subscriber: hook your toolbar / telemetry / undo stack here.
+    const reshapeEvents = inject(EdgeReshapeLifecycleEmitter);
+    reshapeEvents.edgeReshapeStarted
+      .pipe(takeUntilDestroyed())
+      .subscribe(({ edgeId }) => console.log('[edge-reshape] started', edgeId));
+    reshapeEvents.edgeReshapeEnded
+      .pipe(takeUntilDestroyed())
+      .subscribe(({ edgeId }) => console.log('[edge-reshape] ended', edgeId));
+  }
 }

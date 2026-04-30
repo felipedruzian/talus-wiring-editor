@@ -22,6 +22,7 @@ import {
 import { AV_SCHEMATIC_CONFIG } from '../av-schematic.config';
 import { DiagramExportService } from '../export/diagram-export.service';
 import { PropertiesSidebarService } from '../properties-sidebar/properties-sidebar.service';
+import { randomShortId } from '../shared/random-short-id';
 import { generateDeviceId } from './model/auto-device-id';
 import { isDeviceNode, isWireEdge } from './model/guards';
 import {
@@ -35,8 +36,7 @@ import { DeviceNodeComponent } from './node/device-node.component';
 import { WireEdgeComponent } from './wire-edge.component';
 import { diagramModel } from './data';
 
-const generateWireId = (): string =>
-  'W-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+const generateWireId = (): string => randomShortId('W');
 
 @Component({
   selector: 'app-diagram',

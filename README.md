@@ -57,7 +57,7 @@ This template wires up a focused subset of the ng-diagram public surface. Useful
 | Custom edge template | `NgDiagramEdgeTemplateMap`, `NgDiagramEdgeTemplate<TData>`, `NgDiagramBaseEdgeComponent` | `diagram/wire-edge.component.ts` |
 | Edge labels | `NgDiagramBaseEdgeLabelComponent`, `EdgeLabelPosition` (absolute `'30px'` and `'-30px'`) | `diagram/wire-edge.component.html` |
 | Connection ports | `<ng-diagram-port>` (`NgDiagramPortComponent`) | `diagram/node/device-node.component.html` |
-| Palette items | `<ng-diagram-palette-item>` (`NgDiagramPaletteItemComponent`), `<ng-diagram-palette-item-preview>` (`NgDiagramPaletteItemPreviewComponent`), `NgDiagramPaletteItem` (defaults to `BasePaletteItemData` which requires a `label` — we cast at the boundary since our nodes have no label) | `library-sidebar/components/library-list-item/*` |
+| Palette items | `<ng-diagram-palette-item>` (`NgDiagramPaletteItemComponent`), `<ng-diagram-palette-item-preview>` (`NgDiagramPaletteItemPreviewComponent`), `NgDiagramPaletteItem` (defaults to `BasePaletteItemData` which requires a `label` — `asDevicePaletteItem()` localizes the cast since our device nodes have no label) | `library-sidebar/components/library-list-item/*` |
 | Palette drop | `paletteItemDropped` output, `PaletteItemDroppedEvent` (used to auto-fill missing `deviceId`) | `diagram/diagram.component.ts` |
 | Edge routing | `NgDiagramConfig.edgeRouting` (`orthogonal` with `firstLastSegmentLength`, `maxCornerRadius`) | `diagram/diagram.component.ts` |
 | Manual edge points | `Edge.points`, `Edge.routingMode: 'manual'` | `diagram/edge-reshaping/*` |
@@ -384,8 +384,18 @@ AvSchematicPageComponent (providers)
   ├── Library: LibraryService (left palette state, draft mode)
   ├── Visibility: NodeVisibilityConfigService
   ├── Navigation: PortFocusService → ViewportAnimationService
+  ├── Export: DiagramExportService
+  ├── Edge reshaping:
+  │     ├── EdgeReshapeLifecycleEmitter   (subscribe for toolbar / telemetry hooks)
+  │     ├── EdgeReshapeCommandDispatcher  (routes commands to executors)
+  │     ├── EdgeReshapeEventHandler       (gesture → command translation)
+  │     └── EdgeEndpointSyncService       (reflows endpoints on node moves)
   └── DiagramComponent
 ```
+
+The page component subscribes to `EdgeReshapeLifecycleEmitter` and `console.log`s
+`edgeReshapeStarted` / `edgeReshapeEnded` as a wiring example — replace the
+log with a toolbar status, telemetry call, or undo-stack push as needed.
 
 ### Key Patterns
 
@@ -451,8 +461,7 @@ src/app/av-schematic/
 │   ├── form-field/                       # Label + projected input wrapper
 │   ├── ports-editor/                     # Two-column ports editor (FormValueControl<DevicePort[]>)
 │   └── sidebar-shell/                    # SCSS partial — common :host / .sidebar / animation rules
-├── top-navbar/                           # Navigation bar + theme toggle
-├── toolbar/                              # Placeholder toolbar
+├── top-navbar/                           # Navigation bar + theme toggle + export menu
 └── minimap-panel/                        # Minimap with zoom controls
 ```
 
@@ -466,7 +475,7 @@ src/app/av-schematic/
 
 ## Known ng-diagram Issues
 
-_None to call out yet for this template. Will be updated as we hit any._
+- **Port reorder doesn't refresh `measuredPorts`** ([#644](https://github.com/synergycodes/ng-diagram/issues/644)). Edges stay attached to the old port positions until something else triggers a `ResizeObserver` tick. Worked around in `diagram/node/device-node.component.html` with a 1px `[style.height]` parity toggle on `.port-shape`. Remove the workaround once the upstream fix lands.
 
 ## ng-diagram Documentation
 

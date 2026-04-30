@@ -1,7 +1,11 @@
+/**
+ * A named DXF text style. Always renders with Arial — the font file is hard-coded
+ * in `serialize()`. Add a `fontFile` parameter (or a font registry) when a future
+ * renderer needs a different family.
+ */
 export class DxfTextStyle {
   constructor(
     public readonly name: string,
-    public readonly fontFamily = 'Arial',
     public readonly bold = false,
   ) {}
 
@@ -18,7 +22,7 @@ export class DxfTextStyle {
       `  41\n1`,
       `  3\n${fontFile}`,
       `  1001\nACAS`,
-      `  1000\n${this.fontFamily}`,
+      `  1000\nArial`,
     ];
   }
 }

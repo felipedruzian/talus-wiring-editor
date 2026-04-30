@@ -10,7 +10,7 @@
   position: absolute;
   inset: 0;
   display: grid;
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto 1fr;
   padding: var(--ngd-primitive-4rule-12);
   gap: var(--ngd-primitive-even-14);
   pointer-events: none;
@@ -23,20 +23,9 @@
     grid-column: 1;
   }
 
-  .top-toolbar-wrapper {
-    grid-row: 2;
-    grid-column: 1;
-    display: flex;
-    justify-content: center;
-  }
-
-  .top-toolbar {
-    pointer-events: all;
-  }
-
   .content-area {
     display: flex;
-    grid-row: 2 / -1;
+    grid-row: 2;
     grid-column: 1;
     flex-direction: row;
     justify-content: space-between;

@@ -107,6 +107,11 @@ export class EdgeEndpointSyncService implements OnDestroy {
   }
 
   private processEdge(edge: Edge, nodes: readonly Node[], simplify: boolean): void {
+    // `edge.points` presence + length are validated by the caller before
+    // dispatching here, so we capture them once into a local non-nullable.
+    const currentPoints = edge.points;
+    if (!currentPoints) return;
+
     const sourceNode = nodes.find((node) => node.id === edge.source);
     const targetNode = nodes.find((node) => node.id === edge.target);
     if (!sourceNode || !targetNode) return;
@@ -125,7 +130,7 @@ export class EdgeEndpointSyncService implements OnDestroy {
 
     const sourceOrientation = getNodePortOrientation(sourceNode, edge.sourcePort);
     const targetOrientation = getNodePortOrientation(targetNode, edge.targetPort);
-    let next: readonly Point[] = edge.points!;
+    let next: readonly Point[] = currentPoints;
 
     if (!samePoint(sourcePos, last.source)) {
       const reflowed = reflowEndpoint(next, 'source', sourcePos, sourceOrientation);
@@ -142,7 +147,7 @@ export class EdgeEndpointSyncService implements OnDestroy {
         })
       : next;
 
-    if (samePath(finalPoints, edge.points!)) return;
+    if (samePath(finalPoints, currentPoints)) return;
 
     this.dispatcher.dispatch({
       type: 'reshapeEdge',

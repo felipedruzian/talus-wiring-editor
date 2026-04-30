@@ -1,13 +1,10 @@
 <app-diagram appViewportBounds />
 <div class="ui-overlay">
-  <app-top-navbar class="top-navbar" appViewportOverlay />
-  <div class="top-toolbar-wrapper">
-    <app-toolbar class="top-toolbar" />
-  </div>
+  <app-top-navbar class="top-navbar" appViewportOverlay="navbar" />
   <div class="content-area">
-    <app-library-sidebar appViewportOverlay />
+    <app-library-sidebar appViewportOverlay="library" />
     <div class="right-rail">
-      <app-properties-sidebar appViewportOverlay />
+      <app-properties-sidebar appViewportOverlay="properties" />
       <app-minimap-panel />
     </div>
   </div>

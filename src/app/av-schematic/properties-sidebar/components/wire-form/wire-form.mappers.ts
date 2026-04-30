@@ -1,17 +1,7 @@
 import { InjectionToken } from '@angular/core';
 import { type WireEdgeData } from '../../../diagram/model/interfaces';
 
-export type WireType =
-  | 'audio'
-  | 'video'
-  | 'speaker'
-  | 'ethernet'
-  | 'power'
-  | 'control'
-  | 'usb'
-  | 'fiber';
-
-export const WIRE_TYPES: readonly WireType[] = [
+export const WIRE_TYPES = [
   'audio',
   'video',
   'speaker',
@@ -20,7 +10,9 @@ export const WIRE_TYPES: readonly WireType[] = [
   'control',
   'usb',
   'fiber',
-];
+] as const;
+
+export type WireType = (typeof WIRE_TYPES)[number];
 
 export interface WireFormData {
   wireId: string;
