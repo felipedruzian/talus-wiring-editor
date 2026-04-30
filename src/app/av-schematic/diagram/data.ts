@@ -68,7 +68,7 @@ export const diagramModel: {
     {
       id: 'amp-1',
       type: NodeTemplateType.DeviceNode,
-      position: { x: 1100, y: 120 },
+      position: { x: 1100, y: 60 },
       data: {
         type: 'device',
         deviceId: 'AMP-1',
@@ -153,6 +153,13 @@ export const diagramModel: {
       sourcePort: 'hdmi-out',
       target: 'display-1',
       targetPort: 'hdmi-in',
+      routingMode: 'manual',
+      points: [
+        { x: 307, y: 470 },
+        { x: 510, y: 470 },
+        { x: 510, y: 630 },
+        { x: 573, y: 630 },
+      ],
       data: { type: 'wire', wireId: 'W-003', wireType: 'video' },
     },
     {
