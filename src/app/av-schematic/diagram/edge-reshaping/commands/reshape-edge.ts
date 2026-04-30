@@ -7,6 +7,7 @@ import {
   getDefaultMinInteriorBends,
   getEdgePortOrientations,
   simplifyPath,
+  snapToGrid,
   type Orientation,
 } from '../logic';
 
@@ -28,27 +29,33 @@ const gridFromConfig = (
 };
 
 /**
- * Writes the new path to the model. When `finalize` is true (drag end /
- * remove-bend / endpoint-sync drag end), runs the normalization pipeline:
- * collinear merge, alternation snap, endpoint nudge, optional grid snap —
- * using the actual port-side orientations of the edge.
+ * Writes the new path to the model. Constraints applied:
+ * - Grid snap on every dispatch (continue and finalize) so the dragged
+ *   bend visibly steps between grid lines, matching node-drag feel.
+ * - Full normalization pipeline (collinear merge, alternation snap,
+ *   endpoint nudge) on finalize only — these are heavier cleanups that
+ *   should run once at gesture end, not every pointermove.
  */
 export const reshapeEdge = (
   modelService: NgDiagramModelService,
   diagramService: NgDiagramService,
   command: ReshapeEdgeCommand,
 ): void => {
+  const edge = modelService.getEdgeById(command.edgeId);
+  const orientations = edge
+    ? getEdgePortOrientations(modelService.nodes(), edge)
+    : fallback;
+  const grid = gridFromConfig(diagramService);
+
   let points = command.points;
 
   if (command.finalize) {
-    const edge = modelService.getEdgeById(command.edgeId);
-    const orientations = edge
-      ? getEdgePortOrientations(modelService.nodes(), edge)
-      : fallback;
     points = simplifyPath(points, orientations.source, orientations.target, {
       minInteriorBends: getDefaultMinInteriorBends(orientations.source, orientations.target),
-      gridSize: gridFromConfig(diagramService),
+      gridSize: grid,
     });
+  } else if (grid) {
+    points = snapToGrid(points, grid, orientations.source);
   }
 
   modelService.updateEdge(command.edgeId, { points, routingMode: 'manual' });

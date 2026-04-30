@@ -26,6 +26,7 @@ export { getHandlerPositions } from './get-handler-positions';
 export { removeStraightSegments } from './remove-straight-segments';
 export { correctPath } from './correct-path';
 export { simplifyPath, type SimplifyOptions } from './simplify-path';
+export { snapToGrid } from './snap-to-grid';
 export { getDefaultMinInteriorBends } from './get-default-min-interior-bends';
 export { insertCollocatedBends, type CollocatedInsertion } from './insert-collocated-bends';
 export { getPortFlowPosition } from './get-port-flow-position';
