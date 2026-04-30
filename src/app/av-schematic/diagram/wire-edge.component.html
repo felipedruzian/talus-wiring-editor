@@ -9,4 +9,32 @@
   <ng-diagram-base-edge-label id="wire-id-target" [positionOnEdge]="'-30px'">
     <span class="wire-label">{{ edge().data.wireId }}</span>
   </ng-diagram-base-edge-label>
+
+  @for (handle of bendHandles(); track handle.id) {
+    <ng-diagram-base-edge-label [id]="handle.id" [positionOnEdge]="'0px'">
+      <span
+        class="bend-handle bend-handle--vertex"
+        [style.transform]="handle.transform"
+        edgeReshape
+        (reshapeStart)="onVertexStart($event, handle.index)"
+        (reshapeContinue)="onReshapeContinue($event)"
+        (reshapeEnd)="onReshapeEnd($event)"
+        (contextmenu)="onBendContextMenu($event, handle.index)"
+      ></span>
+    </ng-diagram-base-edge-label>
+  }
+
+  @for (ghost of ghostHandles(); track ghost.id) {
+    <ng-diagram-base-edge-label [id]="ghost.id" [positionOnEdge]="'0px'">
+      <span
+        class="bend-handle bend-handle--ghost"
+        [style.transform]="ghost.transform"
+        edgeReshape
+        (reshapeStart)="onGhostStart($event, ghost.segmentIndex)"
+        (reshapeContinue)="onReshapeContinue($event)"
+        (reshapeEnd)="onReshapeEnd($event)"
+        (contextmenu)="onGhostContextMenu($event, ghost.segmentIndex)"
+      ></span>
+    </ng-diagram-base-edge-label>
+  }
 </ng-diagram-base-edge>

@@ -73,4 +73,11 @@ export class PropertiesSidebarComponent {
       this.elementMutationService.removeEdge(edgeId);
     }
   }
+
+  protected onResetWireRouting(): void {
+    const edgeId = this.sidebarService.selectedEdge()?.id;
+    if (edgeId) {
+      this.elementMutationService.resetEdgeRouting(edgeId);
+    }
+  }
 }

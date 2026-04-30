@@ -17,20 +17,27 @@ app-sidebar-placeholder {
 .sidebar-actions {
   padding: var(--ngd-primitive-4rule-16);
   margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ngd-primitive-4rule-8);
 }
 
-.remove-button {
+.remove-button,
+.action-button {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: none;
   border-radius: var(--ngd-token-radius-button-m);
-  background: var(--ngd-button-primary-bg-default);
-  color: var(--ngd-txt-primary-white);
   cursor: pointer;
   padding: var(--ngd-token-spacing-button-m-v-pad-2);
   transition: background 150ms ease;
+}
+
+.remove-button {
+  border: none;
+  background: var(--ngd-button-primary-bg-default);
+  color: var(--ngd-txt-primary-white);
 
   &:hover {
     background: var(--ngd-button-primary-bg-hover);
@@ -38,5 +45,16 @@ app-sidebar-placeholder {
 
   &:active {
     background: var(--ngd-button-primary-bg-active);
+  }
+}
+
+.action-button {
+  background: transparent;
+  color: var(--ngd-txt-primary-default);
+  border: 1px solid var(--ngd-ui-stroke-primary-default);
+
+  &:hover {
+    border-color: var(--av-color-accent);
+    color: var(--av-color-accent);
   }
 }

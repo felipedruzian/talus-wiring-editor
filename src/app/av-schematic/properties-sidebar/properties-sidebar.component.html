@@ -25,6 +25,11 @@
           [target]="wire.target"
         />
         <div class="sidebar-actions">
+          @if (wire.edge.routingMode === 'manual') {
+            <button class="action-button p10" type="button" (click)="onResetWireRouting()">
+              Reset routing
+            </button>
+          }
           <button class="remove-button p10" type="button" (click)="onRemoveWire()">
             Remove wire
           </button>
