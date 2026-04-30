@@ -10,6 +10,7 @@ import { EdgeReshapeCommandDispatcher } from '../commands/dispatcher';
 import {
   getDefaultMinInteriorBends,
   getEdgePortOrientations,
+  getNodePortOrientation,
   getPortFlowPosition,
   reflowEndpoint,
   simplifyPath,
@@ -59,39 +60,45 @@ export class EdgeEndpointSyncService implements OnDestroy {
   private listenersAttached = false;
 
   constructor() {
-    effect(() => {
-      if (!this.diagramService.isInitialized()) return;
+    effect(() => this.attachDragListenersOnce());
+    effect(() => this.syncEdgeEndpoints());
+  }
 
-      if (!this.listenersAttached) {
-        this.listenersAttached = true;
-        this.unsubscribers.push(
-          this.diagramService.addEventListener('nodeDragStarted', () => {
-            this.dragging = true;
-          }),
-          this.diagramService.addEventListener('nodeDragEnded', (event) => {
-            this.dragging = false;
-            this.finalizeForNodes(event.nodes);
-          }),
-        );
+  private attachDragListenersOnce(): void {
+    if (this.listenersAttached) return;
+    if (!this.diagramService.isInitialized()) return;
+
+    this.listenersAttached = true;
+    this.unsubscribers.push(
+      this.diagramService.addEventListener('nodeDragStarted', () => {
+        this.dragging = true;
+      }),
+      this.diagramService.addEventListener('nodeDragEnded', (event) => {
+        this.dragging = false;
+        this.finalizeForNodes(event.nodes);
+      }),
+    );
+  }
+
+  private syncEdgeEndpoints(): void {
+    if (!this.diagramService.isInitialized()) return;
+
+    const nodes = this.modelService.nodes();
+    const edges = this.modelService.edges();
+
+    const liveEdgeIds = new Set<string>();
+    for (const edge of edges) {
+      liveEdgeIds.add(edge.id);
+      if (edge.routingMode !== 'manual' || !edge.points || edge.points.length < 3) {
+        this.lastKnownPorts.delete(edge.id);
+        continue;
       }
+      this.processEdge(edge, nodes, /* simplify */ !this.dragging);
+    }
 
-      const nodes = this.modelService.nodes();
-      const edges = this.modelService.edges();
-
-      const liveEdgeIds = new Set<string>();
-      for (const edge of edges) {
-        liveEdgeIds.add(edge.id);
-        if (edge.routingMode !== 'manual' || !edge.points || edge.points.length < 3) {
-          this.lastKnownPorts.delete(edge.id);
-          continue;
-        }
-        this.processEdge(edge, nodes, /* simplify */ !this.dragging);
-      }
-
-      for (const trackedId of this.lastKnownPorts.keys()) {
-        if (!liveEdgeIds.has(trackedId)) this.lastKnownPorts.delete(trackedId);
-      }
-    });
+    for (const trackedId of this.lastKnownPorts.keys()) {
+      if (!liveEdgeIds.has(trackedId)) this.lastKnownPorts.delete(trackedId);
+    }
   }
 
   ngOnDestroy(): void {
@@ -100,8 +107,8 @@ export class EdgeEndpointSyncService implements OnDestroy {
   }
 
   private processEdge(edge: Edge, nodes: readonly Node[], simplify: boolean): void {
-    const sourceNode = nodes.find((n) => n.id === edge.source);
-    const targetNode = nodes.find((n) => n.id === edge.target);
+    const sourceNode = nodes.find((node) => node.id === edge.source);
+    const targetNode = nodes.find((node) => node.id === edge.target);
     if (!sourceNode || !targetNode) return;
 
     const sourcePos = getPortFlowPosition(sourceNode, edge.sourcePort);
@@ -116,21 +123,22 @@ export class EdgeEndpointSyncService implements OnDestroy {
     this.lastKnownPorts.set(edge.id, { source: sourcePos, target: targetPos });
     if (!last) return;
 
-    const orientations = getEdgePortOrientations(nodes, edge);
+    const sourceOrientation = getNodePortOrientation(sourceNode, edge.sourcePort);
+    const targetOrientation = getNodePortOrientation(targetNode, edge.targetPort);
     let next: readonly Point[] = edge.points!;
 
     if (!samePoint(sourcePos, last.source)) {
-      const reflowed = reflowEndpoint(next, 'source', sourcePos, orientations.source);
+      const reflowed = reflowEndpoint(next, 'source', sourcePos, sourceOrientation);
       if (reflowed) next = reflowed;
     }
     if (!samePoint(targetPos, last.target)) {
-      const reflowed = reflowEndpoint(next, 'target', targetPos, orientations.target);
+      const reflowed = reflowEndpoint(next, 'target', targetPos, targetOrientation);
       if (reflowed) next = reflowed;
     }
 
     const finalPoints = simplify
-      ? simplifyPath(next, orientations.source, orientations.target, {
-          minInteriorBends: getDefaultMinInteriorBends(orientations.source, orientations.target),
+      ? simplifyPath(next, sourceOrientation, targetOrientation, {
+          minInteriorBends: getDefaultMinInteriorBends(sourceOrientation, targetOrientation),
         })
       : next;
 

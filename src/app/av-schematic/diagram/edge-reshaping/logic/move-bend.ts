@@ -18,11 +18,13 @@ export const moveBend = (
   const prevIsEndpoint = index - 1 === 0;
   const nextIsEndpoint = index + 1 === result.length - 1;
 
-  const prevH = expectedSegmentOrientation(index - 1, sourceOrientation) === 'horizontal';
-  const nextH = expectedSegmentOrientation(index, sourceOrientation) === 'horizontal';
+  const prevIsHorizontal =
+    expectedSegmentOrientation(index - 1, sourceOrientation) === 'horizontal';
+  const nextIsHorizontal =
+    expectedSegmentOrientation(index, sourceOrientation) === 'horizontal';
 
-  const yLocked = (prevH && prevIsEndpoint) || (nextH && nextIsEndpoint);
-  const xLocked = (!prevH && prevIsEndpoint) || (!nextH && nextIsEndpoint);
+  const yLocked = (prevIsHorizontal && prevIsEndpoint) || (nextIsHorizontal && nextIsEndpoint);
+  const xLocked = (!prevIsHorizontal && prevIsEndpoint) || (!nextIsHorizontal && nextIsEndpoint);
 
   const newX = xLocked ? curr.x : newPosition.x;
   const newY = yLocked ? curr.y : newPosition.y;
@@ -30,11 +32,11 @@ export const moveBend = (
   result[index] = { x: newX, y: newY };
 
   if (!prevIsEndpoint) {
-    if (prevH) result[index - 1] = { x: prev.x, y: newY };
+    if (prevIsHorizontal) result[index - 1] = { x: prev.x, y: newY };
     else result[index - 1] = { x: newX, y: prev.y };
   }
   if (!nextIsEndpoint) {
-    if (nextH) result[index + 1] = { x: next.x, y: newY };
+    if (nextIsHorizontal) result[index + 1] = { x: next.x, y: newY };
     else result[index + 1] = { x: newX, y: next.y };
   }
 

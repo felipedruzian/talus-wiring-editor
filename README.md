@@ -10,7 +10,7 @@ Features:
 
 - Custom `DeviceNode` template with header (deviceId / manufacturer / model) and per-side input/output port columns
 - Custom `WireEdge` template with orthogonal routing and dual wire-id labels (near both ends)
-- **Manual edge routing** — when a wire is selected, drag the round handles on each bend to reshape the path (axis-locked to keep adjacent segments orthogonal); drag the midpoint ghost handles to insert an L-shaped detour; right-click a vertex or ghost handle to drop a whole segment (with collinear-merge cleanup on release); "Reset routing" in the sidebar returns the wire to ng-diagram's auto-routed Z-shape. Wires keep their bends when connected nodes are dragged — only the port-side endpoints follow, with collinear segments collapsed once the drag ends. Works for ports on any side (left/right, top/bottom, perpendicular). Honors the diagram's `snapping.shouldSnapDragForNode` config for grid-snap on commit and during drag.
+- **Manual edge routing** — drag bend handles to reshape selected wires; midpoint ghost handles insert L-shaped detours; right-click drops segments; "Reset routing" in the sidebar restores ng-diagram's auto-routed Z-shape. Endpoints follow connected-node moves while keeping interior bends; honours the diagram's node-drag snap config for grid alignment. See [Layout → Manual routing](#layout) for the full behaviour and architecture.
 - Per-port double-click to smoothly pan to the node connected on the other side
 - Connector-type display per port (XLR, HDMI, Speakon, …)
 - Selection and edge-highlighted states
@@ -257,15 +257,19 @@ edgeRouting: {
 
 **Manual routing.** As soon as the user grabs a bend handle, the wire flips to `routingMode: 'manual'` and ng-diagram renders through user-supplied `points` instead of recomputing a path on every change. The feature is structured to mirror ng-diagram's own resize feature so it can be lifted into the library later (see [Porting edge reshaping into ng-diagram](#porting-edge-reshaping-into-ng-diagram)).
 
-Three layers, strict separation:
+Three logical layers across five focused folders:
+
+- **Gesture layer** (`directives/`, `handlers/`) — UI-bound. Knows about pointer events, edge components, and how a gesture maps to a command.
+- **Command pipeline** (`commands/`, `middleware/`) — ng-diagram-coupled. The mutation entry point plus the cross-cutting reactions that fan out from it (lifecycle events, node-move endpoint sync).
+- **Pure logic** (`logic/`) — no Angular, no ng-diagram services. Orthogonal-path math, fully unit-tested.
 
 ```
 src/app/av-schematic/diagram/edge-reshaping/
-├── directives/    UI / gesture detection
-├── handlers/      gesture → command translation
-├── commands/      command + dispatcher (commit-pipeline entry point)
-├── middleware/    cross-cutting reactions (node-move sync, lifecycle events)
-└── logic/         pure functions + types (no Angular, no ng-diagram services)
+├── directives/    UI / gesture detection           ┐  gesture
+├── handlers/      gesture → command translation    ┘
+├── commands/      command + dispatcher             ┐  command pipeline
+├── middleware/    cross-cutting reactions          ┘
+└── logic/         pure functions + types              pure logic
 ```
 
 | File | Role |
@@ -278,7 +282,7 @@ src/app/av-schematic/diagram/edge-reshaping/
 | `middleware/edge-endpoint-sync.service.ts` | Watches all manual edges. Reflows endpoints whenever a connected port moves (read from `Node.measuredPorts`). During a `nodeDragStarted` / `nodeDragEnded` window, runs reflow only and defers simplify until the drag ends — same mid-drag-vs-commit split the bend gesture uses |
 | `middleware/edge-reshape-lifecycle.emitter.ts` | Public-facing `edgeReshapeStarted` / `edgeReshapeEnded` EventEmitters. Subscribe to react to gesture boundaries (e.g., toolbars, telemetry) |
 | `logic/` | Pure orthogonal-path math (one function per file, all unit-tested). See *Pure logic* below |
-| `wire-edge.component.ts` | Thin renderer + gesture router. Computes handle positions via `getHandlerPositions`, lays vertex (8px solid white, accent border) and ghost (8px solid accent, 55% opacity) handles, routes directive events to the handler |
+| `wire-edge.component.ts` | Thin renderer + gesture router. Computes handle positions via `getHandlerPositions`, lays vertex and ghost handles (theme-aware fills defined in `wire-edge.component.scss`), routes directive events to the handler |
 
 **Pure logic** in `logic/`:
 
@@ -317,7 +321,11 @@ Automatic node layout (e.g., ELK or a custom signal-flow layout) is a likely fut
 
 ### Porting edge reshaping into ng-diagram
 
-The feature is structured so the move into the ng-diagram library is mostly mechanical. The architecture mirrors how the resize feature is built today (`core/src/input-events/handlers/resize/`, `core/src/command-handler/commands/resize-node.ts`, `core/src/middleware-manager/middlewares/event-emitter/emitters/node-resize-lifecycle.emitter.ts`). What changes when porting:
+The feature is structured so the move into the ng-diagram library is mostly mechanical. The architecture mirrors how the resize feature is built today (`core/src/input-events/handlers/resize/`, `core/src/command-handler/commands/resize-node.ts`, `core/src/middleware-manager/middlewares/event-emitter/emitters/node-resize-lifecycle.emitter.ts`).
+
+**Reading order:** start with `logic/` for the pure orthogonal-path math, then `commands/reshape-edge.ts` for the mutation entry point, then `wire-edge.component.ts` for the gesture surface. Everything else (directive, handler, dispatcher, middleware) is plumbing around those three.
+
+What changes when porting:
 
 | Today (in this app) | After porting (inside ng-diagram) |
 |---|---|
@@ -329,6 +337,7 @@ The feature is structured so the move into the ng-diagram library is mostly mech
 | `middleware/edge-endpoint-sync.service.ts` (Angular service with `effect()`) | Becomes a middleware in `core/src/middleware-manager/middlewares/`. Listens for the node-move command in the update pipeline and runs reflow + simplify with the affected nodes from the action delta. The per-edge `lastKnownPorts` snapshot map goes away — middleware sees the previous state directly |
 | `middleware/edge-reshape-lifecycle.emitter.ts` (Angular EventEmitters) | Becomes an emitter in `core/src/middleware-manager/middlewares/event-emitter/emitters/edge-reshape-lifecycle.emitter.ts`. `edgeReshapeStarted` / `edgeReshapeEnded` are added to `DiagramEventMap`; emission via `eventManager.deferredEmit('edgeReshapeStarted', { edgeId, edge })` |
 | `logic/get-port-flow-position.ts` (local replica) | Deleted. Use the upstream `getPortFlowPosition` from `core/src/utils/get-port-flow-position.ts` (also handles node rotation) |
+| `logic/port-orientation.ts` (`getEdgePortOrientations`, `getNodePortOrientation`) | Move into `core/src/utils/`; reconcile with any upstream port-side helper before landing |
 | `logic/*` pure functions | Unchanged. Move into a folder under `core/src/utils/` (or a feature-scoped `core/src/edge-reshape/`); remain pure-TS, unit-tested |
 | `wire-edge.component.ts` template logic | Stays in the application as a custom edge template — it's not a library concern. The directive (now a host directive on whatever handle component the library ships) gets imported from ng-diagram |
 

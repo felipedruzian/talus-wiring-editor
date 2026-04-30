@@ -8,10 +8,9 @@ import {
 } from 'ng-diagram';
 import {
   getDefaultMinInteriorBends,
-  getEdgePortOrientations,
+  getNodePortOrientation,
   simplifyPath,
   snapToGrid,
-  type Orientation,
 } from '../logic';
 
 export interface ReshapeEdgeCommand {
@@ -20,8 +19,6 @@ export interface ReshapeEdgeCommand {
   points: Point[];
   finalize: boolean;
 }
-
-const fallback = { source: 'horizontal' as Orientation, target: 'horizontal' as Orientation };
 
 /**
  * Resolve the grid to apply to this edge by mirroring node-drag snap config:
@@ -60,20 +57,22 @@ export const reshapeEdge = (
 ): void => {
   const edge = modelService.getEdgeById(command.edgeId);
   const nodes = modelService.nodes();
-  const sourceNode = edge ? nodes.find((n) => n.id === edge.source) : undefined;
+  const sourceNode = edge ? nodes.find((node) => node.id === edge.source) : undefined;
+  const targetNode = edge ? nodes.find((node) => node.id === edge.target) : undefined;
 
-  const orientations = edge ? getEdgePortOrientations(nodes, edge) : fallback;
+  const sourceOrientation = getNodePortOrientation(sourceNode, edge?.sourcePort);
+  const targetOrientation = getNodePortOrientation(targetNode, edge?.targetPort);
   const grid = gridForEdge(diagramService, edge, sourceNode);
 
   let points = command.points;
 
   if (command.finalize) {
-    points = simplifyPath(points, orientations.source, orientations.target, {
-      minInteriorBends: getDefaultMinInteriorBends(orientations.source, orientations.target),
+    points = simplifyPath(points, sourceOrientation, targetOrientation, {
+      minInteriorBends: getDefaultMinInteriorBends(sourceOrientation, targetOrientation),
       gridSize: grid,
     });
   } else if (grid) {
-    points = snapToGrid(points, grid, orientations.source);
+    points = snapToGrid(points, grid, sourceOrientation);
   }
 
   modelService.updateEdge(command.edgeId, { points, routingMode: 'manual' });

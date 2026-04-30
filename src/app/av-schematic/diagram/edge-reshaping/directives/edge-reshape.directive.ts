@@ -32,6 +32,7 @@ export class EdgeReshapeDirective implements OnDestroy {
     event.preventDefault();
     event.stopPropagation();
     this.activePointerId = event.pointerId;
+    this.host.nativeElement.setPointerCapture(event.pointerId);
     this.reshapeStart.emit(this.toEvent(event));
     document.addEventListener('pointermove', this.onDocumentPointerMove);
     document.addEventListener('pointerup', this.onDocumentPointerUp);
@@ -46,6 +47,9 @@ export class EdgeReshapeDirective implements OnDestroy {
   private readonly onDocumentPointerUp = (event: PointerEvent): void => {
     if (event.pointerId !== this.activePointerId) return;
     this.reshapeEnd.emit(this.toEvent(event));
+    if (this.host.nativeElement.hasPointerCapture(event.pointerId)) {
+      this.host.nativeElement.releasePointerCapture(event.pointerId);
+    }
     this.activePointerId = null;
     this.detachDocumentListeners();
   };

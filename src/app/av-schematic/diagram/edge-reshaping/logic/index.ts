@@ -17,7 +17,11 @@ export {
   expectedSegmentOrientation,
   oppositeOrientation,
 } from './expected-segment-orientation';
-export { portSideToOrientation, getEdgePortOrientations } from './port-orientation';
+export {
+  portSideToOrientation,
+  getNodePortOrientation,
+  getEdgePortOrientations,
+} from './port-orientation';
 export { insertPoint, deletePoint, segmentMidpoint } from './point-array';
 export { moveBend } from './move-bend';
 export { reflowEndpoint } from './reflow-endpoint';

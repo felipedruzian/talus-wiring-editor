@@ -3,18 +3,18 @@ import { type Node, type Point, type Port } from 'ng-diagram';
 const portCenter = (port: Port, node: Node): Point => {
   const x = (port.position?.x ?? 0) + node.position.x;
   const y = (port.position?.y ?? 0) + node.position.y;
-  const w = port.size?.width ?? 0;
-  const h = port.size?.height ?? 0;
+  const width = port.size?.width ?? 0;
+  const height = port.size?.height ?? 0;
 
   switch (port.side) {
     case 'left':
-      return { x, y: y + h / 2 };
+      return { x, y: y + height / 2 };
     case 'top':
-      return { x: x + w / 2, y };
+      return { x: x + width / 2, y };
     case 'bottom':
-      return { x: x + w / 2, y: y + h };
+      return { x: x + width / 2, y: y + height };
     case 'right':
-      return { x: x + w, y: y + h / 2 };
+      return { x: x + width, y: y + height / 2 };
   }
 };
 
