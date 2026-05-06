@@ -10,14 +10,13 @@ import {
 import { FormField } from '@angular/forms/signals';
 import { type WireEdgeData } from '../../../diagram/model/interfaces';
 import { type WireEndpointInfo } from '../../properties-sidebar.service';
-import { AutofocusDirective } from '../../../shared/autofocus/autofocus.directive';
 import { FormFieldComponent } from '../../../shared/form-field/form-field.component';
 import { wireDataToFormData, WIRE_TYPES } from './wire-form.mappers';
 import { WireFormService } from './wire-form.service';
 
 @Component({
   selector: 'app-wire-form',
-  imports: [FormField, FormFieldComponent, AutofocusDirective],
+  imports: [FormField, FormFieldComponent],
   templateUrl: './wire-form.component.html',
   styleUrl: './wire-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
