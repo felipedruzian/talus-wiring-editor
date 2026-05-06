@@ -2,14 +2,13 @@
 <div class="export-menu" (keydown)="onKeydown($event)">
   <button
     type="button"
-    class="trigger"
-    aria-label="Export diagram"
+    class="trigger p10"
     aria-haspopup="menu"
     [attr.aria-expanded]="open"
     [disabled]="!canExport()"
     (click)="toggle()"
   >
-    <span class="icon icon-download" aria-hidden="true"></span>
+    Export
   </button>
 
   @if (open) {
