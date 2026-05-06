@@ -18,6 +18,7 @@ Features:
 - Properties sidebar with editable device and wire fields (live updates, debounced text inputs)
 - Inline ports editor (add/remove/reorder ports, toggle direction, choose connector type from a list)
 - Drag-and-drop **device library** sidebar — collapsible left panel with a curated set of templates (microphones, mixers, amplifiers, loudspeakers, displays, cameras, switchers, …) you drag onto the canvas to instantiate nodes
+- Library **search** with debounced live filtering and match highlighting in manufacturer / model
 - Add / edit / remove your own library templates (manufacturer, model, category, ports), with a save-or-discard buffer so partial edits don't pollute the library
 - Auto-generated `deviceId` on drop, by category prefix (`MIC-1`, `CAM-1`, … `DEV-1` for unmapped/empty categories) — picks the smallest integer not already used by another device of the same prefix
 - Editable category **combobox** (predefined list with free-text input — pick from the dictionary or type a custom category)
@@ -165,7 +166,8 @@ Left-side collapsible panel that holds **device templates** — recipes (no `id`
 | `library-sidebar/seed-library.ts` | Initial set of templates. Each entry is `{ libraryId, template: DeviceNodeData }`. `deviceId` and `location` are kept empty — they're instance fields, not template fields |
 | `library-sidebar/library.service.ts` | Page-scoped state: `devices`, `isExpanded`, `editingDeviceId`, `editingMode`. `beginCreate()` / `beginEdit()` / `commitDraft()` / `closeDetail()` / `removeDevice()` |
 | `library-sidebar/library-draft.service.ts` | Per-detail-session draft buffer. While the detail view is open, every form change writes here (not to the library). **Save** commits via `LibraryService.commitDraft`; **Back** simply tears the component down and the draft with it |
-| `library-sidebar/components/library-list-item/*` | Each row wraps its content in `<ng-diagram-palette-item [item]="…">` with a custom `<ng-diagram-palette-item-preview>` ghost card. `<ng-diagram>` auto-handles the drop |
+| `library-sidebar/components/library-list-item/*` | Each row wraps its content in `<ng-diagram-palette-item [item]="…">` with a custom `<ng-diagram-palette-item-preview>` ghost card. `<ng-diagram>` auto-handles the drop. Manufacturer / model render as `HighlightSegmentsPipe` segments so search matches stand out |
+| `library-sidebar/components/library-search/*` | Search input above the list. 150 ms debounced; writes to `LibraryService.searchQuery`, which drives `filteredDevices` (case-insensitive match against `manufacturer` or `model`). Survives navigation into the detail view and back |
 | `library-sidebar/components/library-detail/*` | Reuses `<app-device-form>` with a local `DeviceFormService` provider and an overridden `ON_DEVICE_FIELD_CHANGE` token that writes to the draft service. Hides `deviceId` and `location` by providing `DEVICE_FORM_HIDDEN_FIELDS = ['deviceId', 'location']` |
 | `diagram/model/device-categories.ts` | Canonical category dictionary — `DEVICE_CATEGORY_PREFIXES` (`microphone` → `MIC`, `camera` → `CAM`, …), `DEVICE_CATEGORIES` (the keys, used by the combobox), `FALLBACK_DEVICE_PREFIX = 'DEV'` |
 | `diagram/model/auto-device-id.ts` | `generateDeviceId(category, existingNodes)` — returns `<PREFIX>-<N>` where `N` is the smallest positive integer not already in use by a device of that prefix. Called from `(paletteItemDropped)` in `DiagramComponent` |
@@ -196,7 +198,7 @@ Global stylesheet entry point: `src/styles.css` (imports `tokens.css`, typograph
 
 ### Export (PNG and DXF)
 
-`src/app/av-schematic/export/` houses both formats. The trigger is a download icon in the top navbar (`top-navbar/export-menu/`) — disabled until the diagram has at least one node.
+`src/app/av-schematic/export/` houses both formats. The trigger is a primary **Export** button in the top navbar (`top-navbar/export-menu/`), placed to the right of the theme toggle with a vertical separator — disabled until the diagram has at least one node.
 
 **PNG** is a raster capture via [`html-to-image`](https://www.npmjs.com/package/html-to-image): `computePartsBounds(nodes, edges)` plus a 50-unit padding defines the region; the canvas is rendered at 2× pixel ratio with the active theme's background color (resolved by walking up from the diagram canvas to the first non-transparent ancestor — usually `<html>`).
 
@@ -453,14 +455,17 @@ src/app/av-schematic/
 │   └── components/
 │       ├── library-list/                 # Scrollable list + "Add device" button
 │       ├── library-list-item/            # Draggable row wrapping <ng-diagram-palette-item>
+│       ├── library-search/               # Debounced search input feeding LibraryService.searchQuery
 │       └── library-detail/               # Reuses <app-device-form> with overridden ON_DEVICE_FIELD_CHANGE
 ├── shared/
-│   ├── autofocus/                        # Re-focus directive on selection change
+│   ├── autofocus/                        # Re-focus directive (used by library detail when entering create/edit)
 │   ├── combobox/                         # Editable combobox (FormValueControl<string>)
 │   ├── device-form/                      # Device fields (signals form). DEVICE_FORM_HIDDEN_FIELDS DI token controls visibility per-host
 │   ├── form-field/                       # Label + projected input wrapper
-│   ├── ports-editor/                     # Two-column ports editor (FormValueControl<DevicePort[]>)
-│   └── sidebar-shell/                    # SCSS partial — common :host / .sidebar / animation rules
+│   ├── highlight-segments/               # Pipe that splits text into matched / unmatched segments for safe (no innerHTML) highlighting
+│   ├── ports-editor/                     # Tabbed (Inputs / Outputs) ports editor (FormValueControl<DevicePort[]>)
+│   ├── sidebar-shell/                    # SCSS partial — common :host / .sidebar / animation rules
+│   └── tooltip/                          # Custom [appTooltip] directive (top/right/bottom/left placement, body-portaled to escape sidebar overflow clipping)
 ├── top-navbar/                           # Navigation bar + theme toggle + export menu
 └── minimap-panel/                        # Minimap with zoom controls
 ```
