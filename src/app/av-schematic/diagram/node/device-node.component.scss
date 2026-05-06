@@ -6,18 +6,20 @@
   --card-border-color: var(--ngd-ui-stroke-primary-default);
   --card-bg: var(--ngd-node-bg-primary-default);
   --card-header-bg: var(--ngd-ui-bg-tertiary-default);
+  --card-shadow: none;
 
   &:active {
     cursor: grabbing;
   }
 
   &:hover {
-    --card-border-color: var(--av-color-accent);
+    --card-border-color: #7938d3;
   }
 
   &.selected,
   &.edge-highlighted {
-    --card-border-color: var(--av-color-accent);
+    --card-border-color: #7938d3;
+    --card-shadow: 0 0 0 3px #482674;
     --card-bg: color-mix(in srgb, var(--av-color-accent) 5%, var(--ngd-node-bg-primary-default));
     --card-header-bg: color-mix(in srgb, var(--av-color-accent) 8%, var(--ngd-ui-bg-tertiary-default));
   }
@@ -45,6 +47,8 @@
   border-radius: var(--ngd-token-radius-element-12);
   color: var(--ngd-txt-primary-default);
   font-size: 0.75rem;
+  box-shadow: var(--card-shadow);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
 .device-node__header {
