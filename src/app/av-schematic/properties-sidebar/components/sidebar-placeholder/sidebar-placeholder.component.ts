@@ -5,6 +5,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './sidebar-placeholder.component.html',
   styleUrl: './sidebar-placeholder.component.scss',
+  host: { '[attr.title]': 'null' },
 })
 export class SidebarPlaceholderComponent {
   title = input.required<string>();

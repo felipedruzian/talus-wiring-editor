@@ -4,8 +4,10 @@
     class="sidebar-toggle"
     (click)="toggle.emit()"
     [attr.aria-expanded]="isExpanded()"
-    [attr.aria-label]="ariaLabel()"
+    [appTooltip]="ariaLabel()"
+    [tooltipPlacement]="tooltipPlacement()"
   >
+    <span class="visually-hidden">{{ ariaLabel() }}</span>
     <span class="icon" [class]="iconClass()"></span>
   </button>
 </div>
