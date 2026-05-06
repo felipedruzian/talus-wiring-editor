@@ -1,4 +1,3 @@
-import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input, model, signal } from '@angular/core';
 import { type FormValueControl } from '@angular/forms/signals';
 import { type DevicePort, type PortDirection } from '../../diagram/model/interfaces';
@@ -8,7 +7,7 @@ import { generatePortId } from './generate-port-id';
 
 @Component({
   selector: 'app-ports-editor',
-  imports: [NgTemplateOutlet, AutofocusDirective],
+  imports: [AutofocusDirective],
   templateUrl: './ports-editor.component.html',
   styleUrl: './ports-editor.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -19,6 +18,7 @@ export class PortsEditorComponent implements FormValueControl<DevicePort[]> {
 
   protected readonly connectorTypes = CONNECTOR_TYPES;
   protected readonly autofocusPortId = signal<string | null>(null);
+  protected readonly activeDirection = signal<PortDirection>('input');
 
   protected readonly inputs = computed<DevicePort[]>(() =>
     this.value().filter((p) => p.direction === 'input'),
@@ -26,9 +26,20 @@ export class PortsEditorComponent implements FormValueControl<DevicePort[]> {
   protected readonly outputs = computed<DevicePort[]>(() =>
     this.value().filter((p) => p.direction === 'output'),
   );
+  protected readonly visiblePorts = computed<DevicePort[]>(() =>
+    this.activeDirection() === 'input' ? this.inputs() : this.outputs(),
+  );
 
-  protected addPort(direction: PortDirection): void {
-    const newPort: DevicePort = { id: generatePortId(), label: '', direction };
+  protected setActiveDirection(direction: PortDirection): void {
+    this.activeDirection.set(direction);
+  }
+
+  protected addPort(): void {
+    const newPort: DevicePort = {
+      id: generatePortId(),
+      label: '',
+      direction: this.activeDirection(),
+    };
     this.autofocusPortId.set(newPort.id);
     this.value.update((ports) => [...ports, newPort]);
   }
