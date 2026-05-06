@@ -49,6 +49,11 @@
   white-space: nowrap;
 }
 
+.is-match {
+  background: var(--ngd-colors-acc1-500);
+  border-radius: 2px;
+}
+
 .device-row__chip {
   font-size: 10px;
   padding: 2px 6px;

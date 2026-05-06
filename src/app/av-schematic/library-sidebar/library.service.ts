@@ -10,11 +10,22 @@ export class LibraryService {
   readonly isExpanded = signal(false);
   readonly editingDeviceId = signal<string | null>(null);
   readonly editingMode = signal<LibraryEditMode | null>(null);
+  readonly searchQuery = signal('');
 
   readonly editingDevice = computed<LibraryDevice | null>(() => {
     const id = this.editingDeviceId();
     if (!id) return null;
     return this.devices().find((d) => d.libraryId === id) ?? null;
+  });
+
+  readonly filteredDevices = computed<LibraryDevice[]>(() => {
+    const query = this.searchQuery().trim().toLowerCase();
+    if (!query) return this.devices();
+    return this.devices().filter((d) => {
+      const manufacturer = d.template.manufacturer?.toLowerCase() ?? '';
+      const model = d.template.model?.toLowerCase() ?? '';
+      return manufacturer.includes(query) || model.includes(query);
+    });
   });
 
   expand(): void {
