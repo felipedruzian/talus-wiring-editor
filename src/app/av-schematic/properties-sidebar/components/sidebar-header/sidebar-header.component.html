@@ -1,4 +1,4 @@
-<div class="sidebar-header">
+<div class="sidebar-header" [class.collapsed]="!isExpanded()">
   <span [id]="titleId()" class="h7 sidebar-title">{{ title() }}</span>
   <button
     class="sidebar-toggle"
