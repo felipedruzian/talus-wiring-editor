@@ -8,7 +8,7 @@
 .sidebar-header.collapsed {
   justify-content: center;
 
-  .sidebar-title {
+  .header-text {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -21,8 +21,22 @@
   }
 }
 
+.header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .sidebar-title {
   color: var(--ngd-txt-primary-default);
+}
+
+.sidebar-subtitle {
+  color: var(--ngd-txt-secondary-default);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .visually-hidden {

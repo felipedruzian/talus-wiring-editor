@@ -5,6 +5,7 @@
     iconClass="icon-sidebar"
     ariaLabel="Toggle properties panel"
     tooltipPlacement="left"
+    [subtitle]="headerSubtitle()"
     [isExpanded]="isExpanded()"
     (toggle)="onHeaderToggle()"
   />

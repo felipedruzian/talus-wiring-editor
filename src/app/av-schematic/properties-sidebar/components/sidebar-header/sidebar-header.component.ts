@@ -12,6 +12,7 @@ import { TooltipDirective, type TooltipPlacement } from '../../../shared/tooltip
 export class SidebarHeaderComponent {
   readonly title = input.required<string>();
   readonly titleId = input.required<string>();
+  readonly subtitle = input<string>('');
   readonly iconClass = input<string>('icon-sidebar');
   readonly ariaLabel = input<string>('Toggle panel');
   readonly tooltipPlacement = input<TooltipPlacement>('bottom');
