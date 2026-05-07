@@ -480,7 +480,7 @@ src/app/av-schematic/
 
 ## Known ng-diagram Issues
 
-- **Port reorder doesn't refresh `measuredPorts`** ([#644](https://github.com/synergycodes/ng-diagram/issues/644)). Edges stay attached to the old port positions until something else triggers a `ResizeObserver` tick. Worked around in `diagram/node/device-node.component.html` with a 1px `[style.height]` parity toggle on `.port-shape`. Remove the workaround once the upstream fix lands.
+- **Port reorder doesn't refresh `measuredPorts`** ([#703](https://github.com/synergycodes/ng-diagram/issues/703)). Edges stay attached to the old port positions until something else triggers a `ResizeObserver` tick. Worked around in `diagram/node/device-node.component.html` with a 1px `[style.height]` parity toggle on `.port-shape`. Remove the workaround once the upstream fix lands.
 
 ## ng-diagram Documentation
 
