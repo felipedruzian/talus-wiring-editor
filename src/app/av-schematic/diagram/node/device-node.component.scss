@@ -13,13 +13,13 @@
   }
 
   &:hover {
-    --card-border-color: #7938d3;
+    --card-border-color: var(--av-color-selection-border);
   }
 
   &.selected,
   &.edge-highlighted {
-    --card-border-color: #7938d3;
-    --card-shadow: 0 0 0 3px #482674;
+    --card-border-color: var(--av-color-selection-border);
+    --card-shadow: 0 0 0 3px var(--av-color-selection-halo);
     --card-bg: color-mix(in srgb, var(--av-color-accent) 5%, var(--ngd-node-bg-primary-default));
     --card-header-bg: color-mix(in srgb, var(--av-color-accent) 8%, var(--ngd-ui-bg-tertiary-default));
   }

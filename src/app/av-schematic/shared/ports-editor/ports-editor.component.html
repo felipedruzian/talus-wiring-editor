@@ -1,20 +1,18 @@
-<div class="tabs" role="tablist">
+<div class="tabs">
   <button
     type="button"
-    role="tab"
     class="tab p10"
     [class.is-active]="activeDirection() === 'input'"
-    [attr.aria-selected]="activeDirection() === 'input'"
+    [attr.aria-pressed]="activeDirection() === 'input'"
     (click)="setActiveDirection('input')"
   >
     Inputs ({{ inputs().length }})
   </button>
   <button
     type="button"
-    role="tab"
     class="tab p10"
     [class.is-active]="activeDirection() === 'output'"
-    [attr.aria-selected]="activeDirection() === 'output'"
+    [attr.aria-pressed]="activeDirection() === 'output'"
     (click)="setActiveDirection('output')"
   >
     Outputs ({{ outputs().length }})

@@ -3,14 +3,12 @@
 }
 
 .device-row {
-  --row-bg: var(--ngd-ui-bg-tertiary-default);
-
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--ngd-primitive-4rule-8);
   padding: var(--ngd-primitive-4rule-8) var(--ngd-primitive-4rule-12);
-  background: var(--row-bg);
+  background: var(--av-list-item-bg);
   border: 1px solid var(--ngd-ui-stroke-primary-default);
   border-radius: var(--ngd-token-radius-element-8);
   cursor: grab;
@@ -18,16 +16,12 @@
 
   &:hover {
     border-color: var(--av-color-accent);
-    background: color-mix(in srgb, var(--av-color-accent) 6%, var(--row-bg));
+    background: color-mix(in srgb, var(--av-color-accent) 6%, var(--av-list-item-bg));
   }
 
   &:active {
     cursor: grabbing;
   }
-}
-
-:host-context(html[data-theme='dark']) .device-row {
-  --row-bg: var(--ngd-colors-gray-750);
 }
 
 .device-row__main {

@@ -860,4 +860,11 @@ html[data-theme='dark'] {
   --av-port-height: 13px;
   --av-color-wire-stroke: var(--ngd-edge-primary-default);
   --av-color-accent: var(--ngd-ui-stroke-primary-highlight);
+  --av-color-selection-border: #7938d3;
+  --av-color-selection-halo: #482674;
+  --av-list-item-bg: var(--ngd-ui-bg-tertiary-default);
+}
+
+html[data-theme='dark'] {
+  --av-list-item-bg: var(--ngd-colors-gray-750);
 }
