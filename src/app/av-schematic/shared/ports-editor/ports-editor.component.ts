@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, computed, input, model, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  ElementRef,
+  input,
+  model,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { type FormValueControl } from '@angular/forms/signals';
 import { type DevicePort, type PortDirection } from '../../diagram/model/interfaces';
 import { AutofocusDirective } from '../autofocus/autofocus.directive';
@@ -19,6 +28,7 @@ export class PortsEditorComponent implements FormValueControl<DevicePort[]> {
   protected readonly connectorTypes = CONNECTOR_TYPES;
   protected readonly autofocusPortId = signal<string | null>(null);
   protected readonly activeDirection = signal<PortDirection>('input');
+  protected readonly addPortButton = viewChild<ElementRef<HTMLButtonElement>>('addPortButton');
 
   protected readonly inputs = computed<DevicePort[]>(() =>
     this.value().filter((p) => p.direction === 'input'),
@@ -42,6 +52,14 @@ export class PortsEditorComponent implements FormValueControl<DevicePort[]> {
     };
     this.autofocusPortId.set(newPort.id);
     this.value.update((ports) => [...ports, newPort]);
+
+    // Defer past the next render so the new row is laid out before scrolling.
+    setTimeout(() => {
+      this.addPortButton()?.nativeElement.scrollIntoView({
+        block: 'end',
+        behavior: 'smooth',
+      });
+    });
   }
 
   protected removePort(id: string): void {
