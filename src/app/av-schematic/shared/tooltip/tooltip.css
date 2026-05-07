@@ -1,0 +1,55 @@
+.app-tooltip {
+  position: fixed;
+  z-index: 1000;
+  background: var(--ngd-tooltip-bg-default);
+  color: var(--ngd-txt-tooltip-bw);
+  padding: var(--ngd-token-spacing-tooltip-v-pad) var(--ngd-token-spacing-tooltip-h-pad);
+  border-radius: var(--ngd-token-radius-tooltip);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 130%;
+  pointer-events: none;
+  white-space: nowrap;
+  animation: app-tooltip-fade-in 120ms ease forwards;
+}
+
+.app-tooltip__arrow {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: inherit;
+  transform: rotate(45deg);
+}
+
+.app-tooltip--top .app-tooltip__arrow {
+  bottom: -4px;
+  left: 50%;
+  margin-left: -4px;
+}
+
+.app-tooltip--bottom .app-tooltip__arrow {
+  top: -4px;
+  left: 50%;
+  margin-left: -4px;
+}
+
+.app-tooltip--left .app-tooltip__arrow {
+  right: -4px;
+  top: 50%;
+  margin-top: -4px;
+}
+
+.app-tooltip--right .app-tooltip__arrow {
+  left: -4px;
+  top: 50%;
+  margin-top: -4px;
+}
+
+@keyframes app-tooltip-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

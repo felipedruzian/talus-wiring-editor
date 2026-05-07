@@ -8,7 +8,7 @@
   justify-content: space-between;
   gap: var(--ngd-primitive-4rule-8);
   padding: var(--ngd-primitive-4rule-8) var(--ngd-primitive-4rule-12);
-  background: var(--ngd-ui-bg-tertiary-default);
+  background: var(--av-list-item-bg);
   border: 1px solid var(--ngd-ui-stroke-primary-default);
   border-radius: var(--ngd-token-radius-element-8);
   cursor: grab;
@@ -16,7 +16,7 @@
 
   &:hover {
     border-color: var(--av-color-accent);
-    background: color-mix(in srgb, var(--av-color-accent) 6%, var(--ngd-ui-bg-tertiary-default));
+    background: color-mix(in srgb, var(--av-color-accent) 6%, var(--av-list-item-bg));
   }
 
   &:active {
@@ -47,6 +47,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.is-match {
+  background: var(--ngd-colors-acc1-500);
+  border-radius: 2px;
 }
 
 .device-row__chip {

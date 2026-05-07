@@ -1,11 +1,18 @@
-<div class="sidebar-header">
-  <span [id]="titleId()" class="h7 sidebar-title">{{ title() }}</span>
+<div class="sidebar-header" [class.collapsed]="!isExpanded()">
+  <div class="header-text">
+    <span [id]="titleId()" class="h7 sidebar-title">{{ title() }}</span>
+    @if (subtitle()) {
+      <span class="p10 sidebar-subtitle">{{ subtitle() }}</span>
+    }
+  </div>
   <button
     class="sidebar-toggle"
     (click)="toggle.emit()"
     [attr.aria-expanded]="isExpanded()"
-    [attr.aria-label]="ariaLabel()"
+    [appTooltip]="ariaLabel()"
+    [tooltipPlacement]="tooltipPlacement()"
   >
+    <span class="visually-hidden">{{ ariaLabel() }}</span>
     <span class="icon" [class]="iconClass()"></span>
   </button>
 </div>

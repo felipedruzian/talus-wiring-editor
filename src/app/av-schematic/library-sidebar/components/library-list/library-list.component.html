@@ -1,11 +1,14 @@
+<app-library-search />
 <div class="list-scroll">
   @if (devices().length === 0) {
     <div class="empty-state p10">
       No devices in library yet. Use the button below to create one.
     </div>
+  } @else if (filteredDevices().length === 0) {
+    <div class="empty-state p10">No devices match "{{ searchQuery() }}".</div>
   } @else {
     <ul class="device-list">
-      @for (device of devices(); track device.libraryId) {
+      @for (device of filteredDevices(); track device.libraryId) {
         <li>
           <app-library-list-item [device]="device" />
         </li>

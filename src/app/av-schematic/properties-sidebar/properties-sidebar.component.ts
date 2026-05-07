@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { DeviceFormComponent } from '../shared/device-form/device-form.component';
 import {
   ON_DEVICE_FIELD_CHANGE,
@@ -55,6 +55,10 @@ export class PropertiesSidebarComponent {
   protected readonly state = this.sidebarService.sidebarState;
   protected readonly selectedNode = this.sidebarService.selectedNode;
   protected readonly selectedWireDetails = this.sidebarService.selectedWireDetails;
+
+  protected readonly headerSubtitle = computed(() =>
+    this.state() === 'single-node' ? (this.selectedNode()?.data.deviceId ?? '') : '',
+  );
 
   protected onHeaderToggle(): void {
     this.sidebarService.toggleSidebarVisibility();

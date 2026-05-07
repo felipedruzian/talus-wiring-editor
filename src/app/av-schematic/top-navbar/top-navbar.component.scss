@@ -41,3 +41,9 @@
   align-items: center;
   gap: var(--ngd-token-spacing-spacing-8);
 }
+
+.navbar-separator {
+  width: 1px;
+  align-self: stretch;
+  background: var(--ngd-ui-separator-primary-default);
+}

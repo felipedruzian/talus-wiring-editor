@@ -16,7 +16,6 @@ app-sidebar-placeholder {
 
 .sidebar-actions {
   padding: var(--ngd-primitive-4rule-16);
-  margin-top: auto;
   display: flex;
   flex-direction: column;
   gap: var(--ngd-primitive-4rule-8);
@@ -36,15 +35,15 @@ app-sidebar-placeholder {
 
 .remove-button {
   border: none;
-  background: var(--ngd-button-primary-bg-default);
+  background: var(--ngd-button-red-bg-default);
   color: var(--ngd-txt-primary-white);
 
   &:hover {
-    background: var(--ngd-button-primary-bg-hover);
+    background: var(--ngd-button-red-bg-hover);
   }
 
   &:active {
-    background: var(--ngd-button-primary-bg-active);
+    background: var(--ngd-button-red-bg-active);
   }
 }
 

@@ -1,8 +1,12 @@
 @mixin sidebar-shell {
   :host {
     pointer-events: none;
-    width: var(--sidebar-width);
+    width: auto;
     min-height: 0;
+  }
+
+  :host.expanded {
+    width: var(--sidebar-width);
   }
 
   .sidebar {

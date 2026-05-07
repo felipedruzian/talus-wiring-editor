@@ -1,105 +1,94 @@
-<div class="columns">
-  <section class="column">
-    <header class="column-header">
-      <span class="p11 column-title">Inputs ({{ inputs().length }})</span>
-      <button
-        type="button"
-        class="icon-button"
-        aria-label="Add input port"
-        (click)="addPort('input')"
-      >
-        <span class="icon icon-plus" aria-hidden="true"></span>
-      </button>
-    </header>
-    @for (port of inputs(); track port.id) {
-      <ng-container
-        *ngTemplateOutlet="portRow; context: { $implicit: port }"
-      ></ng-container>
-    }
-  </section>
-
-  <section class="column">
-    <header class="column-header">
-      <span class="p11 column-title">Outputs ({{ outputs().length }})</span>
-      <button
-        type="button"
-        class="icon-button"
-        aria-label="Add output port"
-        (click)="addPort('output')"
-      >
-        <span class="icon icon-plus" aria-hidden="true"></span>
-      </button>
-    </header>
-    @for (port of outputs(); track port.id) {
-      <ng-container
-        *ngTemplateOutlet="portRow; context: { $implicit: port }"
-      ></ng-container>
-    }
-  </section>
+<div class="tabs">
+  <button
+    type="button"
+    class="tab p10"
+    [class.is-active]="activeDirection() === 'input'"
+    [attr.aria-pressed]="activeDirection() === 'input'"
+    (click)="setActiveDirection('input')"
+  >
+    Inputs ({{ inputs().length }})
+  </button>
+  <button
+    type="button"
+    class="tab p10"
+    [class.is-active]="activeDirection() === 'output'"
+    [attr.aria-pressed]="activeDirection() === 'output'"
+    (click)="setActiveDirection('output')"
+  >
+    Outputs ({{ outputs().length }})
+  </button>
 </div>
 
-<ng-template #portRow let-port>
-  <div class="port-row">
-    <div class="reorder">
-      <button
-        type="button"
-        class="icon-button"
-        aria-label="Move up"
-        [disabled]="isFirstInDirection(port)"
-        (click)="moveUp(port.id)"
-      >
-        <span class="icon icon-caret-up" aria-hidden="true"></span>
-      </button>
-      <button
-        type="button"
-        class="icon-button"
-        aria-label="Move down"
-        [disabled]="isLastInDirection(port)"
-        (click)="moveDown(port.id)"
-      >
-        <span class="icon icon-caret-down" aria-hidden="true"></span>
-      </button>
-    </div>
+<div class="port-list">
+  @for (port of visiblePorts(); track port.id) {
+    <div class="port-row">
+      <div class="reorder">
+        <button
+          type="button"
+          class="icon-button"
+          aria-label="Move up"
+          [disabled]="isFirstInDirection(port)"
+          (click)="moveUp(port.id)"
+        >
+          <span class="icon icon-caret-up" aria-hidden="true"></span>
+        </button>
+        <button
+          type="button"
+          class="icon-button"
+          aria-label="Move down"
+          [disabled]="isLastInDirection(port)"
+          (click)="moveDown(port.id)"
+        >
+          <span class="icon icon-caret-down" aria-hidden="true"></span>
+        </button>
+      </div>
 
-    <div class="inputs">
       <input
         type="text"
-        class="port-input p10"
+        class="port-input port-label p10"
         placeholder="Label"
         [value]="port.label"
         [appAutofocus]="autofocusPortId() === port.id"
         (input)="updateLabel(port.id, $any($event.target).value)"
       />
-      <select
-        class="port-input p10"
-        (change)="updateConnectorType(port.id, $any($event.target).value)"
-      >
-        <option value="" [selected]="!port.connectorType">—</option>
-        @for (connector of connectorTypes; track connector) {
-          <option [value]="connector" [selected]="connector === port.connectorType">
-            {{ connector }}
-          </option>
-        }
-      </select>
-    </div>
+      <div class="connector-wrap">
+        <select
+          class="port-input port-connector p10"
+          (change)="updateConnectorType(port.id, $any($event.target).value)"
+        >
+          <option value="" [selected]="!port.connectorType">—</option>
+          @for (connector of connectorTypes; track connector) {
+            <option [value]="connector" [selected]="connector === port.connectorType">
+              {{ connector }}
+            </option>
+          }
+        </select>
+        <span class="connector-caret" aria-hidden="true"></span>
+      </div>
 
-    <div class="actions">
-      <button
-        type="button"
-        class="icon-button"
-        aria-label="Switch direction"
-        (click)="toggleDirection(port.id)"
-      >
-        <span class="icon icon-swap" aria-hidden="true"></span>
-      </button>
-      <button
-        type="button"
-        class="icon-button danger"
-        aria-label="Remove port"
-        (click)="removePort(port.id)"
-      >
-        <span class="icon icon-trash" aria-hidden="true"></span>
-      </button>
+      <div class="row-actions">
+        <button
+          type="button"
+          class="icon-action"
+          aria-label="Switch direction"
+          (click)="toggleDirection(port.id)"
+        >
+          <span class="icon icon-swap" aria-hidden="true"></span>
+        </button>
+        <button
+          type="button"
+          class="icon-action danger"
+          aria-label="Remove port"
+          (click)="removePort(port.id)"
+        >
+          <span class="icon icon-trash" aria-hidden="true"></span>
+        </button>
+      </div>
     </div>
-  </div>
-</ng-template>
+  }
+</div>
+
+<button #addPortButton type="button" class="add-port-button p10" (click)="addPort()">
+  <span class="icon icon-plus-circle" aria-hidden="true"></span>
+  Add new port
+</button>
