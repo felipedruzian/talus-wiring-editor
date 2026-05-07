@@ -14,11 +14,6 @@
     <div class="sidebar-content sidebar-enter">
       @if (state() === 'single-node' && selectedNode(); as node) {
         <app-device-form [entityId]="node.id" [nodeData]="node.data" />
-        <div class="sidebar-actions">
-          <button class="remove-button p10" type="button" (click)="onRemoveNode()">
-            Remove device
-          </button>
-        </div>
       } @else if (state() === 'single-edge' && selectedWireDetails(); as wire) {
         <app-wire-form
           [edgeId]="wire.edge.id"
@@ -26,16 +21,6 @@
           [source]="wire.source"
           [target]="wire.target"
         />
-        <div class="sidebar-actions">
-          @if (wire.edge.routingMode === 'manual') {
-            <button class="action-button p10" type="button" (click)="onResetWireRouting()">
-              Reset routing
-            </button>
-          }
-          <button class="remove-button p10" type="button" (click)="onRemoveWire()">
-            Remove wire
-          </button>
-        </div>
       } @else if (state() === 'empty') {
         <app-sidebar-placeholder
           title="No selection"
@@ -48,5 +33,23 @@
         />
       }
     </div>
+    @if (state() === 'single-node') {
+      <div class="sidebar-actions">
+        <button class="remove-button p10" type="button" (click)="onRemoveNode()">
+          Remove device
+        </button>
+      </div>
+    } @else if (state() === 'single-edge' && selectedWireDetails(); as wire) {
+      <div class="sidebar-actions">
+        @if (wire.edge.routingMode === 'manual') {
+          <button class="action-button p10" type="button" (click)="onResetWireRouting()">
+            Reset routing
+          </button>
+        }
+        <button class="remove-button p10" type="button" (click)="onRemoveWire()">
+          Remove wire
+        </button>
+      </div>
+    }
   }
 </aside>
