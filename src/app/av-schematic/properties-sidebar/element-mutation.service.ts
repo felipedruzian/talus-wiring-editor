@@ -1,5 +1,5 @@
 import { inject, Injectable } from '@angular/core';
-import { NgDiagramModelService } from 'ng-diagram';
+import { NgDiagramModelService, NgDiagramService } from 'ng-diagram';
 import { ModelApplyService } from '../diagram/model/model-apply.service';
 import { ModelChanges } from '../diagram/model/model-changes';
 import {
@@ -20,6 +20,7 @@ import {
 @Injectable()
 export class ElementMutationService {
   private readonly modelService = inject(NgDiagramModelService);
+  private readonly diagramService = inject(NgDiagramService);
   private readonly modelApplyService = inject(ModelApplyService);
 
   async removeNode(nodeId: string): Promise<void> {
@@ -38,8 +39,9 @@ export class ElementMutationService {
     const node = this.modelService.getNodeById<DeviceNodeData>(change.entityId);
     if (!node) return;
     const updatedData = formDataToDeviceData(change.formData, node.data);
+    const portsChanged = change.fields.includes('ports');
 
-    const orphanedEdgeIds = change.fields.includes('ports')
+    const orphanedEdgeIds = portsChanged
       ? this.findOrphanedEdgeIds(change.entityId, node.data.ports, updatedData.ports)
       : [];
 
@@ -47,9 +49,18 @@ export class ElementMutationService {
       const changes = new ModelChanges();
       changes.addNodeUpdates({ id: change.entityId, data: updatedData });
       changes.addDeleteEdgeIds(...orphanedEdgeIds);
-      void this.modelApplyService.apply(changes);
+      void this.modelApplyService.apply(changes).then(() => {
+        this.diagramService.invalidateMeasurements({
+          nodes: [{ nodeId: change.entityId }],
+        });
+      });
     } else {
       this.modelService.updateNodeData(change.entityId, updatedData);
+      if (portsChanged) {
+        this.diagramService.invalidateMeasurements({
+          nodes: [{ nodeId: change.entityId }],
+        });
+      }
     }
   }
 
