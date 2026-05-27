@@ -118,6 +118,11 @@
   &--output {
     justify-content: flex-end;
   }
+
+  &:hover .port-shape {
+    background: color-mix(in srgb, var(--av-color-accent) 20%, transparent);
+    border-color: var(--av-color-accent);
+  }
 }
 
 .port-shape {
@@ -127,6 +132,7 @@
   border: 1px solid var(--ngd-node-port-stroke-default);
   cursor: pointer;
   flex-shrink: 0;
+  transition: background-color 120ms ease, border-color 120ms ease;
 
   &--input {
     border-radius: 4px 0 0 4px;
@@ -136,6 +142,11 @@
   &--output {
     border-radius: 0 4px 4px 0;
     border-left: none;
+  }
+
+  &:hover {
+    background: color-mix(in srgb, var(--av-color-accent) 35%, transparent);
+    border-color: var(--av-color-accent);
   }
 }
 
