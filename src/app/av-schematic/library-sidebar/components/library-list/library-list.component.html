@@ -6,7 +6,7 @@
     </div>
   } @else if (filteredDevices().length === 0) {
     <div class="empty-state p10">No devices match "{{ searchQuery() }}".</div>
-  } @else {
+  } @else if (searchQuery().trim()) {
     <ul class="device-list">
       @for (device of filteredDevices(); track device.libraryId) {
         <li>
@@ -14,6 +14,31 @@
         </li>
       }
     </ul>
+  } @else {
+    @for (group of groupedDevices(); track group.key) {
+      <details
+        class="device-group"
+        [open]="isGroupOpen(group.key)"
+        (toggle)="onGroupToggle(group.key, $event)"
+      >
+        <summary
+          class="device-group__header"
+          [appTooltip]="groupTooltip(group)"
+          tooltipPlacement="right"
+        >
+          <span class="device-group__caret" aria-hidden="true"></span>
+          <span class="device-group__label">{{ group.label }}</span>
+          <span class="device-group__count">{{ group.devices.length }}</span>
+        </summary>
+        <ul class="device-list">
+          @for (device of group.devices; track device.libraryId) {
+            <li>
+              <app-library-list-item [device]="device" />
+            </li>
+          }
+        </ul>
+      </details>
+    }
   }
 </div>
 <div class="list-actions">
