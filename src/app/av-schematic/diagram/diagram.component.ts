@@ -71,7 +71,7 @@ export class DiagramComponent {
       temporaryEdgeDataBuilder: (edge: Edge): Edge<WireEdgeData> => ({
         ...edge,
         type: EdgeTemplateType.WireEdge,
-        routing: 'polyline',
+        routing: 'orthogonal',
         sourceArrowhead: undefined,
         targetArrowhead: undefined,
         data: { type: 'wire', wireId: '' },
