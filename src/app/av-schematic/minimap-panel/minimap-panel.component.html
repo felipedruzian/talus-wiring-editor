@@ -8,14 +8,29 @@
       [disabled]="!canZoomOut()"
       (click)="zoomOut()"
       aria-label="Zoom out"
+      appTooltip="Zoom out"
+      tooltipPlacement="top"
     >
       <span class="icon icon-zoom-out"></span>
     </button>
     <span class="zoom-level">{{ zoomPercent() }}</span>
-    <button class="action-button" [disabled]="!canZoomIn()" (click)="zoomIn()" aria-label="Zoom in">
+    <button
+      class="action-button"
+      [disabled]="!canZoomIn()"
+      (click)="zoomIn()"
+      aria-label="Zoom in"
+      appTooltip="Zoom in"
+      tooltipPlacement="top"
+    >
       <span class="icon icon-zoom-in"></span>
     </button>
-    <button class="action-button" (click)="toggleExpanded()" aria-label="Toggle minimap">
+    <button
+      class="action-button"
+      (click)="toggleExpanded()"
+      aria-label="Toggle minimap"
+      appTooltip="Toggle minimap"
+      tooltipPlacement="top"
+    >
       <span class="icon icon-map"></span>
     </button>
   </div>

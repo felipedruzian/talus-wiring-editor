@@ -16,13 +16,14 @@ import {
   type DeviceFieldChange,
 } from '../../../shared/device-form/device-form.mappers';
 import { DeviceFormService } from '../../../shared/device-form/device-form.service';
+import { TooltipDirective } from '../../../shared/tooltip/tooltip.directive';
 import { LibraryDraftService } from '../../library-draft.service';
 import { LibraryService } from '../../library.service';
 import { createBlankTemplate } from '../../seed-library';
 
 @Component({
   selector: 'app-library-detail',
-  imports: [DeviceFormComponent],
+  imports: [DeviceFormComponent, TooltipDirective],
   templateUrl: './library-detail.component.html',
   styleUrl: './library-detail.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

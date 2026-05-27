@@ -12,10 +12,11 @@ import {
   NgDiagramViewportService,
 } from 'ng-diagram';
 import { AV_SCHEMATIC_CONFIG } from '../av-schematic.config';
+import { TooltipDirective } from '../shared/tooltip/tooltip.directive';
 
 @Component({
   selector: 'app-minimap-panel',
-  imports: [NgDiagramMinimapComponent],
+  imports: [NgDiagramMinimapComponent, TooltipDirective],
   templateUrl: './minimap-panel.component.html',
   styleUrl: './minimap-panel.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

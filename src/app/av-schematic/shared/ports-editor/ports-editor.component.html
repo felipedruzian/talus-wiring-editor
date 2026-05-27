@@ -27,6 +27,7 @@
           type="button"
           class="icon-button"
           aria-label="Move up"
+          appTooltip="Move port up"
           [disabled]="isFirstInDirection(port)"
           (click)="moveUp(port.id)"
         >
@@ -36,6 +37,7 @@
           type="button"
           class="icon-button"
           aria-label="Move down"
+          appTooltip="Move port down"
           [disabled]="isLastInDirection(port)"
           (click)="moveDown(port.id)"
         >
@@ -71,6 +73,7 @@
           type="button"
           class="icon-action"
           aria-label="Switch direction"
+          appTooltip="Switch between input and output"
           (click)="toggleDirection(port.id)"
         >
           <span class="icon icon-swap" aria-hidden="true"></span>
@@ -79,6 +82,7 @@
           type="button"
           class="icon-action danger"
           aria-label="Remove port"
+          appTooltip="Remove port"
           (click)="removePort(port.id)"
         >
           <span class="icon icon-trash" aria-hidden="true"></span>
