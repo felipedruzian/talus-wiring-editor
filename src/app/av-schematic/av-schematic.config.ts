@@ -5,12 +5,20 @@ export interface AvSchematicConfig {
     zoomToFitPadding: number;
     zoomStep: number;
   };
+  snapping: {
+    enabled: boolean;
+    gridSize: number;
+  };
 }
 
 export const AV_SCHEMATIC_DEFAULTS: AvSchematicConfig = {
   viewport: {
     zoomToFitPadding: 20,
     zoomStep: 0.1,
+  },
+  snapping: {
+    enabled: true,
+    gridSize: 20,
   },
 };
 
@@ -35,5 +43,6 @@ function mergeConfig(
 ): AvSchematicConfig {
   return {
     viewport: { ...defaults.viewport, ...overrides.viewport },
+    snapping: { ...defaults.snapping, ...overrides.snapping },
   };
 }

@@ -85,6 +85,13 @@ export class DiagramComponent {
         data: { type: 'wire', wireId: generateWireId() },
       }),
     },
+    snapping: {
+      defaultDragSnap: {
+        width: this.avConfig.snapping.gridSize,
+        height: this.avConfig.snapping.gridSize,
+      },
+      shouldSnapDragForNode: () => this.avConfig.snapping.enabled,
+    },
     watermarkPosition: 'bottom-left',
     zIndex: {
       elevateOnSelection: false,

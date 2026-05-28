@@ -102,11 +102,12 @@ import { provideAvSchematicConfig } from './av-schematic.config';
 providers: [
   provideAvSchematicConfig({
     viewport: { zoomToFitPadding: 40, zoomStep: 0.2 },
+    snapping: { gridSize: 40 },          // or { enabled: false } to turn snap off
   }),
 ]
 ```
 
-Unspecified values keep their defaults. See `AvSchematicConfig` interface for all options.
+`snapping.enabled` (default `true`) toggles grid snap for both node drag and manual edge bends — the bend snap rides on the same opt-in, see [`docs/edge-reshaping.md`](docs/edge-reshaping.md). `gridSize` (default `20`) sets the step in diagram units. Unspecified values keep their defaults. See `AvSchematicConfig` interface for all options.
 
 ### Data Model
 
