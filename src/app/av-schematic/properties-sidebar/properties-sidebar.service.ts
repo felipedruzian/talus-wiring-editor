@@ -52,15 +52,11 @@ export class PropertiesSidebarService {
   readonly selectedWireDetails = computed<SelectedWireDetails | null>(() => {
     const edge = this.selectedEdge();
     if (!edge) return null;
-    // `resolveEndpoint` reads nodes via `getNodeById`, which is NOT a signal —
-    // so without an explicit `nodes()` read here, this computed wouldn't
-    // re-run when a connected device's name or ports change. The void
-    // expression registers the dependency without using the value.
-    void this.modelService.nodes();
+    const nodes = this.modelService.nodes();
     return {
       edge,
-      source: this.resolveEndpoint(edge.source, edge.sourcePort),
-      target: this.resolveEndpoint(edge.target, edge.targetPort),
+      source: this.resolveEndpoint(nodes, edge.source, edge.sourcePort),
+      target: this.resolveEndpoint(nodes, edge.target, edge.targetPort),
     };
   });
 
@@ -73,11 +69,12 @@ export class PropertiesSidebarService {
   }
 
   private resolveEndpoint(
+    nodes: readonly Node[],
     nodeId: string | undefined,
     portId: string | undefined,
   ): WireEndpointInfo | null {
     if (!nodeId) return null;
-    const node = this.modelService.getNodeById<DeviceNodeData>(nodeId);
+    const node = nodes.find((n) => n.id === nodeId);
     if (!node || !isDeviceNode(node)) return null;
     const port = portId ? node.data.ports.find((p) => p.id === portId) : undefined;
     return {
