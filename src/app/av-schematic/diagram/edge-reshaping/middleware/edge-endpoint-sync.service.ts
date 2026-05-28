@@ -33,8 +33,7 @@ const samePath = (a: readonly Point[], b: readonly Point[]): boolean => {
 
 /**
  * Watches manual-routed edges and reflows their endpoints whenever a
- * connected node moves. Replaces the per-edge `effect()` that used to live
- * in WireEdgeComponent.
+ * connected node moves.
  *
  * Mid-drag the path is reflowed but NOT simplified — collinear merges and
  * endpoint nudges run only once when the drag ends, mirroring the bend-drag
