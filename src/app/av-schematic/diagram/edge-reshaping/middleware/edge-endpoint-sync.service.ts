@@ -180,3 +180,12 @@ export class EdgeEndpointSyncService implements OnDestroy {
     }
   }
 }
+
+/**
+ * Eagerly constructs the service so its `effect()`s start watching the model.
+ * Call from a host component's injection context (constructor or field
+ * initializer) after providing `EdgeEndpointSyncService`.
+ */
+export const bootstrapEdgeEndpointSync = (): void => {
+  inject(EdgeEndpointSyncService);
+};
