@@ -122,8 +122,37 @@ export class EdgeEndpointSyncService implements OnDestroy {
 
     const last = this.lastKnownPorts.get(edge.id);
     if (last && samePoint(sourcePos, last.source) && samePoint(targetPos, last.target)) {
-      return;
+      return; // no-op tick, nothing changed — skip log entirely
     }
+
+    const sourceMeasured = sourceNode.measuredPorts?.find((p) => p.id === edge.sourcePort);
+    const targetMeasured = targetNode.measuredPorts?.find((p) => p.id === edge.targetPort);
+    console.warn('[sync] processEdge (change detected)', {
+      edgeId: edge.id,
+      dragging: this.dragging,
+      simplify,
+      firstTimeSeen: !last,
+      sourcePortChanged: last ? !samePoint(sourcePos, last.source) : 'n/a',
+      targetPortChanged: last ? !samePoint(targetPos, last.target) : 'n/a',
+      sourcePort: edge.sourcePort,
+      targetPort: edge.targetPort,
+      sourceMeasured: sourceMeasured
+        ? { side: sourceMeasured.side, position: sourceMeasured.position, size: sourceMeasured.size }
+        : null,
+      targetMeasured: targetMeasured
+        ? { side: targetMeasured.side, position: targetMeasured.position, size: targetMeasured.size }
+        : null,
+      sourcePos,
+      targetPos,
+      lastSource: last?.source,
+      lastTarget: last?.target,
+      currentFirstPoint: currentPoints[0],
+      currentLastPoint: currentPoints[currentPoints.length - 1],
+      sourceNodePosition: sourceNode.position,
+      sourceNodeSize: sourceNode.size,
+      targetNodePosition: targetNode.position,
+      targetNodeSize: targetNode.size,
+    });
 
     this.lastKnownPorts.set(edge.id, { source: sourcePos, target: targetPos });
     if (!last) return;
@@ -149,6 +178,14 @@ export class EdgeEndpointSyncService implements OnDestroy {
 
     if (samePath(finalPoints, currentPoints)) return;
 
+    console.warn('[sync] dispatch reshape', {
+      edgeId: edge.id,
+      sourceOrientation,
+      targetOrientation,
+      newFirstPoint: finalPoints[0],
+      newLastPoint: finalPoints[finalPoints.length - 1],
+      pointsCount: finalPoints.length,
+    });
     this.dispatcher.dispatch({
       type: 'reshapeEdge',
       edgeId: edge.id,
