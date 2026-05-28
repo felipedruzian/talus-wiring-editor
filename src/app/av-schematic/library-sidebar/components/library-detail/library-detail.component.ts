@@ -35,7 +35,9 @@ import { createBlankTemplate } from '../../seed-library';
       provide: ON_DEVICE_FIELD_CHANGE,
       useFactory: () => {
         const draft = inject(LibraryDraftService);
-        return (change: DeviceFieldChange) => draft.applyChange(change);
+        return (change: DeviceFieldChange) => {
+          draft.applyChange(change);
+        };
       },
     },
   ],

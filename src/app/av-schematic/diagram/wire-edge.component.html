@@ -1,8 +1,4 @@
-<ng-diagram-base-edge
-  [edge]="edge()"
-  [stroke]="strokeColor()"
-  [strokeWidth]="strokeWidth()"
->
+<ng-diagram-base-edge [edge]="edge()" [stroke]="strokeColor()" [strokeWidth]="strokeWidth()">
   <ng-diagram-base-edge-label id="wire-id-source" [positionOnEdge]="'30px'">
     <span class="wire-label">{{ edge().data.wireId }}</span>
   </ng-diagram-base-edge-label>
@@ -15,7 +11,7 @@
       <span
         class="bend-handle bend-handle--vertex"
         [style.transform]="handle.transform"
-        edgeReshape
+        appEdgeReshape
         (reshapeStart)="onVertexStart($event, handle.index)"
         (reshapeContinue)="onReshapeContinue($event)"
         (reshapeEnd)="onReshapeEnd($event)"
@@ -29,7 +25,7 @@
       <span
         class="bend-handle bend-handle--ghost"
         [style.transform]="ghost.transform"
-        edgeReshape
+        appEdgeReshape
         (reshapeStart)="onGhostStart($event, ghost.segmentIndex)"
         (reshapeContinue)="onReshapeContinue($event)"
         (reshapeEnd)="onReshapeEnd($event)"

@@ -1,4 +1,6 @@
 @let open = isOpen();
+<!-- Wrapper listens for Escape/arrow keys; the trigger button + panel items are the real interactive elements. -->
+<!-- eslint-disable-next-line @angular-eslint/template/interactive-supports-focus -->
 <div class="export-menu" (keydown)="onKeydown($event)">
   <button
     type="button"

@@ -54,13 +54,17 @@ export class EdgeEndpointSyncService implements OnDestroy {
   private readonly dispatcher = inject(EdgeReshapeCommandDispatcher);
 
   private readonly lastKnownPorts = new Map<string, PortSnapshot>();
-  private readonly unsubscribers: Array<() => void> = [];
+  private readonly unsubscribers: (() => void)[] = [];
   private dragging = false;
   private listenersAttached = false;
 
   constructor() {
-    effect(() => this.attachDragListenersOnce());
-    effect(() => this.syncEdgeEndpoints());
+    effect(() => {
+      this.attachDragListenersOnce();
+    });
+    effect(() => {
+      this.syncEdgeEndpoints();
+    });
   }
 
   private attachDragListenersOnce(): void {

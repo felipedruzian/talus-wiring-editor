@@ -50,9 +50,7 @@ export class LibraryListComponent {
   }
 
   protected groupTooltip(group: DeviceGroup): string {
-    return this.isGroupOpen(group.key)
-      ? `Collapse ${group.label}`
-      : `Expand ${group.label}`;
+    return this.isGroupOpen(group.key) ? `Collapse ${group.label}` : `Expand ${group.label}`;
   }
 
   protected onAddDevice(): void {
@@ -63,6 +61,8 @@ export class LibraryListComponent {
 const groupDevicesByCategory = (devices: readonly LibraryDevice[]): DeviceGroup[] => {
   const buckets = new Map<string, LibraryDevice[]>();
   for (const device of devices) {
+    // `||` is intentional: an empty-after-trim category should also fall to uncategorized.
+    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
     const key = device.template.category?.trim() || UNCATEGORIZED_KEY;
     const list = buckets.get(key) ?? [];
     list.push(device);

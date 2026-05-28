@@ -1,9 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import {
-  NgDiagramModelService,
-  NgDiagramViewportService,
-  type Point,
-} from 'ng-diagram';
+import { NgDiagramModelService, NgDiagramViewportService, type Point } from 'ng-diagram';
 import { EdgeReshapeCommandDispatcher } from '../commands/dispatcher';
 import {
   getDefaultMinInteriorBends,
@@ -125,11 +121,7 @@ export class EdgeReshapeEventHandler {
    * "remove the segment after the clicked bend." Ghost right-click invokes
    * it with the ghost's own segment index.
    */
-  onRemoveSegmentRequest(
-    edgeId: string,
-    segmentIndex: number,
-    points: readonly Point[],
-  ): void {
+  onRemoveSegmentRequest(edgeId: string, segmentIndex: number, points: readonly Point[]): void {
     if (segmentIndex < 1 || segmentIndex > points.length - 3) return;
 
     const orientations = this.orientationsFor(edgeId);

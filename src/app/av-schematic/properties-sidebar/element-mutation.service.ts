@@ -15,10 +15,7 @@ import {
   formDataToDeviceData,
   type DeviceFieldChange,
 } from '../shared/device-form/device-form.mappers';
-import {
-  formDataToWireData,
-  type WireFieldChange,
-} from './components/wire-form/wire-form.mappers';
+import { formDataToWireData, type WireFieldChange } from './components/wire-form/wire-form.mappers';
 
 const ORTHOGONAL_STUB_PX = 80;
 
@@ -97,6 +94,8 @@ export class ElementMutationService {
       .then(async () => {
         this.diagramService.invalidateMeasurements({ nodes: [{ nodeId: change.entityId }] });
         if (affectedEdgeIds.length === 0) return;
+        // Empty transaction body is intentional — purpose is the waitForMeasurements settle.
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
         await this.diagramService.transaction(() => {}, { waitForMeasurements: true });
         this.reflowFlippedPortEdges(
           change.entityId,
@@ -113,11 +112,11 @@ export class ElementMutationService {
     edgeIds: readonly string[],
     portSidesFromForm: ReadonlyMap<string, 'left' | 'right'>,
   ): void {
-    const updates: Array<{
+    const updates: {
       id: string;
       points: Point[] | undefined;
       routingMode: 'manual' | 'auto';
-    }> = [];
+    }[] = [];
     for (const edgeId of edgeIds) {
       const edge = this.modelService.getEdgeById(edgeId);
       if (!edge) continue;
@@ -130,7 +129,7 @@ export class ElementMutationService {
       }
     }
     if (updates.length === 0) return;
-    void this.diagramService.transaction(() => {
+    this.diagramService.transaction(() => {
       for (const update of updates) {
         this.modelService.updateEdge(update.id, {
           points: update.points,
@@ -149,10 +148,8 @@ export class ElementMutationService {
     const node = this.modelService.getNodeById(nodeId);
     if (!node) return null;
 
-    const sourceFlipped =
-      edge.source === nodeId && flippedPortIds.has(edge.sourcePort ?? '');
-    const targetFlipped =
-      edge.target === nodeId && flippedPortIds.has(edge.targetPort ?? '');
+    const sourceFlipped = edge.source === nodeId && flippedPortIds.has(edge.sourcePort ?? '');
+    const targetFlipped = edge.target === nodeId && flippedPortIds.has(edge.targetPort ?? '');
     if (!sourceFlipped && !targetFlipped) return null;
 
     const sourceNode = edge.source === nodeId ? node : this.modelService.getNodeById(edge.source);
@@ -175,12 +172,12 @@ export class ElementMutationService {
     const tgtPos = computePortAnchor(targetNode, edge.targetPort, tgtSide);
     if (!srcPos || !tgtPos) return 'reset';
 
-    const hasManualPath =
-      edge.routingMode === 'manual' && edge.points && edge.points.length >= 3;
+    const manualPoints =
+      edge.routingMode === 'manual' && edge.points && edge.points.length >= 3 ? edge.points : null;
 
-    if (hasManualPath) {
+    if (manualPoints) {
       const nodeCenterX = node.position.x + (node.size?.width ?? 0) / 2;
-      let next: Point[] = edge.points!.slice();
+      let next: Point[] = manualPoints.slice();
       if (sourceFlipped) next = flipEndpointAcrossNode(next, 'source', srcPos, nodeCenterX);
       if (targetFlipped) next = flipEndpointAcrossNode(next, 'target', tgtPos, nodeCenterX);
       return next;
@@ -253,7 +250,7 @@ const computePortAnchor = (
 ): Point | null => {
   if (!portId) return null;
   const port = node.measuredPorts?.find((p) => p.id === portId);
-  if (!port || !port.position || !port.size) return null;
+  if (!port?.position || !port.size) return null;
   const x =
     side === 'left'
       ? port.position.x + node.position.x

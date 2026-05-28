@@ -2,13 +2,7 @@ import { EdgeTemplateType, NodeTemplateType } from '../../diagram/model/interfac
 import { DxfLayer } from '../dxf/dxf-layer';
 import { DxfTextStyle } from '../dxf/dxf-text-style';
 import type { DxfExportConfig } from '../dxf/dxf-types';
-import {
-  ACI,
-  DIAGRAM_PADDING,
-  DXF_SCALE_MM_PER_PX,
-  LAYERS,
-  TEXT_STYLE,
-} from './av-dxf-constants';
+import { ACI, DIAGRAM_PADDING, DXF_SCALE_MM_PER_PX, LAYERS, TEXT_STYLE } from './av-dxf-constants';
 import { renderDeviceNode } from './device-node-renderer';
 import { renderWireEdge } from './wire-edge-renderer';
 
@@ -23,14 +17,8 @@ import { renderWireEdge } from './wire-edge-renderer';
 export const buildAvDxfConfig = (): DxfExportConfig => ({
   scaleMmPerPx: DXF_SCALE_MM_PER_PX,
   paddingPx: DIAGRAM_PADDING,
-  layers: [
-    new DxfLayer(LAYERS.DEVICES, ACI.WHITE),
-    new DxfLayer(LAYERS.WIRES, ACI.WHITE),
-  ],
-  textStyles: [
-    new DxfTextStyle(TEXT_STYLE.STANDARD),
-    new DxfTextStyle(TEXT_STYLE.BOLD, true),
-  ],
+  layers: [new DxfLayer(LAYERS.DEVICES, ACI.WHITE), new DxfLayer(LAYERS.WIRES, ACI.WHITE)],
+  textStyles: [new DxfTextStyle(TEXT_STYLE.STANDARD), new DxfTextStyle(TEXT_STYLE.BOLD, true)],
   nodeRenderers: {
     [NodeTemplateType.DeviceNode]: renderDeviceNode,
   },

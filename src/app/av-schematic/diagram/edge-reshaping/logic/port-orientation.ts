@@ -1,9 +1,8 @@
 import { type Edge, type Node } from 'ng-diagram';
 import { type Orientation } from './path-types';
 
-export const portSideToOrientation = (
-  side: 'top' | 'right' | 'bottom' | 'left',
-): Orientation => (side === 'left' || side === 'right' ? 'horizontal' : 'vertical');
+export const portSideToOrientation = (side: 'top' | 'right' | 'bottom' | 'left'): Orientation =>
+  side === 'left' || side === 'right' ? 'horizontal' : 'vertical';
 
 /**
  * Reads the orientation of a single port on a resolved node. Falls back to

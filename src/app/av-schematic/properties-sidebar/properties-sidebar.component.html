@@ -7,7 +7,7 @@
     tooltipPlacement="left"
     [subtitle]="headerSubtitle()"
     [isExpanded]="isExpanded()"
-    (toggle)="onHeaderToggle()"
+    (panelToggle)="onHeaderToggle()"
   />
   @if (isExpanded()) {
     <div class="sidebar-separator"></div>

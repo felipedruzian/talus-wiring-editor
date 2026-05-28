@@ -10,7 +10,10 @@
     <div class="device-row__main">
       @if (device().template.manufacturer) {
         <span class="device-row__manufacturer p10">
-          @for (seg of device().template.manufacturer | highlightSegments: searchQuery(); track $index) {
+          @for (
+            seg of device().template.manufacturer | highlightSegments: searchQuery();
+            track $index
+          ) {
             <span [class.is-match]="seg.match">{{ seg.text }}</span>
           }
         </span>

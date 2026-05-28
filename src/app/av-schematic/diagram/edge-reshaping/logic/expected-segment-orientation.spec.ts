@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  expectedSegmentOrientation,
-  oppositeOrientation,
-} from './expected-segment-orientation';
+import { expectedSegmentOrientation, oppositeOrientation } from './expected-segment-orientation';
 
 describe('oppositeOrientation', () => {
   it('flips horizontal to vertical', () => {

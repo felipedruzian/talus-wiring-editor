@@ -17,5 +17,5 @@ export class SidebarHeaderComponent {
   readonly ariaLabel = input<string>('Toggle panel');
   readonly tooltipPlacement = input<TooltipPlacement>('bottom');
   readonly isExpanded = input.required<boolean>();
-  readonly toggle = output<void>();
+  readonly panelToggle = output();
 }

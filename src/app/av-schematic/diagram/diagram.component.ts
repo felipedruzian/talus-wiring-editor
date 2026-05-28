@@ -1,10 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  DestroyRef,
-  ElementRef,
-  inject,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, inject } from '@angular/core';
 import {
   DiagramInitEvent,
   initializeModel,
@@ -51,12 +45,14 @@ export class DiagramComponent {
   private readonly sidebarService = inject(PropertiesSidebarService);
   private readonly nodeVisibilityConfigService = inject(NodeVisibilityConfigService);
   private readonly modelService = inject(NgDiagramModelService);
-  private readonly elementRef = inject(ElementRef<HTMLElement>);
+  private readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly exportService = inject(DiagramExportService);
 
   constructor() {
     this.exportService.setDiagramElement(this.elementRef);
-    inject(DestroyRef).onDestroy(() => this.exportService.clearDiagramElement());
+    inject(DestroyRef).onDestroy(() => {
+      this.exportService.clearDiagramElement();
+    });
   }
 
   config = {
@@ -102,9 +98,7 @@ export class DiagramComponent {
     [NodeTemplateType.DeviceNode, DeviceNodeComponent],
   ]);
 
-  edgeTemplateMap = new NgDiagramEdgeTemplateMap([
-    [EdgeTemplateType.WireEdge, WireEdgeComponent],
-  ]);
+  edgeTemplateMap = new NgDiagramEdgeTemplateMap([[EdgeTemplateType.WireEdge, WireEdgeComponent]]);
 
   model = initializeModel(diagramModel);
 

@@ -79,9 +79,9 @@ export class DebouncedFormController<TFormData extends object> {
     for (const fieldKey of this.config.debouncedFields) {
       // Same indexed-access caveat as in the constructor — `fieldKey` is a
       // real field on the model by the caller's typing.
-      (this.fieldTree as Record<keyof TFormData, () => { markAsTouched(): void }>)[
-        fieldKey
-      ]().markAsTouched();
+      (this.fieldTree as Record<keyof TFormData, () => { markAsTouched(): void }>)
+        [fieldKey]()
+        .markAsTouched();
     }
   }
 }

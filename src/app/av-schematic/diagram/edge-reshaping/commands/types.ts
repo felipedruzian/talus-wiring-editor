@@ -4,7 +4,4 @@ import {
   type ReshapeEdgeStopCommand,
 } from './reshape-edge-lifecycle';
 
-export type ReshapeCommand =
-  | ReshapeEdgeCommand
-  | ReshapeEdgeStartCommand
-  | ReshapeEdgeStopCommand;
+export type ReshapeCommand = ReshapeEdgeCommand | ReshapeEdgeStartCommand | ReshapeEdgeStopCommand;

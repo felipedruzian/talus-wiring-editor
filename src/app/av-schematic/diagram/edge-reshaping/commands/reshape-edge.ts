@@ -39,7 +39,7 @@ const gridForEdge = (
   if (!snapping?.shouldSnapDragForNode?.(sourceNode)) return undefined;
 
   const snap = snapping.computeSnapForNodeDrag?.(sourceNode) ?? snapping.defaultDragSnap;
-  if (!snap || !snap.width || !snap.height) return undefined;
+  if (!snap?.width || !snap.height) return undefined;
   return { x: snap.width, y: snap.height };
 };
 

@@ -5,8 +5,7 @@ const DURATION_MS = 300;
 
 const easeOutCubic = (progress: number): number => 1 - Math.pow(1 - progress, 3);
 
-const lerp = (from: number, to: number, progress: number): number =>
-  from + (to - from) * progress;
+const lerp = (from: number, to: number, progress: number): number => from + (to - from) * progress;
 
 /**
  * Pans the viewport from its current position to a target {x, y} over a fixed
@@ -19,7 +18,9 @@ export class ViewportAnimationService {
   private rafId: number | null = null;
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => this.cancelPendingFrame());
+    inject(DestroyRef).onDestroy(() => {
+      this.cancelPendingFrame();
+    });
   }
 
   animateTo(target: Point): void {

@@ -8,8 +8,10 @@ import { NodeVisibilityConfigService } from './node-visibility-config.service';
 export class ViewportBoundsDirective {
   constructor() {
     const configService = inject(NodeVisibilityConfigService);
-    const el = inject(ElementRef<HTMLElement>).nativeElement;
+    const el = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
     configService.registerViewport(() => el.getBoundingClientRect());
-    inject(DestroyRef).onDestroy(() => configService.unregisterViewport());
+    inject(DestroyRef).onDestroy(() => {
+      configService.unregisterViewport();
+    });
   }
 }

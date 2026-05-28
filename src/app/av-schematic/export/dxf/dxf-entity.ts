@@ -124,4 +124,6 @@ export class DxfText extends DxfEntity {
  * TEXT renderer.
  */
 const sanitizeDxfText = (text: string): string =>
+  // Strip ASCII control characters that would break DXF group-code line parsing.
+  // eslint-disable-next-line no-control-regex
   text.replace(/%/g, '%%%').replace(/[\x00-\x1f]/g, ' ');

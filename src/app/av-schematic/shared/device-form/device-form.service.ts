@@ -23,8 +23,9 @@ export class DeviceFormService {
     empty: EMPTY_DEVICE_FORM,
     debouncedFields: this.visibleFields,
     trackedFields: this.visibleFields,
-    onChange: (entityId, fields, formData) =>
-      this.onFieldChange({ entityId, fields, formData }),
+    onChange: (entityId, fields, formData) => {
+      this.onFieldChange({ entityId, fields, formData });
+    },
     injector: inject(Injector),
   });
 

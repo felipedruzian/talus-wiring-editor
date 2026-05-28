@@ -15,7 +15,11 @@ describe('portSideToOrientation', () => {
 });
 
 describe('getEdgePortOrientations', () => {
-  const makeNode = (id: string, portId: string, side: 'left' | 'right' | 'top' | 'bottom'): Node => ({
+  const makeNode = (
+    id: string,
+    portId: string,
+    side: 'left' | 'right' | 'top' | 'bottom',
+  ): Node => ({
     id,
     position: { x: 0, y: 0 },
     data: {},

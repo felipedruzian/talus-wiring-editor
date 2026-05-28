@@ -58,11 +58,11 @@ export class AvSchematicPageComponent {
 
     // Demo subscriber: hook your toolbar / telemetry / undo stack here.
     const reshapeEvents = inject(EdgeReshapeLifecycleEmitter);
-    reshapeEvents.edgeReshapeStarted
-      .pipe(takeUntilDestroyed())
-      .subscribe(({ edgeId }) => console.log('[edge-reshape] started', edgeId));
-    reshapeEvents.edgeReshapeEnded
-      .pipe(takeUntilDestroyed())
-      .subscribe(({ edgeId }) => console.log('[edge-reshape] ended', edgeId));
+    reshapeEvents.edgeReshapeStarted.pipe(takeUntilDestroyed()).subscribe(({ edgeId }) => {
+      console.log('[edge-reshape] started', edgeId);
+    });
+    reshapeEvents.edgeReshapeEnded.pipe(takeUntilDestroyed()).subscribe(({ edgeId }) => {
+      console.log('[edge-reshape] ended', edgeId);
+    });
   }
 }

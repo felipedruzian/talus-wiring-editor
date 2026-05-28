@@ -38,7 +38,7 @@ export class MinimapPanelComponent {
   protected readonly canZoomIn = this.viewportService.canZoomIn;
   protected readonly canZoomOut = this.viewportService.canZoomOut;
   protected readonly zoomPercent = computed(
-    () => Math.round(this.viewportService.scale() * 100) + '%',
+    () => `${Math.round(this.viewportService.scale() * 100)}%`,
   );
 
   protected readonly deferNodeUpdates = computed(() => this.modelService.nodes().length >= 200);

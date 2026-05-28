@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  deletePoint,
-  insertPoint,
-  moveBend,
-  reflowEndpoint,
-  segmentMidpoint,
-} from './index';
+import { deletePoint, insertPoint, moveBend, reflowEndpoint, segmentMidpoint } from './index';
 
 describe('insertPoint', () => {
   it('inserts at the given index without mutating the input', () => {

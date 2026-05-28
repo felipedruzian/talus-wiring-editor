@@ -1,10 +1,6 @@
 import { inject, Injectable, Injector } from '@angular/core';
 import { DebouncedFormController } from '../../../shared/forms/debounced-form-controller';
-import {
-  EMPTY_WIRE_FORM,
-  ON_WIRE_FIELD_CHANGE,
-  type WireFormData,
-} from './wire-form.mappers';
+import { EMPTY_WIRE_FORM, ON_WIRE_FIELD_CHANGE, type WireFormData } from './wire-form.mappers';
 
 const TRACKED_FIELDS = Object.keys(EMPTY_WIRE_FORM) as (keyof WireFormData)[];
 const DEBOUNCED_FIELDS: readonly (keyof WireFormData)[] = ['wireId'];
@@ -18,8 +14,9 @@ export class WireFormService {
     empty: EMPTY_WIRE_FORM,
     debouncedFields: DEBOUNCED_FIELDS,
     trackedFields: TRACKED_FIELDS,
-    onChange: (entityId, fields, formData) =>
-      this.onFieldChange({ edgeId: entityId, fields, formData }),
+    onChange: (entityId, fields, formData) => {
+      this.onFieldChange({ edgeId: entityId, fields, formData });
+    },
     injector: inject(Injector),
   });
 

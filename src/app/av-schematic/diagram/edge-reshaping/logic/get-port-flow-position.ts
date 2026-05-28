@@ -22,10 +22,7 @@ const portCenter = (port: Port, node: Node): Point => {
     : { x: x + width, y: y + height / 2 };
 };
 
-export const getPortFlowPosition = (
-  node: Node,
-  portId: string | undefined,
-): Point | null => {
+export const getPortFlowPosition = (node: Node, portId: string | undefined): Point | null => {
   if (!portId) return null;
   const port = node.measuredPorts?.find((p) => p.id === portId);
   if (!port) return null;

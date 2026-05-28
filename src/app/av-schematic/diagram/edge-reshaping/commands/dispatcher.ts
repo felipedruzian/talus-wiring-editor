@@ -19,12 +19,18 @@ export class EdgeReshapeCommandDispatcher {
 
   dispatch(command: ReshapeCommand): void {
     switch (command.type) {
-      case 'reshapeEdgeStart':
-        return this.lifecycle.emitStarted(command.edgeId);
-      case 'reshapeEdgeStop':
-        return this.lifecycle.emitEnded(command.edgeId);
-      case 'reshapeEdge':
-        return reshapeEdge(this.modelService, this.diagramService, command);
+      case 'reshapeEdgeStart': {
+        this.lifecycle.emitStarted(command.edgeId);
+        return;
+      }
+      case 'reshapeEdgeStop': {
+        this.lifecycle.emitEnded(command.edgeId);
+        return;
+      }
+      case 'reshapeEdge': {
+        reshapeEdge(this.modelService, this.diagramService, command);
+        return;
+      }
     }
   }
 }

@@ -36,11 +36,7 @@ const handleTransform = (x: number, y: number, originX: number, originY: number)
   `translate(${x - originX}px, ${y - originY}px) translate(-50%, -50%)`;
 
 @Component({
-  imports: [
-    NgDiagramBaseEdgeComponent,
-    NgDiagramBaseEdgeLabelComponent,
-    EdgeReshapeDirective,
-  ],
+  imports: [NgDiagramBaseEdgeComponent, NgDiagramBaseEdgeLabelComponent, EdgeReshapeDirective],
   templateUrl: './wire-edge.component.html',
   styleUrl: './wire-edge.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
