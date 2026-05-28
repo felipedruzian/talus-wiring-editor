@@ -30,8 +30,10 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "format": "prettier --write \"src/**/*.{ts,html,css,scss}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,html,css,scss}\"",
     "lint": "ng lint --max-warnings=0",
-    "lint:fix": "ng lint --fix"
+    "lint:fix": "ng lint --fix",
+    "type-check": "tsc -b --noEmit"
   },
   "private": true,
   "packageManager": "npm@10.9.2",
