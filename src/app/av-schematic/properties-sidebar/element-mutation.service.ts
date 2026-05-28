@@ -6,8 +6,6 @@ import {
   type Node,
   type Point,
 } from 'ng-diagram';
-import { ModelApplyService } from '../diagram/model/model-apply.service';
-import { ModelChanges } from '../diagram/model/model-changes';
 import {
   type DevicePort,
   type DeviceNodeData,
@@ -28,18 +26,27 @@ const ORTHOGONAL_STUB_PX = 80;
 export class ElementMutationService {
   private readonly modelService = inject(NgDiagramModelService);
   private readonly diagramService = inject(NgDiagramService);
-  private readonly modelApplyService = inject(ModelApplyService);
 
   async removeNode(nodeId: string): Promise<void> {
-    const changes = new ModelChanges();
-    changes.addDeleteNodeIds(nodeId);
-    await this.modelApplyService.apply(changes);
+    await this.diagramService.transaction(
+      () => {
+        if (this.modelService.getNodeById(nodeId)) {
+          this.modelService.deleteNodes([nodeId]);
+        }
+      },
+      { waitForMeasurements: true },
+    );
   }
 
   async removeEdge(edgeId: string): Promise<void> {
-    const changes = new ModelChanges();
-    changes.addDeleteEdgeIds(edgeId);
-    await this.modelApplyService.apply(changes);
+    await this.diagramService.transaction(
+      () => {
+        if (this.modelService.getEdgeById(edgeId)) {
+          this.modelService.deleteEdges([edgeId]);
+        }
+      },
+      { waitForMeasurements: true },
+    );
   }
 
   handleDeviceFieldChange(change: DeviceFieldChange): void {
@@ -76,21 +83,27 @@ export class ElementMutationService {
       updatedData.ports.map((p) => [p.id, p.direction === 'input' ? 'left' : 'right']),
     );
 
-    const changes = new ModelChanges();
-    changes.addNodeUpdates({ id: change.entityId, data: updatedData });
-    if (orphanedEdgeIds.length > 0) changes.addDeleteEdgeIds(...orphanedEdgeIds);
-
-    void this.modelApplyService.apply(changes).then(async () => {
-      this.diagramService.invalidateMeasurements({ nodes: [{ nodeId: change.entityId }] });
-      if (affectedEdgeIds.length === 0) return;
-      await this.diagramService.transaction(() => {}, { waitForMeasurements: true });
-      this.reflowFlippedPortEdges(
-        change.entityId,
-        flippedPortIds,
-        affectedEdgeIds,
-        portSidesFromForm,
-      );
-    });
+    void this.diagramService
+      .transaction(
+        () => {
+          this.modelService.updateNodeData(change.entityId, updatedData);
+          if (orphanedEdgeIds.length > 0) {
+            this.modelService.deleteEdges(orphanedEdgeIds);
+          }
+        },
+        { waitForMeasurements: true },
+      )
+      .then(async () => {
+        this.diagramService.invalidateMeasurements({ nodes: [{ nodeId: change.entityId }] });
+        if (affectedEdgeIds.length === 0) return;
+        await this.diagramService.transaction(() => {}, { waitForMeasurements: true });
+        this.reflowFlippedPortEdges(
+          change.entityId,
+          flippedPortIds,
+          affectedEdgeIds,
+          portSidesFromForm,
+        );
+      });
   }
 
   private reflowFlippedPortEdges(
