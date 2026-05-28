@@ -22,6 +22,7 @@ import {
 
 const ORTHOGONAL_STUB_PX = 80;
 
+/** Mutates diagram nodes and edges in response to sidebar form changes and removal requests, including port-direction-flip reflow and orphaned-edge cleanup. */
 @Injectable()
 export class ElementMutationService {
   private readonly modelService = inject(NgDiagramModelService);

@@ -9,6 +9,7 @@ import {
 const TRACKED_FIELDS = Object.keys(EMPTY_WIRE_FORM) as (keyof WireFormData)[];
 const DEBOUNCED_FIELDS: readonly (keyof WireFormData)[] = ['wireId'];
 
+/** Form controller for the wire properties sidebar; debounces `wireId` while emitting all other field changes immediately. */
 @Injectable()
 export class WireFormService {
   private readonly onFieldChange = inject(ON_WIRE_FIELD_CHANGE);
