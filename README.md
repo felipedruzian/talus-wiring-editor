@@ -42,7 +42,14 @@ Open [http://localhost:4200](http://localhost:4200).
 |---|---|
 | `npm start` | Start dev server with hot reload |
 | `npm run build` | Production build to `dist/` |
-| `npm run format` | Format code with Prettier |
+| `npm test` | Run unit tests via Vitest (`@angular/build:unit-test` builder) |
+| `npm run format` | Format with Prettier |
+| `npm run format:check` | Check formatting (used by CI) |
+| `npm run lint` | Run ESLint; `--max-warnings=0` so any warning fails CI |
+| `npm run lint:fix` | Run ESLint with autofix |
+| `npm run type-check` | `tsc -b --noEmit` — type-check both app and spec configs via project references |
+
+CI (`.github/workflows/ci.yml`) runs in order: `format:check` → `lint` → `type-check` → `test` → `build`, failing fast on the cheap checks before paying for the expensive ones.
 
 ## Documentation
 
@@ -207,11 +214,13 @@ Global stylesheet entry point: `src/styles.css` (imports `tokens.css`, typograph
 
 ## Tech Stack
 
-- **Angular 21** — standalone components, signals, OnPush change detection
+- **Angular 21** — standalone components, signals, OnPush change detection, zoneless (`provideZonelessChangeDetection()`) — no `zone.js`, re-renders driven by signal mutations only
 - **`@angular/forms/signals`** — sidebar forms (signal-backed `form()`, per-field `debounce()`)
 - **ng-diagram** — diagram rendering, viewport management, selection, edge routing
 - **html-to-image** — PNG capture (DXF has no library dependency, written as ASCII directly)
+- **ESLint** (flat config) with `angular-eslint` + typescript-eslint `strict-type-checked` + `stylistic-type-checked`
 - **Prettier** — code formatting
+- **Vitest** — unit test runner via `@angular/build:unit-test`
 
 ## ng-diagram Documentation
 

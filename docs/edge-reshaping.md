@@ -76,6 +76,8 @@ src/app/av-schematic/diagram/edge-reshaping/
 
 **Grid snap.** ng-diagram doesn't currently expose an edge-specific snap config — `SnappingConfig` only has node-drag and node-resize knobs (`shouldSnapDragForNode` / `computeSnapForNodeDrag` / `defaultDragSnap` and the resize counterparts). Rather than introduce our own ad-hoc knob, manual edge reshaping reuses the existing node-drag snap config: edges snap when `snapping.shouldSnapDragForNode(sourceNode)` returns `true`, with the step from `computeSnapForNodeDrag(sourceNode)` falling back to `defaultDragSnap`. With ng-diagram defaults (`shouldSnapDragForNode: () => false`) no snap fires — opting in for node drag opts in for edge bends too. Snap is applied on every dispatch (continue + finalize) via the segment-aware `snapToGrid`, so the dragged bend visually steps between grid lines like a snapped node.
 
+This template defaults `AvSchematicConfig.snapping.enabled` to `true` (with `gridSize: 20`), so out of the box both node drag and edge bends snap. See the README's *Configuration* section to override.
+
 The intended long-term solution is a dedicated `FlowConfig.edgeReshape.shouldSnapForEdge(edge)` / `computeSnapForEdge(edge)` mirror of the node API — letting a diagram opt-in to bend snap independently of node-drag snap. Until that lands inside ng-diagram, riding on the node predicate is the chosen v1 default (most diagrams that snap nodes also want bend points on the same grid; the few that don't can override `shouldSnapDragForNode` to be node-id-specific).
 
 Automatic node layout (e.g., ELK or a custom signal-flow layout) is a likely future addition.
