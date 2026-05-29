@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { DEVICE_CATEGORIES } from '../../../diagram/model/device-categories';
-import { TooltipDirective } from '../../../shared/tooltip/tooltip.directive';
+import { TooltipDirective } from '../../../shared/directives/tooltip/tooltip.directive';
 import { LibraryService } from '../../library.service';
 import { type LibraryDevice } from '../../seed-library';
 import { LibraryListItemComponent } from '../library-list-item/library-list-item.component';

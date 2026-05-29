@@ -1,10 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { DeviceFormComponent } from '../shared/device-form/device-form.component';
-import {
-  ON_DEVICE_FIELD_CHANGE,
-  type DeviceFieldChange,
-} from '../shared/device-form/device-form.mappers';
-import { DeviceFormService } from '../shared/device-form/device-form.service';
+import { DeviceFormComponent } from '../device-form/device-form.component';
+import { ON_DEVICE_FIELD_CHANGE, type DeviceFieldChange } from '../device-form/device-form.mappers';
+import { DeviceFormService } from '../device-form/device-form.service';
 import { SidebarHeaderComponent } from './components/sidebar-header/sidebar-header.component';
 import { SidebarPlaceholderComponent } from './components/sidebar-placeholder/sidebar-placeholder.component';
 import { WireFormComponent } from './components/wire-form/wire-form.component';

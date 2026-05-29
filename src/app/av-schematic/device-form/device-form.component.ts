@@ -9,12 +9,12 @@ import {
   untracked,
 } from '@angular/core';
 import { FormField } from '@angular/forms/signals';
-import { DEVICE_CATEGORIES } from '../../diagram/model/device-categories';
-import { type DeviceNodeData } from '../../diagram/model/interfaces';
-import { AutofocusDirective } from '../autofocus/autofocus.directive';
-import { ComboboxComponent } from '../combobox/combobox.component';
-import { FormFieldComponent } from '../form-field/form-field.component';
-import { PortsEditorComponent } from '../ports-editor/ports-editor.component';
+import { DEVICE_CATEGORIES } from '../diagram/model/device-categories';
+import { type DeviceNodeData } from '../diagram/model/interfaces';
+import { AutofocusDirective } from '../shared/directives/autofocus/autofocus.directive';
+import { ComboboxComponent } from '../shared/ui/combobox/combobox.component';
+import { FormFieldComponent } from '../shared/ui/form-field/form-field.component';
+import { PortsEditorComponent } from '../shared/ui/ports-editor/ports-editor.component';
 import { deviceDataToFormData, DEVICE_FORM_HIDDEN_FIELDS } from './device-form.mappers';
 import { DeviceFormService } from './device-form.service';
 

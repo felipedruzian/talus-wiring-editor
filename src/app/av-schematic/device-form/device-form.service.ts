@@ -1,5 +1,5 @@
 import { inject, Injectable, Injector } from '@angular/core';
-import { DebouncedFormController } from '../forms/debounced-form-controller';
+import { DebouncedFormController } from '../shared/forms/debounced-form-controller';
 import {
   DEVICE_FORM_HIDDEN_FIELDS,
   EMPTY_DEVICE_FORM,

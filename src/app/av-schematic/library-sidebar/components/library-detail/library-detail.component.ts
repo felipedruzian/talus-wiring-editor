@@ -9,14 +9,14 @@ import {
   untracked,
 } from '@angular/core';
 import { type DeviceNodeData } from '../../../diagram/model/interfaces';
-import { DeviceFormComponent } from '../../../shared/device-form/device-form.component';
+import { DeviceFormComponent } from '../../../device-form/device-form.component';
 import {
   DEVICE_FORM_HIDDEN_FIELDS,
   ON_DEVICE_FIELD_CHANGE,
   type DeviceFieldChange,
-} from '../../../shared/device-form/device-form.mappers';
-import { DeviceFormService } from '../../../shared/device-form/device-form.service';
-import { TooltipDirective } from '../../../shared/tooltip/tooltip.directive';
+} from '../../../device-form/device-form.mappers';
+import { DeviceFormService } from '../../../device-form/device-form.service';
+import { TooltipDirective } from '../../../shared/directives/tooltip/tooltip.directive';
 import { LibraryDraftService } from '../../library-draft.service';
 import { LibraryService } from '../../library.service';
 import { createBlankTemplate } from '../../seed-library';

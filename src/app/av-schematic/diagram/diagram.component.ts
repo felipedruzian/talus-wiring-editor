@@ -16,7 +16,7 @@ import {
 import { AV_SCHEMATIC_CONFIG } from '../av-schematic.config';
 import { DiagramExportService } from '../export/diagram-export.service';
 import { PropertiesSidebarService } from '../properties-sidebar/properties-sidebar.service';
-import { randomShortId } from '../shared/random-short-id';
+import { randomShortId } from '../shared/utils/random-short-id';
 import { generateDeviceId } from './model/auto-device-id';
 import { isDeviceNode, isWireEdge } from './model/guards';
 import {

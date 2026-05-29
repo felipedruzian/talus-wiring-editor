@@ -73,6 +73,7 @@ src/app/av-schematic/
 │   ├── diagram-export.service.ts         # exportPng() + exportDxf() entry points
 │   ├── dxf/                              # Generic, domain-free DXF library
 │   └── dxf-av-schematic/                 # av-schematic-specific node/edge renderers
+├── device-form/                          # Device fields (signals form). DEVICE_FORM_HIDDEN_FIELDS DI token controls visibility per-host
 ├── library-sidebar/                      # Left panel: drag-drop palette of device templates
 │   ├── library.service.ts                # Devices, expand/collapse, editing mode (create/edit)
 │   ├── library-draft.service.ts          # Per-detail-session draft buffer (Save commits; Back discards)
@@ -82,15 +83,23 @@ src/app/av-schematic/
 │       ├── library-list-item/            # Draggable row wrapping <ng-diagram-palette-item>
 │       ├── library-search/               # Debounced search input feeding LibraryService.searchQuery
 │       └── library-detail/               # Reuses <app-device-form> with overridden ON_DEVICE_FIELD_CHANGE
-├── shared/
-│   ├── autofocus/                        # Re-focus directive (used by library detail when entering create/edit)
-│   ├── combobox/                         # Editable combobox (FormValueControl<string>)
-│   ├── device-form/                      # Device fields (signals form). DEVICE_FORM_HIDDEN_FIELDS DI token controls visibility per-host
-│   ├── form-field/                       # Label + projected input wrapper
-│   ├── highlight-segments/               # Pipe that splits text into matched / unmatched segments for safe (no innerHTML) highlighting
-│   ├── ports-editor/                     # Tabbed (Inputs / Outputs) ports editor (FormValueControl<DevicePort[]>)
-│   ├── sidebar-shell/                    # SCSS partial — common :host / .sidebar / animation rules
-│   └── tooltip/                          # Custom [appTooltip] directive (top/right/bottom/left placement, body-portaled to escape sidebar overflow clipping)
+├── shared/                               # Generic, reusable building blocks (no domain coupling)
+│   ├── ui/                               # Visual building blocks
+│   │   ├── combobox/                     # Editable combobox (FormValueControl<string>)
+│   │   ├── form-field/                   # Label + projected input wrapper
+│   │   ├── highlight-segments/           # Pipe that splits text into matched / unmatched segments for safe (no innerHTML) highlighting
+│   │   └── ports-editor/                 # Tabbed (Inputs / Outputs) ports editor (FormValueControl<DevicePort[]>)
+│   ├── directives/                       # Standalone behavioral directives
+│   │   ├── autofocus/                    # Re-focus directive (used by library detail when entering create/edit)
+│   │   └── tooltip/                      # Custom [appTooltip] (top/right/bottom/left placement, body-portaled)
+│   ├── forms/                            # Form infrastructure
+│   │   └── debounced-form-controller.ts
+│   ├── styles/                           # SCSS partials shared across features
+│   │   └── sidebar-shell/                # common :host / .sidebar / animation rules
+│   └── utils/                            # Pure functions
+│       └── random-short-id.ts
 ├── top-navbar/                           # Navigation bar + theme toggle + export menu
+│   ├── theme-toggle/                     # Light/dark theme switcher
+│   └── export-menu/                      # PNG/DXF export trigger
 └── minimap-panel/                        # Minimap with zoom controls
 ```

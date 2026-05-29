@@ -189,11 +189,11 @@ Left-side collapsible panel that holds **device templates** — recipes (no `id`
 
 ### Editable category combobox
 
-`shared/combobox/combobox.component.*` — a `FormValueControl<string>` so it slots into existing `[formField]` bindings. Visual structure mirrors the orgchart project's combobox (bordered trigger wrapping a transparent input + caret button, listbox panel with the project's `--ngd-token-spacing-dropdown-*` and `--ngd-input-stroke-primary-*` tokens). Behavior is the editable variant: typed values that aren't in the list are kept as-is. `filterText` is held separately from `value` so opening the panel always shows all options — typing narrows the list. Used for the device-form's `category` field.
+`shared/ui/combobox/combobox.component.*` — a `FormValueControl<string>` so it slots into existing `[formField]` bindings. Visual structure mirrors the orgchart project's combobox (bordered trigger wrapping a transparent input + caret button, listbox panel with the project's `--ngd-token-spacing-dropdown-*` and `--ngd-input-stroke-primary-*` tokens). Behavior is the editable variant: typed values that aren't in the list are kept as-is. `filterText` is held separately from `value` so opening the panel always shows all options — typing narrows the list. Used for the device-form's `category` field.
 
 ### Theming
 
-Theme is driven by the `data-theme` attribute on `<html>` (`"light"` or `"dark"`) and persisted in `localStorage`. The toggle UI lives in `src/app/av-schematic/top-navbar/theme-toggle.component.ts`.
+Theme is driven by the `data-theme` attribute on `<html>` (`"light"` or `"dark"`) and persisted in `localStorage`. The toggle UI lives in `src/app/av-schematic/top-navbar/theme-toggle/theme-toggle.component.ts`.
 
 Color and dimension tokens are defined in `src/tokens.css`:
 

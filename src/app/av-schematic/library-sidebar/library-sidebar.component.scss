@@ -1,4 +1,4 @@
-@use '../shared/sidebar-shell/sidebar-shell' as shell;
+@use '../shared/styles/sidebar-shell/sidebar-shell' as shell;
 
 @include shell.sidebar-shell;
 

@@ -1,5 +1,8 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
-import { TooltipDirective, type TooltipPlacement } from '../../../shared/tooltip/tooltip.directive';
+import {
+  TooltipDirective,
+  type TooltipPlacement,
+} from '../../../shared/directives/tooltip/tooltip.directive';
 
 @Component({
   selector: 'app-sidebar-header',

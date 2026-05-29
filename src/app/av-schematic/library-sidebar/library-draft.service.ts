@@ -1,9 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 import { type DeviceNodeData } from '../diagram/model/interfaces';
-import {
-  formDataToDeviceData,
-  type DeviceFieldChange,
-} from '../shared/device-form/device-form.mappers';
+import { formDataToDeviceData, type DeviceFieldChange } from '../device-form/device-form.mappers';
 import { createBlankTemplate } from './seed-library';
 
 /**

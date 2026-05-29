@@ -11,10 +11,7 @@ import {
   type DeviceNodeData,
   type WireEdgeData,
 } from '../diagram/model/interfaces';
-import {
-  formDataToDeviceData,
-  type DeviceFieldChange,
-} from '../shared/device-form/device-form.mappers';
+import { formDataToDeviceData, type DeviceFieldChange } from '../device-form/device-form.mappers';
 import { formDataToWireData, type WireFieldChange } from './components/wire-form/wire-form.mappers';
 
 const ORTHOGONAL_STUB_PX = 80;

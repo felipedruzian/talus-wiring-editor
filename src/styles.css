@@ -1,6 +1,6 @@
 @import './tokens.css';
 @import './typography.css';
-@import './app/av-schematic/shared/tooltip/tooltip.css';
+@import './app/av-schematic/shared/directives/tooltip/tooltip.css';
 @import 'ng-diagram/styles.css';
 
 html[data-theme='dark'] {

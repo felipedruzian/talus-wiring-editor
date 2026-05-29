@@ -12,7 +12,7 @@ import {
   NgDiagramViewportService,
 } from 'ng-diagram';
 import { AV_SCHEMATIC_CONFIG } from '../av-schematic.config';
-import { TooltipDirective } from '../shared/tooltip/tooltip.directive';
+import { TooltipDirective } from '../shared/directives/tooltip/tooltip.directive';
 
 @Component({
   selector: 'app-minimap-panel',
