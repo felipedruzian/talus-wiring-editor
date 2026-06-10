@@ -24,10 +24,7 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npm run build
-
-      - name: Set base href
-        run: sed -i 's|<base href="/">|<base href="/templates/av/">|' ./dist/ng-diagram-av-schematic/browser/index.html
+        run: npm run build -- --base-href /templates/av/
 
       - name: Azure login (OIDC)
         uses: azure/login@v2
