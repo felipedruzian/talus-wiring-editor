@@ -1,6 +1,12 @@
 <div class="detail-toolbar">
   <span class="detail-title h10">{{ title() }}</span>
-  <button class="close-button" type="button" (click)="onBack()" aria-label="Close">
+  <button
+    class="close-button"
+    type="button"
+    (click)="onBack()"
+    aria-label="Close"
+    appTooltip="Close"
+  >
     <span class="icon icon-close" aria-hidden="true"></span>
   </button>
 </div>

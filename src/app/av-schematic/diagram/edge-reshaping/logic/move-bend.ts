@@ -20,8 +20,7 @@ export const moveBend = (
 
   const prevIsHorizontal =
     expectedSegmentOrientation(index - 1, sourceOrientation) === 'horizontal';
-  const nextIsHorizontal =
-    expectedSegmentOrientation(index, sourceOrientation) === 'horizontal';
+  const nextIsHorizontal = expectedSegmentOrientation(index, sourceOrientation) === 'horizontal';
 
   const yLocked = (prevIsHorizontal && prevIsEndpoint) || (nextIsHorizontal && nextIsEndpoint);
   const xLocked = (!prevIsHorizontal && prevIsEndpoint) || (!nextIsHorizontal && nextIsEndpoint);

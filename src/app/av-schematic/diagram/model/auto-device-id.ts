@@ -1,8 +1,5 @@
 import { type Node } from 'ng-diagram';
-import {
-  DEVICE_CATEGORY_PREFIXES,
-  FALLBACK_DEVICE_PREFIX,
-} from './device-categories';
+import { DEVICE_CATEGORY_PREFIXES, FALLBACK_DEVICE_PREFIX } from './device-categories';
 import { isDeviceNode } from './guards';
 
 const prefixForCategory = (category: string | undefined): string => {

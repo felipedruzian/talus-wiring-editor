@@ -23,10 +23,7 @@ describe('generateDeviceId', () => {
   });
 
   it('returns the smallest unused integer for the prefix', () => {
-    const nodes = [
-      deviceNode('a', 'MIC-1', 'microphone'),
-      deviceNode('b', 'MIC-3', 'microphone'),
-    ];
+    const nodes = [deviceNode('a', 'MIC-1', 'microphone'), deviceNode('b', 'MIC-3', 'microphone')];
     expect(generateDeviceId('microphone', nodes)).toBe('MIC-2');
   });
 

@@ -5,15 +5,8 @@ export {
   type GhostHandle,
   type HandlerPositions,
 } from './path-types';
-export {
-  ENDPOINT_OFFSET,
-  ALIGNMENT_TOLERANCE,
-  MAX_SAFE_ITERATIONS,
-} from './constants';
-export {
-  expectedSegmentOrientation,
-  oppositeOrientation,
-} from './expected-segment-orientation';
+export { ENDPOINT_OFFSET, ALIGNMENT_TOLERANCE, MAX_SAFE_ITERATIONS } from './constants';
+export { expectedSegmentOrientation, oppositeOrientation } from './expected-segment-orientation';
 export {
   portSideToOrientation,
   getNodePortOrientation,

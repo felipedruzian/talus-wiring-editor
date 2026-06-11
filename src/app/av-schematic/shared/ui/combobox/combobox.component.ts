@@ -26,7 +26,7 @@ import { type FormValueControl } from '@angular/forms/signals';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ComboboxComponent implements FormValueControl<string> {
-  private readonly elRef = inject(ElementRef<HTMLElement>);
+  private readonly elRef = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly value = model<string>('');
@@ -143,12 +143,14 @@ export class ComboboxComponent implements FormValueControl<string> {
 
   private listenForOutsideClicks(): () => void {
     const handler = (event: MouseEvent) => {
-      if (!this.elRef.nativeElement.contains(event.target as Node)) {
+      if (!this.elRef.nativeElement.contains(event.target as Node | null)) {
         this.closePanel();
       }
     };
     document.addEventListener('click', handler);
-    return () => document.removeEventListener('click', handler);
+    return () => {
+      document.removeEventListener('click', handler);
+    };
   }
 
   private initFocusedIndex(): void {

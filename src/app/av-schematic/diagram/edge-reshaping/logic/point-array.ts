@@ -1,19 +1,12 @@
 import { type Point } from 'ng-diagram';
 
-export const insertPoint = (
-  points: readonly Point[],
-  index: number,
-  point: Point,
-): Point[] => {
+export const insertPoint = (points: readonly Point[], index: number, point: Point): Point[] => {
   const next = points.slice();
   next.splice(index, 0, point);
   return next;
 };
 
-export const deletePoint = (
-  points: readonly Point[],
-  index: number,
-): Point[] => {
+export const deletePoint = (points: readonly Point[], index: number): Point[] => {
   const next = points.slice();
   next.splice(index, 1);
   return next;

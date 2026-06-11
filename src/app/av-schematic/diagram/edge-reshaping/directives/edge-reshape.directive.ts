@@ -7,7 +7,7 @@ export interface EdgeReshapePointerEvent {
 }
 
 @Directive({
-  selector: '[edgeReshape]',
+  selector: '[appEdgeReshape]',
 })
 export class EdgeReshapeDirective implements OnDestroy {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);

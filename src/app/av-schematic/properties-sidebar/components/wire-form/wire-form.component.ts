@@ -10,7 +10,7 @@ import {
 import { FormField } from '@angular/forms/signals';
 import { type WireEdgeData } from '../../../diagram/model/interfaces';
 import { type WireEndpointInfo } from '../../properties-sidebar.service';
-import { FormFieldComponent } from '../../../shared/form-field/form-field.component';
+import { FormFieldComponent } from '../../../shared/ui/form-field/form-field.component';
 import { wireDataToFormData, WIRE_TYPES } from './wire-form.mappers';
 import { WireFormService } from './wire-form.service';
 

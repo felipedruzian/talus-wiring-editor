@@ -1,5 +1,5 @@
 import { InjectionToken } from '@angular/core';
-import { type DeviceNodeData, type DevicePort } from '../../diagram/model/interfaces';
+import { type DeviceNodeData, type DevicePort } from '../diagram/model/interfaces';
 
 export interface DeviceFormData {
   deviceId: string;

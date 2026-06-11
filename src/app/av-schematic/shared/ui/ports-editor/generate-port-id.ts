@@ -1,3 +1,3 @@
-import { randomShortId } from '../random-short-id';
+import { randomShortId } from '../../utils/random-short-id';
 
 export const generatePortId = (): string => randomShortId('P');

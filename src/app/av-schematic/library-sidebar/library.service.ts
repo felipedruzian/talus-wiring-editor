@@ -4,6 +4,7 @@ import { SEED_LIBRARY, type LibraryDevice } from './seed-library';
 
 type LibraryEditMode = 'create' | 'edit';
 
+/** Page-scoped state for the device-library palette: list, expand/collapse, edit-mode lifecycle, and debounced search. */
 @Injectable()
 export class LibraryService {
   readonly devices = signal<LibraryDevice[]>(SEED_LIBRARY);

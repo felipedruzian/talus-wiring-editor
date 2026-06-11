@@ -78,7 +78,15 @@ export const renderDeviceNode: DxfNodeRenderer = (ctx, node) => {
   renderBox(ctx, nodeX, nodeY, nodeWidth, nodeHeight);
   renderHeader(ctx, data, nodeX, nodeY, nodeWidth, sectionTopY);
 
-  drawLine(ctx, nodeX, sectionTopY, nodeX + nodeWidth, sectionTopY, LAYERS.DEVICES, LINE_WEIGHT.FRAME);
+  drawLine(
+    ctx,
+    nodeX,
+    sectionTopY,
+    nodeX + nodeWidth,
+    sectionTopY,
+    LAYERS.DEVICES,
+    LINE_WEIGHT.FRAME,
+  );
   if (inputRects.length + outputRects.length > 0) {
     drawLine(
       ctx,
@@ -111,7 +119,12 @@ const collectPortRects = (
 
   return ports.map((port, index) => {
     const measured = measuredById.get(port.id);
-    if (measured?.position && measured.size && measured.size.width > 0 && measured.size.height > 0) {
+    if (
+      measured?.position &&
+      measured.size &&
+      measured.size.width > 0 &&
+      measured.size.height > 0
+    ) {
       // Y comes from the measurement so port rects align with `edge.points`.
       // X is snapped to the node outline so the port-shape's adjacent edge
       // sits flush against the device frame:
@@ -184,9 +197,7 @@ const computeSectionTopY = (
 const firstRowTop = (rects: readonly PortRect[]): number | null => {
   if (rects.length === 0) return null;
   const rowHeight =
-    rects.length >= 2
-      ? rects[1].centerY - rects[0].centerY
-      : FALLBACK_PORT_ROW_HEIGHT;
+    rects.length >= 2 ? rects[1].centerY - rects[0].centerY : FALLBACK_PORT_ROW_HEIGHT;
   return rects[0].centerY - rowHeight / 2;
 };
 
@@ -294,7 +305,9 @@ const renderPortRect = (ctx: DxfRenderContext, rect: PortRect): void => {
     ctx.mapper.mapPoint(rect.x + rect.width, rect.y + rect.height),
     ctx.mapper.mapPoint(rect.x, rect.y + rect.height),
   ];
-  ctx.doc.addEntity(new DxfLwPolyline(LAYERS.DEVICES, corners, true, undefined, LINE_WEIGHT.DETAIL));
+  ctx.doc.addEntity(
+    new DxfLwPolyline(LAYERS.DEVICES, corners, true, undefined, LINE_WEIGHT.DETAIL),
+  );
 };
 
 const renderPortLabel = (

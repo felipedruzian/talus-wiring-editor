@@ -1,10 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { DeviceFormComponent } from '../shared/device-form/device-form.component';
-import {
-  ON_DEVICE_FIELD_CHANGE,
-  type DeviceFieldChange,
-} from '../shared/device-form/device-form.mappers';
-import { DeviceFormService } from '../shared/device-form/device-form.service';
+import { DeviceFormComponent } from '../device-form/device-form.component';
+import { ON_DEVICE_FIELD_CHANGE, type DeviceFieldChange } from '../device-form/device-form.mappers';
+import { DeviceFormService } from '../device-form/device-form.service';
 import { SidebarHeaderComponent } from './components/sidebar-header/sidebar-header.component';
 import { SidebarPlaceholderComponent } from './components/sidebar-placeholder/sidebar-placeholder.component';
 import { WireFormComponent } from './components/wire-form/wire-form.component';
@@ -31,14 +28,18 @@ import { PropertiesSidebarService } from './properties-sidebar.service';
       provide: ON_DEVICE_FIELD_CHANGE,
       useFactory: () => {
         const mutation = inject(ElementMutationService);
-        return (change: DeviceFieldChange) => mutation.handleDeviceFieldChange(change);
+        return (change: DeviceFieldChange) => {
+          mutation.handleDeviceFieldChange(change);
+        };
       },
     },
     {
       provide: ON_WIRE_FIELD_CHANGE,
       useFactory: () => {
         const mutation = inject(ElementMutationService);
-        return (change: WireFieldChange) => mutation.handleWireFieldChange(change);
+        return (change: WireFieldChange) => {
+          mutation.handleWireFieldChange(change);
+        };
       },
     },
   ],
@@ -67,14 +68,14 @@ export class PropertiesSidebarComponent {
   protected onRemoveNode(): void {
     const nodeId = this.sidebarService.selectedNode()?.id;
     if (nodeId) {
-      this.elementMutationService.removeNode(nodeId);
+      void this.elementMutationService.removeNode(nodeId);
     }
   }
 
   protected onRemoveWire(): void {
     const edgeId = this.sidebarService.selectedEdge()?.id;
     if (edgeId) {
-      this.elementMutationService.removeEdge(edgeId);
+      void this.elementMutationService.removeEdge(edgeId);
     }
   }
 

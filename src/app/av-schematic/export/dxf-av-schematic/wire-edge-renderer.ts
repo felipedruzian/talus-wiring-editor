@@ -67,7 +67,16 @@ const renderLabel = (ctx: DxfRenderContext, anchor: Point, text: string): void =
   // halign=1 (center), valign=1 (bottom) — text sits centered above the wire,
   // bottom edge of the glyphs flush with the wire line.
   ctx.doc.addEntity(
-    new DxfText(LAYERS.WIRES, text, mappedPoint.x, mappedPoint.y, heightMm, TEXT_STYLE.STANDARD, 1, 1),
+    new DxfText(
+      LAYERS.WIRES,
+      text,
+      mappedPoint.x,
+      mappedPoint.y,
+      heightMm,
+      TEXT_STYLE.STANDARD,
+      1,
+      1,
+    ),
   );
 };
 

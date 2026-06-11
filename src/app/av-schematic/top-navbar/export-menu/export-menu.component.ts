@@ -15,7 +15,7 @@ import { DiagramExportService } from '../../export/diagram-export.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ExportMenuComponent {
-  private readonly elRef = inject(ElementRef<HTMLElement>);
+  private readonly elRef = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly exportService = inject(DiagramExportService);
 
   protected readonly isOpen = signal(false);
@@ -26,12 +26,14 @@ export class ExportMenuComponent {
     effect((onCleanup) => {
       if (!this.isOpen()) return;
       const handler = (event: MouseEvent) => {
-        if (!this.elRef.nativeElement.contains(event.target as Node)) {
+        if (!this.elRef.nativeElement.contains(event.target as Node | null)) {
           this.isOpen.set(false);
         }
       };
       document.addEventListener('click', handler);
-      onCleanup(() => document.removeEventListener('click', handler));
+      onCleanup(() => {
+        document.removeEventListener('click', handler);
+      });
     });
   }
 

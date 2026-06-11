@@ -1,10 +1,5 @@
 import { inject, Injectable } from '@angular/core';
-import {
-  NgDiagramModelService,
-  NgDiagramViewportService,
-  type Node,
-  type Point,
-} from 'ng-diagram';
+import { NgDiagramModelService, NgDiagramViewportService, type Node, type Point } from 'ng-diagram';
 import { ViewportAnimationService } from './viewport-animation.service';
 
 /**

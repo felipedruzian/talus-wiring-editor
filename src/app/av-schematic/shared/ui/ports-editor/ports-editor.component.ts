@@ -9,14 +9,15 @@ import {
   viewChild,
 } from '@angular/core';
 import { type FormValueControl } from '@angular/forms/signals';
-import { type DevicePort, type PortDirection } from '../../diagram/model/interfaces';
-import { AutofocusDirective } from '../autofocus/autofocus.directive';
+import { type DevicePort, type PortDirection } from '../../../diagram/model/interfaces';
+import { AutofocusDirective } from '../../directives/autofocus/autofocus.directive';
+import { TooltipDirective } from '../../directives/tooltip/tooltip.directive';
 import { CONNECTOR_TYPES } from './connector-types';
 import { generatePortId } from './generate-port-id';
 
 @Component({
   selector: 'app-ports-editor',
-  imports: [AutofocusDirective],
+  imports: [AutofocusDirective, TooltipDirective],
   templateUrl: './ports-editor.component.html',
   styleUrl: './ports-editor.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

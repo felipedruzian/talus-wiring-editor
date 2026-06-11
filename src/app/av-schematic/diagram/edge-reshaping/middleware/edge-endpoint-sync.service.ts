@@ -33,8 +33,7 @@ const samePath = (a: readonly Point[], b: readonly Point[]): boolean => {
 
 /**
  * Watches manual-routed edges and reflows their endpoints whenever a
- * connected node moves. Replaces the per-edge `effect()` that used to live
- * in WireEdgeComponent.
+ * connected node moves.
  *
  * Mid-drag the path is reflowed but NOT simplified — collinear merges and
  * endpoint nudges run only once when the drag ends, mirroring the bend-drag
@@ -55,13 +54,17 @@ export class EdgeEndpointSyncService implements OnDestroy {
   private readonly dispatcher = inject(EdgeReshapeCommandDispatcher);
 
   private readonly lastKnownPorts = new Map<string, PortSnapshot>();
-  private readonly unsubscribers: Array<() => void> = [];
+  private readonly unsubscribers: (() => void)[] = [];
   private dragging = false;
   private listenersAttached = false;
 
   constructor() {
-    effect(() => this.attachDragListenersOnce());
-    effect(() => this.syncEdgeEndpoints());
+    effect(() => {
+      this.attachDragListenersOnce();
+    });
+    effect(() => {
+      this.syncEdgeEndpoints();
+    });
   }
 
   private attachDragListenersOnce(): void {
@@ -107,8 +110,6 @@ export class EdgeEndpointSyncService implements OnDestroy {
   }
 
   private processEdge(edge: Edge, nodes: readonly Node[], simplify: boolean): void {
-    // `edge.points` presence + length are validated by the caller before
-    // dispatching here, so we capture them once into a local non-nullable.
     const currentPoints = edge.points;
     if (!currentPoints) return;
 
@@ -182,3 +183,12 @@ export class EdgeEndpointSyncService implements OnDestroy {
     }
   }
 }
+
+/**
+ * Eagerly constructs the service so its `effect()`s start watching the model.
+ * Call from a host component's injection context (constructor or field
+ * initializer) after providing `EdgeEndpointSyncService`.
+ */
+export const bootstrapEdgeEndpointSync = (): void => {
+  inject(EdgeEndpointSyncService);
+};

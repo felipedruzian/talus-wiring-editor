@@ -14,5 +14,4 @@ export const oppositeOrientation = (orientation: Orientation): Orientation =>
 export const expectedSegmentOrientation = (
   index: number,
   sourceOrientation: Orientation,
-): Orientation =>
-  index % 2 === 0 ? sourceOrientation : oppositeOrientation(sourceOrientation);
+): Orientation => (index % 2 === 0 ? sourceOrientation : oppositeOrientation(sourceOrientation));

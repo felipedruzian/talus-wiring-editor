@@ -4,9 +4,11 @@ import { provideNgDiagram } from 'ng-diagram';
 import { DiagramComponent } from '../diagram/diagram.component';
 import { EdgeReshapeCommandDispatcher } from '../diagram/edge-reshaping/commands/dispatcher';
 import { EdgeReshapeEventHandler } from '../diagram/edge-reshaping/handlers/edge-reshape.handler';
-import { EdgeEndpointSyncService } from '../diagram/edge-reshaping/middleware/edge-endpoint-sync.service';
+import {
+  EdgeEndpointSyncService,
+  bootstrapEdgeEndpointSync,
+} from '../diagram/edge-reshaping/middleware/edge-endpoint-sync.service';
 import { EdgeReshapeLifecycleEmitter } from '../diagram/edge-reshaping/middleware/edge-reshape-lifecycle.emitter';
-import { ModelApplyService } from '../diagram/model/model-apply.service';
 import { NodeVisibilityConfigService } from '../diagram/node-visibility/node-visibility-config.service';
 import { PortFocusService } from '../diagram/port-focus.service';
 import { ViewportAnimationService } from '../diagram/viewport-animation.service';
@@ -39,7 +41,6 @@ import { TopNavbarComponent } from '../top-navbar/top-navbar.component';
     provideNgDiagram(),
     PropertiesSidebarService,
     ElementMutationService,
-    ModelApplyService,
     NodeVisibilityConfigService,
     ViewportAnimationService,
     PortFocusService,
@@ -52,18 +53,16 @@ import { TopNavbarComponent } from '../top-navbar/top-navbar.component';
   ],
 })
 export class AvSchematicPageComponent {
-  // Side-effect-only inject: the service runs reactive `effect()`s in its
-  // own constructor. Holding the reference is what brings it to life.
-  private readonly endpointSync = inject(EdgeEndpointSyncService);
-
   constructor() {
+    bootstrapEdgeEndpointSync();
+
     // Demo subscriber: hook your toolbar / telemetry / undo stack here.
     const reshapeEvents = inject(EdgeReshapeLifecycleEmitter);
-    reshapeEvents.edgeReshapeStarted
-      .pipe(takeUntilDestroyed())
-      .subscribe(({ edgeId }) => console.log('[edge-reshape] started', edgeId));
-    reshapeEvents.edgeReshapeEnded
-      .pipe(takeUntilDestroyed())
-      .subscribe(({ edgeId }) => console.log('[edge-reshape] ended', edgeId));
+    reshapeEvents.edgeReshapeStarted.pipe(takeUntilDestroyed()).subscribe(({ edgeId }) => {
+      console.log('[edge-reshape] started', edgeId);
+    });
+    reshapeEvents.edgeReshapeEnded.pipe(takeUntilDestroyed()).subscribe(({ edgeId }) => {
+      console.log('[edge-reshape] ended', edgeId);
+    });
   }
 }

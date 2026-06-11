@@ -17,9 +17,11 @@ export class ViewportOverlayDirective {
 
   constructor() {
     const configService = inject(NodeVisibilityConfigService);
-    const el = inject(ElementRef<HTMLElement>).nativeElement;
+    const el = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
     const key = this.appViewportOverlay() || el.tagName.toLowerCase();
     configService.registerOverlay(key, () => el.getBoundingClientRect());
-    inject(DestroyRef).onDestroy(() => configService.unregisterOverlay(key));
+    inject(DestroyRef).onDestroy(() => {
+      configService.unregisterOverlay(key);
+    });
   }
 }

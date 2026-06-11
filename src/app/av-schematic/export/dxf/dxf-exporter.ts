@@ -29,7 +29,11 @@ export class DxfExporter {
     this.applyLayers(doc);
     this.applyTextStyles(doc);
 
-    const mapper = CoordinateMapper.fromScale(bounds, this.config.scaleMmPerPx, this.config.paddingPx);
+    const mapper = CoordinateMapper.fromScale(
+      bounds,
+      this.config.scaleMmPerPx,
+      this.config.paddingPx,
+    );
     const ctx: DxfRenderContext = { doc, mapper };
     const warnedNodeTypes = new Set<string>();
     const warnedEdgeTypes = new Set<string>();
@@ -88,10 +92,22 @@ export class DxfExporter {
       $INSUNITS: [{ code: 70, value: 4 }],
       $MEASUREMENT: [{ code: 70, value: 1 }],
       $LWDISPLAY: [{ code: 290, value: 1 }],
-      $LIMMIN: [{ code: 10, value: formatCoord(0) }, { code: 20, value: formatCoord(0) }],
-      $LIMMAX: [{ code: 10, value: formatCoord(widthMm) }, { code: 20, value: formatCoord(heightMm) }],
-      $EXTMIN: [{ code: 10, value: formatCoord(0) }, { code: 20, value: formatCoord(0) }],
-      $EXTMAX: [{ code: 10, value: formatCoord(widthMm) }, { code: 20, value: formatCoord(heightMm) }],
+      $LIMMIN: [
+        { code: 10, value: formatCoord(0) },
+        { code: 20, value: formatCoord(0) },
+      ],
+      $LIMMAX: [
+        { code: 10, value: formatCoord(widthMm) },
+        { code: 20, value: formatCoord(heightMm) },
+      ],
+      $EXTMIN: [
+        { code: 10, value: formatCoord(0) },
+        { code: 20, value: formatCoord(0) },
+      ],
+      $EXTMAX: [
+        { code: 10, value: formatCoord(widthMm) },
+        { code: 20, value: formatCoord(heightMm) },
+      ],
     };
 
     const merged = { ...defaults, ...(this.config.headerVars ?? {}) };

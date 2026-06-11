@@ -21,7 +21,11 @@
     --card-border-color: var(--av-color-selection-border);
     --card-shadow: 0 0 0 3px var(--av-color-selection-halo);
     --card-bg: color-mix(in srgb, var(--av-color-accent) 5%, var(--ngd-node-bg-primary-default));
-    --card-header-bg: color-mix(in srgb, var(--av-color-accent) 8%, var(--ngd-ui-bg-tertiary-default));
+    --card-header-bg: color-mix(
+      in srgb,
+      var(--av-color-accent) 8%,
+      var(--ngd-ui-bg-tertiary-default)
+    );
   }
 
   ng-diagram-port {
@@ -48,7 +52,9 @@
   color: var(--ngd-txt-primary-default);
   font-size: 0.75rem;
   box-shadow: var(--card-shadow);
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .device-node__header {
@@ -56,8 +62,7 @@
   flex-direction: column;
   align-items: center;
   gap: 1px;
-  padding: var(--ngd-primitive-4rule-4) var(--ngd-primitive-4rule-12)
-    var(--ngd-primitive-4rule-8);
+  padding: var(--ngd-primitive-4rule-4) var(--ngd-primitive-4rule-12) var(--ngd-primitive-4rule-8);
   background: var(--card-header-bg);
   border-radius: var(--ngd-token-radius-element-12) var(--ngd-token-radius-element-12) 0 0;
   text-align: center;
@@ -118,6 +123,11 @@
   &--output {
     justify-content: flex-end;
   }
+
+  &:hover .port-shape {
+    background: color-mix(in srgb, var(--av-color-accent) 20%, transparent);
+    border-color: var(--av-color-accent);
+  }
 }
 
 .port-shape {
@@ -127,6 +137,9 @@
   border: 1px solid var(--ngd-node-port-stroke-default);
   cursor: pointer;
   flex-shrink: 0;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
 
   &--input {
     border-radius: 4px 0 0 4px;
@@ -136,6 +149,11 @@
   &--output {
     border-radius: 0 4px 4px 0;
     border-left: none;
+  }
+
+  &:hover {
+    background: color-mix(in srgb, var(--av-color-accent) 35%, transparent);
+    border-color: var(--av-color-accent);
   }
 }
 

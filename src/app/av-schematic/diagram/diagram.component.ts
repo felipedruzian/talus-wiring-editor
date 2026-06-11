@@ -1,10 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  DestroyRef,
-  ElementRef,
-  inject,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, inject } from '@angular/core';
 import {
   DiagramInitEvent,
   initializeModel,
@@ -22,7 +16,7 @@ import {
 import { AV_SCHEMATIC_CONFIG } from '../av-schematic.config';
 import { DiagramExportService } from '../export/diagram-export.service';
 import { PropertiesSidebarService } from '../properties-sidebar/properties-sidebar.service';
-import { randomShortId } from '../shared/random-short-id';
+import { randomShortId } from '../shared/utils/random-short-id';
 import { generateDeviceId } from './model/auto-device-id';
 import { isDeviceNode, isWireEdge } from './model/guards';
 import {
@@ -51,12 +45,14 @@ export class DiagramComponent {
   private readonly sidebarService = inject(PropertiesSidebarService);
   private readonly nodeVisibilityConfigService = inject(NodeVisibilityConfigService);
   private readonly modelService = inject(NgDiagramModelService);
-  private readonly elementRef = inject(ElementRef<HTMLElement>);
+  private readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly exportService = inject(DiagramExportService);
 
   constructor() {
     this.exportService.setDiagramElement(this.elementRef);
-    inject(DestroyRef).onDestroy(() => this.exportService.clearDiagramElement());
+    inject(DestroyRef).onDestroy(() => {
+      this.exportService.clearDiagramElement();
+    });
   }
 
   config = {
@@ -71,7 +67,7 @@ export class DiagramComponent {
       temporaryEdgeDataBuilder: (edge: Edge): Edge<WireEdgeData> => ({
         ...edge,
         type: EdgeTemplateType.WireEdge,
-        routing: 'polyline',
+        routing: 'orthogonal',
         sourceArrowhead: undefined,
         targetArrowhead: undefined,
         data: { type: 'wire', wireId: '' },
@@ -85,6 +81,13 @@ export class DiagramComponent {
         data: { type: 'wire', wireId: generateWireId() },
       }),
     },
+    snapping: {
+      defaultDragSnap: {
+        width: this.avConfig.snapping.gridSize,
+        height: this.avConfig.snapping.gridSize,
+      },
+      shouldSnapDragForNode: () => this.avConfig.snapping.enabled,
+    },
     watermarkPosition: 'bottom-left',
     zIndex: {
       elevateOnSelection: false,
@@ -95,9 +98,7 @@ export class DiagramComponent {
     [NodeTemplateType.DeviceNode, DeviceNodeComponent],
   ]);
 
-  edgeTemplateMap = new NgDiagramEdgeTemplateMap([
-    [EdgeTemplateType.WireEdge, WireEdgeComponent],
-  ]);
+  edgeTemplateMap = new NgDiagramEdgeTemplateMap([[EdgeTemplateType.WireEdge, WireEdgeComponent]]);
 
   model = initializeModel(diagramModel);
 

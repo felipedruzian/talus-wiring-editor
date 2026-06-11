@@ -9,20 +9,21 @@ import {
   untracked,
 } from '@angular/core';
 import { type DeviceNodeData } from '../../../diagram/model/interfaces';
-import { DeviceFormComponent } from '../../../shared/device-form/device-form.component';
+import { DeviceFormComponent } from '../../../device-form/device-form.component';
 import {
   DEVICE_FORM_HIDDEN_FIELDS,
   ON_DEVICE_FIELD_CHANGE,
   type DeviceFieldChange,
-} from '../../../shared/device-form/device-form.mappers';
-import { DeviceFormService } from '../../../shared/device-form/device-form.service';
+} from '../../../device-form/device-form.mappers';
+import { DeviceFormService } from '../../../device-form/device-form.service';
+import { TooltipDirective } from '../../../shared/directives/tooltip/tooltip.directive';
 import { LibraryDraftService } from '../../library-draft.service';
 import { LibraryService } from '../../library.service';
 import { createBlankTemplate } from '../../seed-library';
 
 @Component({
   selector: 'app-library-detail',
-  imports: [DeviceFormComponent],
+  imports: [DeviceFormComponent, TooltipDirective],
   templateUrl: './library-detail.component.html',
   styleUrl: './library-detail.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -34,7 +35,9 @@ import { createBlankTemplate } from '../../seed-library';
       provide: ON_DEVICE_FIELD_CHANGE,
       useFactory: () => {
         const draft = inject(LibraryDraftService);
-        return (change: DeviceFieldChange) => draft.applyChange(change);
+        return (change: DeviceFieldChange) => {
+          draft.applyChange(change);
+        };
       },
     },
   ],
