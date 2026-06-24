@@ -13,6 +13,7 @@ import {
   type NgDiagramConfig,
   type PaletteItemDroppedEvent,
   type SelectionGestureEndedEvent,
+  type SelectionMovedEvent,
 } from 'ng-diagram';
 import { AV_SCHEMATIC_CONFIG } from '../av-schematic.config';
 import { snapPointToGrid } from './edge-routing/edge-grid';
@@ -30,6 +31,8 @@ import {
 } from './model/interfaces';
 import { NodeVisibilityConfigService } from './node-visibility/node-visibility-config.service';
 import { DeviceNodeComponent } from './node/device-node.component';
+import { applyEdgeStretchOnSelectionMoved } from './edge-reshaping/edge-stretch-on-move';
+import { EdgeReshapeOverlayComponent } from './edge-reshaping/edge-reshape-overlay.component';
 import { WireEdgeComponent } from './wire-edge.component';
 import { diagramModel } from './data';
 
@@ -37,7 +40,7 @@ const generateWireId = (): string => randomShortId('W');
 
 @Component({
   selector: 'app-diagram',
-  imports: [NgDiagramComponent, NgDiagramBackgroundComponent],
+  imports: [NgDiagramComponent, NgDiagramBackgroundComponent, EdgeReshapeOverlayComponent],
   templateUrl: './diagram.component.html',
   styleUrl: './diagram.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -113,6 +116,14 @@ export class DiagramComponent {
 
   onEdgeDrawEnded(event: EdgeDrawEndedEvent): void {
     this.linkDangling.handleEdgeDrawEnded(event);
+  }
+
+  // Manual edges don't auto-reroute, so re-anchor their endpoints to the live
+  // ports of any moved node (auto edges are handled by ng-diagram's router).
+  onSelectionMoved(event: SelectionMovedEvent): void {
+    const movedNodeIds = new Set<string>();
+    for (const node of event.nodes) movedNodeIds.add(node.id);
+    applyEdgeStretchOnSelectionMoved(this.modelService, movedNodeIds);
   }
 
   private snapTemporaryTarget(edge: Edge): Pick<Edge, 'targetPosition'> | undefined {

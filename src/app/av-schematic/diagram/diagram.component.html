@@ -8,7 +8,9 @@
     (paletteItemDropped)="onPaletteItemDropped($event)"
     (diagramInit)="onDiagramInit($event)"
     (edgeDrawEnded)="onEdgeDrawEnded($event)"
+    (selectionMoved)="onSelectionMoved($event)"
   >
     <ng-diagram-background type="dots" />
   </ng-diagram>
+  <app-edge-reshape-overlay />
 </div>
