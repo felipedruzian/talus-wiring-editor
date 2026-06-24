@@ -1,14 +1,6 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { provideNgDiagram } from 'ng-diagram';
 import { DiagramComponent } from '../diagram/diagram.component';
-import { EdgeReshapeCommandDispatcher } from '../diagram/edge-reshaping/commands/dispatcher';
-import { EdgeReshapeEventHandler } from '../diagram/edge-reshaping/handlers/edge-reshape.handler';
-import {
-  EdgeEndpointSyncService,
-  bootstrapEdgeEndpointSync,
-} from '../diagram/edge-reshaping/middleware/edge-endpoint-sync.service';
-import { EdgeReshapeLifecycleEmitter } from '../diagram/edge-reshaping/middleware/edge-reshape-lifecycle.emitter';
 import { NodeVisibilityConfigService } from '../diagram/node-visibility/node-visibility-config.service';
 import { PortFocusService } from '../diagram/port-focus.service';
 import { ViewportAnimationService } from '../diagram/viewport-animation.service';
@@ -46,23 +38,6 @@ import { TopNavbarComponent } from '../top-navbar/top-navbar.component';
     PortFocusService,
     LibraryService,
     DiagramExportService,
-    EdgeReshapeLifecycleEmitter,
-    EdgeReshapeCommandDispatcher,
-    EdgeReshapeEventHandler,
-    EdgeEndpointSyncService,
   ],
 })
-export class AvSchematicPageComponent {
-  constructor() {
-    bootstrapEdgeEndpointSync();
-
-    // Demo subscriber: hook your toolbar / telemetry / undo stack here.
-    const reshapeEvents = inject(EdgeReshapeLifecycleEmitter);
-    reshapeEvents.edgeReshapeStarted.pipe(takeUntilDestroyed()).subscribe(({ edgeId }) => {
-      console.log('[edge-reshape] started', edgeId);
-    });
-    reshapeEvents.edgeReshapeEnded.pipe(takeUntilDestroyed()).subscribe(({ edgeId }) => {
-      console.log('[edge-reshape] ended', edgeId);
-    });
-  }
-}
+export class AvSchematicPageComponent {}
