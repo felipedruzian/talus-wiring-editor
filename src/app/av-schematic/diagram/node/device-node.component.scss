@@ -12,7 +12,8 @@
     cursor: grabbing;
   }
 
-  &:hover {
+  &:hover,
+  &.is-link-target {
     --card-border-color: var(--av-color-selection-border);
   }
 
@@ -61,7 +62,9 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 1px;
+  height: 78px;
   padding: var(--ngd-primitive-4rule-4) var(--ngd-primitive-4rule-12) var(--ngd-primitive-4rule-8);
   background: var(--card-header-bg);
   border-radius: var(--ngd-token-radius-element-12) var(--ngd-token-radius-element-12) 0 0;
@@ -113,7 +116,7 @@
   gap: var(--ngd-primitive-4rule-8);
   padding: var(--ngd-primitive-4rule-4) var(--ngd-primitive-4rule-12);
   border-bottom: 1px solid var(--ngd-ui-separator-primary-default);
-  min-height: 36px;
+  height: 40px;
   position: relative;
 
   &--last {
@@ -155,6 +158,11 @@
     background: color-mix(in srgb, var(--av-color-accent) 35%, transparent);
     border-color: var(--av-color-accent);
   }
+}
+
+.port-row.is-link-target .port-shape {
+  background: color-mix(in srgb, var(--av-color-accent) 35%, transparent);
+  border-color: var(--av-color-accent);
 }
 
 .port-info {

@@ -9,11 +9,14 @@ import {
   NgDiagramNodeTemplateMap,
   NgDiagramViewportService,
   type Edge,
+  type EdgeDrawEndedEvent,
   type NgDiagramConfig,
   type PaletteItemDroppedEvent,
   type SelectionGestureEndedEvent,
 } from 'ng-diagram';
 import { AV_SCHEMATIC_CONFIG } from '../av-schematic.config';
+import { snapPointToGrid } from './edge-routing/edge-grid';
+import { LinkDanglingService } from './edge-linking/link-dangling.service';
 import { DiagramExportService } from '../export/diagram-export.service';
 import { PropertiesSidebarService } from '../properties-sidebar/properties-sidebar.service';
 import { randomShortId } from '../shared/utils/random-short-id';
@@ -47,6 +50,7 @@ export class DiagramComponent {
   private readonly modelService = inject(NgDiagramModelService);
   private readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly exportService = inject(DiagramExportService);
+  private readonly linkDangling = inject(LinkDanglingService);
 
   constructor() {
     this.exportService.setDiagramElement(this.elementRef);
@@ -66,6 +70,7 @@ export class DiagramComponent {
     linking: {
       temporaryEdgeDataBuilder: (edge: Edge): Edge<WireEdgeData> => ({
         ...edge,
+        ...this.snapTemporaryTarget(edge),
         type: EdgeTemplateType.WireEdge,
         routing: 'orthogonal',
         sourceArrowhead: undefined,
@@ -104,6 +109,16 @@ export class DiagramComponent {
 
   onDiagramInit(_: DiagramInitEvent): void {
     this.zoomToFit();
+  }
+
+  onEdgeDrawEnded(event: EdgeDrawEndedEvent): void {
+    this.linkDangling.handleEdgeDrawEnded(event);
+  }
+
+  private snapTemporaryTarget(edge: Edge): Pick<Edge, 'targetPosition'> | undefined {
+    if (!this.avConfig.snapping.enabled || edge.target || !edge.targetPosition) return undefined;
+    const step = this.avConfig.snapping.gridSize;
+    return { targetPosition: snapPointToGrid(edge.targetPosition, { x: step, y: step }) };
   }
 
   onSelectionGestureEnded(event: SelectionGestureEndedEvent): void {

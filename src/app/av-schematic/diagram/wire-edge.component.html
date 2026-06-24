@@ -5,4 +5,17 @@
   <ng-diagram-base-edge-label id="wire-id-target" [positionOnEdge]="'-30px'">
     <span class="wire-label">{{ edge().data.wireId }}</span>
   </ng-diagram-base-edge-label>
+
+  @for (endpoint of endpointHandles(); track endpoint.id) {
+    <ng-diagram-base-edge-label [id]="endpoint.id" [positionOnEdge]="'0px'">
+      <span
+        class="wire-handle wire-handle--endpoint"
+        [style.transform]="endpoint.transform"
+        appRelinkHandle
+        (relinkStart)="onEndpointStart($event, endpoint.side)"
+        (relinkContinue)="onEndpointContinue($event)"
+        (relinkEnd)="onEndpointEnd($event)"
+      ></span>
+    </ng-diagram-base-edge-label>
+  }
 </ng-diagram-base-edge>

@@ -1,6 +1,10 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { provideNgDiagram } from 'ng-diagram';
 import { DiagramComponent } from '../diagram/diagram.component';
+import { LinkDanglingService } from '../diagram/edge-linking/link-dangling.service';
+import { TempEdgePointsService } from '../diagram/edge-linking/temp-edge-points.service';
+import { RelinkEndpointHandler } from '../diagram/edge-relinking/relink-endpoint.handler';
+import { RelinkTargetHighlightService } from '../diagram/edge-relinking/relink-target-highlight.service';
 import { NodeVisibilityConfigService } from '../diagram/node-visibility/node-visibility-config.service';
 import { PortFocusService } from '../diagram/port-focus.service';
 import { ViewportAnimationService } from '../diagram/viewport-animation.service';
@@ -38,6 +42,10 @@ import { TopNavbarComponent } from '../top-navbar/top-navbar.component';
     PortFocusService,
     LibraryService,
     DiagramExportService,
+    TempEdgePointsService,
+    LinkDanglingService,
+    RelinkTargetHighlightService,
+    RelinkEndpointHandler,
   ],
 })
 export class AvSchematicPageComponent {}
