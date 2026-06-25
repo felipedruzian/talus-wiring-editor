@@ -30,44 +30,48 @@ export function findReshapeableSegments(
   return segments;
 }
 
-// Slide one segment perpendicular to its axis, snapping to the grid. Both of the
-// segment's vertices move together so the segment stays straight; neighbours are
-// left untouched (anchoring / orthogonalizing happens in the callers).
+// Slide one segment perpendicular to its axis. Both of the segment's vertices
+// move together so the segment stays straight; neighbours are left untouched
+// (anchoring / orthogonalizing happens in the callers). `grid` snaps the moved
+// coordinate to the grid; pass `null` to move freely (snapping disabled).
 export function reshapeSegment(
   points: readonly Point[],
   segmentIndex: number,
   axis: Orientation,
   dxWorld: number,
   dyWorld: number,
-  gridPx: number,
+  grid: { x: number; y: number } | null,
 ): Point[] {
   const result = points.map((p) => ({ ...p }));
   const segStart = result[segmentIndex];
   const segEnd = result[segmentIndex + 1];
   if (axis === 'horizontal') {
-    const snapped = Math.round((segStart.y + dyWorld) / gridPx) * gridPx;
+    const y = segStart.y + dyWorld;
+    const snapped = grid ? Math.round(y / grid.y) * grid.y : y;
     segStart.y = snapped;
     segEnd.y = snapped;
   } else {
-    const snapped = Math.round((segStart.x + dxWorld) / gridPx) * gridPx;
+    const x = segStart.x + dxWorld;
+    const snapped = grid ? Math.round(x / grid.x) * grid.x : x;
     segStart.x = snapped;
     segEnd.x = snapped;
   }
   return result;
 }
 
-// Reshape with optional L-bend insertion at port-anchored ends so the port stays put.
+// Reshape with optional L-bend insertion at port-anchored ends so the port stays
+// put. `grid` is forwarded to `reshapeSegment`; `null` disables snapping.
 export function reshapeAnchoredSegment(
   initialPoints: readonly Point[],
   segmentIndex: number,
   axis: Orientation,
   dxWorld: number,
   dyWorld: number,
-  gridPx: number,
+  grid: { x: number; y: number } | null,
   anchorSource: boolean,
   anchorTarget: boolean,
 ): Point[] {
-  const shifted = reshapeSegment(initialPoints, segmentIndex, axis, dxWorld, dyWorld, gridPx);
+  const shifted = reshapeSegment(initialPoints, segmentIndex, axis, dxWorld, dyWorld, grid);
   const lastIndex = shifted.length - 1;
   const willAnchorSource = anchorSource && segmentIndex === 0;
   const willAnchorTarget = anchorTarget && segmentIndex + 1 === lastIndex;

@@ -51,30 +51,38 @@ describe('findReshapeableSegments', () => {
   });
 });
 
+const grid = { x: 20, y: 20 };
+
 describe('reshapeSegment', () => {
   it('slides a horizontal segment on Y and snaps to grid', () => {
-    const result = reshapeSegment(lShape, 0, 'horizontal', 0, 17, 20);
+    const result = reshapeSegment(lShape, 0, 'horizontal', 0, 17, grid);
     expect(result[0].y).toBe(20);
     expect(result[1].y).toBe(20);
     expect(result[0].x).toBe(0);
   });
 
   it('slides a vertical segment on X and snaps to grid', () => {
-    const result = reshapeSegment(lShape, 1, 'vertical', 26, 0, 20);
+    const result = reshapeSegment(lShape, 1, 'vertical', 26, 0, grid);
     expect(result[1].x).toBe(120);
     expect(result[2].x).toBe(120);
   });
 
+  it('moves freely without snapping when grid is null', () => {
+    const result = reshapeSegment(lShape, 0, 'horizontal', 0, 17, null);
+    expect(result[0].y).toBe(17);
+    expect(result[1].y).toBe(17);
+  });
+
   it('does not mutate the input', () => {
     const copy = lShape.map((p) => ({ ...p }));
-    reshapeSegment(lShape, 0, 'horizontal', 0, 40, 20);
+    reshapeSegment(lShape, 0, 'horizontal', 0, 40, grid);
     expect(lShape).toEqual(copy);
   });
 });
 
 describe('reshapeAnchoredSegment', () => {
   it('inserts an L-bend at the source so the anchored port stays put', () => {
-    const result = reshapeAnchoredSegment(lShape, 0, 'horizontal', 0, 40, 20, true, false);
+    const result = reshapeAnchoredSegment(lShape, 0, 'horizontal', 0, 40, grid, true, false);
     // Source point is unchanged; an elbow now carries the dragged Y.
     expect(result[0]).toEqual({ x: 0, y: 0 });
     expect(result[1]).toEqual({ x: 0, y: 40 });
@@ -82,7 +90,7 @@ describe('reshapeAnchoredSegment', () => {
   });
 
   it('inserts an L-bend at the target end segment', () => {
-    const result = reshapeAnchoredSegment(lShape, 1, 'vertical', 40, 0, 20, false, true);
+    const result = reshapeAnchoredSegment(lShape, 1, 'vertical', 40, 0, grid, false, true);
     const last = result.length - 1;
     // Target point unchanged; elbow before it carries the dragged X.
     expect(result[last]).toEqual({ x: 100, y: 100 });
@@ -96,7 +104,7 @@ describe('reshapeAnchoredSegment', () => {
       { x: 50, y: 100 },
       { x: 100, y: 100 },
     ];
-    const result = reshapeAnchoredSegment(mid, 1, 'vertical', 20, 0, 20, true, true);
+    const result = reshapeAnchoredSegment(mid, 1, 'vertical', 20, 0, grid, true, true);
     expect(result.length).toBe(mid.length);
   });
 });

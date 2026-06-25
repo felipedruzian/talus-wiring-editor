@@ -11,6 +11,7 @@ import {
   type Edge,
   type EdgeDrawEndedEvent,
   type NgDiagramConfig,
+  type NodeDragEndedEvent,
   type PaletteItemDroppedEvent,
   type SelectionGestureEndedEvent,
   type SelectionMovedEvent,
@@ -120,10 +121,18 @@ export class DiagramComponent {
 
   // Manual edges don't auto-reroute, so re-anchor their endpoints to the live
   // ports of any moved node (auto edges are handled by ng-diagram's router).
+  // Mid-drag: re-anchor only, no merge — the route mustn't simplify before drop.
   onSelectionMoved(event: SelectionMovedEvent): void {
-    const movedNodeIds = new Set<string>();
-    for (const node of event.nodes) movedNodeIds.add(node.id);
-    applyEdgeStretchOnSelectionMoved(this.modelService, movedNodeIds);
+    applyEdgeStretchOnSelectionMoved(this.modelService, this.nodeIds(event.nodes), false);
+  }
+
+  // On drop: fold the bends the drag left collinear, once (point #4).
+  onNodeDragEnded(event: NodeDragEndedEvent): void {
+    applyEdgeStretchOnSelectionMoved(this.modelService, this.nodeIds(event.nodes), true);
+  }
+
+  private nodeIds(nodes: readonly { id: string }[]): Set<string> {
+    return new Set(nodes.map((node) => node.id));
   }
 
   private snapTemporaryTarget(edge: Edge): Pick<Edge, 'targetPosition'> | undefined {

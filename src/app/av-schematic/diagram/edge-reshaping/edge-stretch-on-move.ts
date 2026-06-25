@@ -1,12 +1,21 @@
 import type { NgDiagramModelService, Point } from 'ng-diagram';
-import { portFlowPosition, stretchPolylineWithBendInsertion } from '../edge-geometry';
+import {
+  collapseCollinearBends,
+  portFlowPosition,
+  stretchPolylineWithBendInsertion,
+} from '../edge-geometry';
 
 // Re-anchor manual edges to live ports after a node move. Skips edges not
 // incident to `movedNodeIds` before the per-edge probe (O(incident), not
 // O(all)). Auto edges are re-routed by ng-diagram's orthogonal router.
+//
+// `merge` folds redundant collinear bends. Pass `false` during the live drag
+// (`selectionMoved`) so the route isn't simplified before the user drops, then
+// `true` once on `nodeDragEnded` to fold what the drag left collinear.
 export function applyEdgeStretchOnSelectionMoved(
   modelService: NgDiagramModelService,
   movedNodeIds: ReadonlySet<string>,
+  merge: boolean,
 ): void {
   const patches: { id: string; points: Point[] }[] = [];
   for (const edge of modelService.edges()) {
@@ -36,12 +45,24 @@ export function applyEdgeStretchOnSelectionMoved(
     const targetDrifted =
       !!liveTarget &&
       (Math.abs(liveTarget.x - oldTarget.x) > 0.5 || Math.abs(liveTarget.y - oldTarget.y) > 0.5);
-    if (!sourceDrifted && !targetDrifted) continue;
+    if (!sourceDrifted && !targetDrifted) {
+      // Nothing to re-anchor. On finalize, fold any collinear bends the drag
+      // left behind — invisible to the rendered line, so the drop matches what
+      // the user saw.
+      if (merge) {
+        const collapsed = collapseCollinearBends(edge.points);
+        if (collapsed.length !== edge.points.length) {
+          patches.push({ id: edge.id, points: collapsed });
+        }
+      }
+      continue;
+    }
 
     const stretched = stretchPolylineWithBendInsertion(
       edge.points,
       sourceDrifted ? liveSource : null,
       targetDrifted ? liveTarget : null,
+      merge,
     );
     if (stretched) {
       patches.push({ id: edge.id, points: stretched });

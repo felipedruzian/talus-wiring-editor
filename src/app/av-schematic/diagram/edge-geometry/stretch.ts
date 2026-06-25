@@ -79,18 +79,21 @@ export function stretchPolyline(
 
 // Like `stretchPolyline`, but for manual-mode moves: inserts at most one L-bend
 // at each drifted end when strict stretch can't preserve the interior bends.
-// Null only when even bend insertion fails.
+// Null only when even bend insertion fails. `merge` folds redundant collinear
+// bends at the end; pass `false` to defer that to the end of the gesture (so a
+// live drag isn't simplified before the user drops).
 export function stretchPolylineWithBendInsertion(
   points: readonly Point[],
   newSource: Point | null,
   newTarget: Point | null,
+  merge = true,
 ): Point[] | null {
   if (points.length < 2) return null;
-  if (!newSource && !newTarget)
-    return collapseCollinearBends(points.map((p) => ({ x: p.x, y: p.y })));
+  const fold = (route: Point[]): Point[] => (merge ? collapseCollinearBends(route) : route);
+  if (!newSource && !newTarget) return fold(points.map((p) => ({ x: p.x, y: p.y })));
 
   const strict = stretchPolyline(points, newSource, newTarget);
-  if (strict) return collapseCollinearBends(strict);
+  if (strict) return fold(strict);
 
   let working: Point[] = points.map((p) => ({ x: p.x, y: p.y }));
 
@@ -110,7 +113,7 @@ export function stretchPolylineWithBendInsertion(
     const sameY = Math.abs(working[i].y - working[i + 1].y) < COLLINEAR_TOL;
     if (!sameX && !sameY) return null;
   }
-  return collapseCollinearBends(working);
+  return fold(working);
 }
 
 // Re-anchor the source end to `newSource`, adding one L-bend so the first

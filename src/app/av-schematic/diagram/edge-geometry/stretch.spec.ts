@@ -57,4 +57,28 @@ describe('stretchPolylineWithBendInsertion', () => {
     }
     expect(points[0]).toEqual({ x: 0, y: 40 });
   });
+
+  it('keeps collinear bends when merge is false (deferred simplification)', () => {
+    // A rigid translation of an already-collinear run: merging would fold the
+    // middle point; with merge=false it must survive until drop.
+    const collinear: Point[] = [
+      { x: 0, y: 0 },
+      { x: 50, y: 0 },
+      { x: 100, y: 0 },
+    ];
+    const merged = stretchPolylineWithBendInsertion(
+      collinear,
+      { x: 10, y: 0 },
+      { x: 110, y: 0 },
+      true,
+    );
+    const deferred = stretchPolylineWithBendInsertion(
+      collinear,
+      { x: 10, y: 0 },
+      { x: 110, y: 0 },
+      false,
+    );
+    expect(merged).toHaveLength(2);
+    expect(deferred).toHaveLength(3);
+  });
 });

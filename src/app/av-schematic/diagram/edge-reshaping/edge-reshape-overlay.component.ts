@@ -9,19 +9,22 @@ import {
 import {
   NgDiagramModelService,
   NgDiagramSelectionService,
+  NgDiagramService,
   NgDiagramViewportService,
+  type Edge,
   type Point,
 } from 'ng-diagram';
-import { AV_SCHEMATIC_CONFIG } from '../../av-schematic.config';
 import {
   collapseCollinearBends,
   dropSameAxisBends,
+  edgeGridReferenceNode,
   endpointNeighborAxis,
   findReshapeableSegments,
   orthogonalizePolyline,
   portFlowPosition,
   realignEndpointNeighbor,
   reshapeAnchoredSegment,
+  resolveEdgeGrid,
   type EdgeEndpointSide,
   type ReshapeEndpointKind,
   type ReshapeSegment,
@@ -41,6 +44,8 @@ interface DragState {
   readonly initialPoints: { readonly x: number; readonly y: number }[];
   readonly initialClientX: number;
   readonly initialClientY: number;
+  // Grid resolved from snap config at gesture start; null when snapping is off.
+  readonly grid: { x: number; y: number } | null;
 }
 
 // Reshape handles on every orthogonal segment of a selected edge. Dragging a
@@ -56,9 +61,7 @@ export class EdgeReshapeOverlayComponent {
   private readonly modelService = inject(NgDiagramModelService);
   private readonly selectionService = inject(NgDiagramSelectionService);
   private readonly viewportService = inject(NgDiagramViewportService);
-  private readonly avConfig = inject(AV_SCHEMATIC_CONFIG);
-
-  private readonly gridPx = this.avConfig.snapping.gridSize;
+  private readonly diagramService = inject(NgDiagramService);
 
   // Handle-bound, no frame coalescing: the reshape compute is light and the
   // grabbed handle stays mounted through the gesture (the L-bend mask keeps its
@@ -192,7 +195,16 @@ export class EdgeReshapeOverlayComponent {
       initialPoints,
       initialClientX: event.clientX,
       initialClientY: event.clientY,
+      grid: this.gridForEdge(edge),
     });
+  }
+
+  // Mirror the node-drag snap config: reshape snaps only when the edge's
+  // reference node would snap on drag. Null → snapping disabled, reshape moves
+  // freely. Keeps snapping config-driven and optional for a core port.
+  private gridForEdge(edge: Edge): { x: number; y: number } | null {
+    const refNode = edgeGridReferenceNode(this.modelService.nodes(), edge);
+    return resolveEdgeGrid(this.diagramService, refNode) ?? null;
   }
 
   private applyPointerMove(event: PointerEvent, drag: DragState): void {
@@ -206,7 +218,7 @@ export class EdgeReshapeOverlayComponent {
       drag.axis,
       dxWorld,
       dyWorld,
-      this.gridPx,
+      drag.grid,
       drag.anchorPortAtSource,
       drag.anchorPortAtTarget,
     );
