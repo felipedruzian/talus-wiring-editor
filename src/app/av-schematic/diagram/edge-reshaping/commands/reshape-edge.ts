@@ -13,7 +13,7 @@ import type { ReshapeFinishCommand, ReshapeMoveCommand, SetEdgeRouteCommand } fr
 
 // Pin an edge to manual mode with an explicit route (e.g. after normalizing the
 // displayed route on gesture start).
-export function setEdgeRoute(model: NgDiagramModelService, command: SetEdgeRouteCommand): void {
+export const setEdgeRoute = (model: NgDiagramModelService, command: SetEdgeRouteCommand): void => {
   const points = command.points.map((p) => ({ x: p.x, y: p.y }));
   model.updateEdge(command.edgeId, { points, routingMode: 'manual' });
 }
@@ -21,7 +21,7 @@ export function setEdgeRoute(model: NgDiagramModelService, command: SetEdgeRoute
 // Apply one live segment move: slide the segment, snap endpoints to the live
 // ports, realign their stubs, orthogonalize any diagonal, and commit. No merge
 // here — that is deferred to `finishReshape` so the drop matches the preview.
-export function applyReshapeMove(model: NgDiagramModelService, command: ReshapeMoveCommand): void {
+export const applyReshapeMove = (model: NgDiagramModelService, command: ReshapeMoveCommand): void => {
   const newPoints = reshapeAnchoredSegment(
     command.initialPoints,
     command.segmentIndex,
@@ -46,7 +46,7 @@ export function applyReshapeMove(model: NgDiagramModelService, command: ReshapeM
 
 // Fold redundant bends once the gesture ends. Folding collinear/same-axis points
 // is invisible, so the committed route matches what was on screen.
-export function finishReshape(model: NgDiagramModelService, command: ReshapeFinishCommand): void {
+export const finishReshape = (model: NgDiagramModelService, command: ReshapeFinishCommand): void => {
   const edge = model.getEdgeById(command.edgeId);
   if (!edge?.points || edge.points.length < 3) return;
   const collapsed = dropSameAxisBends(collapseCollinearBends(edge.points));
@@ -55,12 +55,12 @@ export function finishReshape(model: NgDiagramModelService, command: ReshapeFini
 }
 
 // Replace the end vertex with the live port world position.
-function anchorEndpointToPort(
+const anchorEndpointToPort = (
   model: NgDiagramModelService,
   points: { x: number; y: number }[],
   edgeId: string,
   side: EdgeEndpointSide,
-): void {
+): void => {
   const edge = model.getEdgeById(edgeId);
   if (!edge) return;
   const nodeId = side === 'source' ? edge.source : edge.target;

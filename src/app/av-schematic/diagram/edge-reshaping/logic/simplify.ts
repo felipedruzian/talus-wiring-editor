@@ -6,7 +6,7 @@ const COLLINEAR_TOL = POSITION_TOLERANCE_PX;
 // Fold genuinely redundant interior points. A point folds only when collinear
 // with its neighbours AND between them (a straight pass-through); a U-turn
 // extremum is a real bend (e.g. a collapsed reshape) and is kept.
-export function collapseCollinearBends(points: readonly Point[]): Point[] {
+export const collapseCollinearBends = (points: readonly Point[]): Point[] => {
   if (points.length < 3) return points.map((p) => ({ x: p.x, y: p.y }));
   const result: Point[] = [{ x: points[0].x, y: points[0].y }];
   for (let i = 1; i < points.length - 1; i++) {
@@ -29,21 +29,20 @@ export function collapseCollinearBends(points: readonly Point[]): Point[] {
 }
 
 // `b` within [a, c] (either order), with tolerance — pass-through vs U-turn.
-function isBetween(a: number, b: number, c: number): boolean {
-  return b >= Math.min(a, c) - COLLINEAR_TOL && b <= Math.max(a, c) + COLLINEAR_TOL;
-}
+const isBetween = (a: number, b: number, c: number): boolean =>
+  b >= Math.min(a, c) - COLLINEAR_TOL && b <= Math.max(a, c) + COLLINEAR_TOL;
 
 // Fold a route to its minimal set of bends: collinear pass-throughs, then
 // same-axis near-collinear runs. A visually straight run becomes one segment.
-export function normalizeRoute(points: readonly Point[] | undefined): Point[] {
+export const normalizeRoute = (points: readonly Point[] | undefined): Point[] => {
   if (!points) return [];
   return dropSameAxisBends(collapseCollinearBends(points));
-}
+};
 
 // Drop interior points whose incoming/outgoing segments share a dominant
 // axis. Looser than `collapseCollinearBends` — catches quasi-collinear
 // 3-point routes left sub-grid-misaligned by the reshape. L corners stay.
-export function dropSameAxisBends(points: readonly Point[]): Point[] {
+export const dropSameAxisBends = (points: readonly Point[]): Point[] => {
   if (points.length < 3) return points.map((p) => ({ x: p.x, y: p.y }));
   const result: Point[] = [{ x: points[0].x, y: points[0].y }];
   for (let i = 1; i < points.length - 1; i++) {
@@ -66,10 +65,10 @@ export function dropSameAxisBends(points: readonly Point[]): Point[] {
  * consecutive segments into one when the middle bend is (nearly) on the line
  * from its neighbours. Always preserves the source and target endpoints.
  */
-export function removeStraightSegments(
+export const removeStraightSegments = (
   points: readonly Point[],
   alignmentTolerance: number,
-): Point[] {
+): Point[] => {
   if (points.length < 3) return points.slice();
 
   const result: Point[] = [points[0]];

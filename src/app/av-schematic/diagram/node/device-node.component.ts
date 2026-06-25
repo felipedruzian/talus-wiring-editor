@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, input } from '@an
 import {
   NgDiagramPortComponent,
   NgDiagramSelectionService,
+  NgDiagramService,
   type NgDiagramNodeTemplate,
   type Node,
 } from 'ng-diagram';
@@ -19,10 +20,12 @@ import { type DeviceNodeData, type DevicePort } from '../model/interfaces';
     '[class.selected]': 'node().selected',
     '[class.edge-highlighted]': 'edgeHighlighted()',
     '[class.is-link-target]': 'linkTargetPortId() !== null',
+    '[class.is-linking]': 'isLinking()',
   },
 })
 export class DeviceNodeComponent implements NgDiagramNodeTemplate<DeviceNodeData> {
   private readonly selectionService = inject(NgDiagramSelectionService);
+  private readonly diagramService = inject(NgDiagramService);
   private readonly portFocusService = inject(PortFocusService);
   private readonly relinkHighlight = inject(RelinkTargetHighlightService);
 
@@ -39,6 +42,8 @@ export class DeviceNodeComponent implements NgDiagramNodeTemplate<DeviceNodeData
       .selection()
       .edges.some((e) => e.source === nodeId || e.target === nodeId);
   });
+
+  protected readonly isLinking = computed(() => !!this.diagramService.actionState().linking);
 
   protected readonly linkTargetPortId = computed(() => {
     const target = this.relinkHighlight.target();

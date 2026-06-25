@@ -11,8 +11,10 @@ import {
   type Edge,
   type EdgeDrawEndedEvent,
   type NgDiagramConfig,
+  type Node,
   type NodeDragEndedEvent,
   type PaletteItemDroppedEvent,
+  type Port,
   type SelectionGestureEndedEvent,
   type SelectionMovedEvent,
 } from 'ng-diagram';
@@ -64,6 +66,9 @@ export class DiagramComponent {
   }
 
   config = {
+    background: {
+      dotSpacing: this.avConfig.snapping.gridSize,
+    },
     edgeRouting: {
       defaultRouting: 'orthogonal',
       orthogonal: {
@@ -72,6 +77,12 @@ export class DiagramComponent {
       },
     },
     linking: {
+      validateConnection: (
+        source: Node | null,
+        sourcePort: Port | null,
+        target: Node | null,
+        targetPort: Port | null,
+      ): boolean => !this.isSamePort(source, sourcePort, target, targetPort),
       temporaryEdgeDataBuilder: (edge: Edge): Edge<WireEdgeData> => ({
         ...edge,
         ...this.snapTemporaryTarget(edge),
@@ -133,6 +144,20 @@ export class DiagramComponent {
 
   private nodeIds(nodes: readonly { id: string }[]): Set<string> {
     return new Set(nodes.map((node) => node.id));
+  }
+
+  private isSamePort(
+    source: Node | null,
+    sourcePort: Port | null,
+    target: Node | null,
+    targetPort: Port | null,
+  ): boolean {
+    return (
+      !!source &&
+      source.id === target?.id &&
+      !!sourcePort &&
+      sourcePort.id === targetPort?.id
+    );
   }
 
   private snapTemporaryTarget(edge: Edge): Pick<Edge, 'targetPosition'> | undefined {

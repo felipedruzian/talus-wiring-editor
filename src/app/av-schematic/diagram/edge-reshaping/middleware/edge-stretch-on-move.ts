@@ -12,11 +12,11 @@ import {
 // `merge` folds redundant collinear bends. Pass `false` during the live drag
 // (`selectionMoved`) so the route isn't simplified before the user drops, then
 // `true` once on `nodeDragEnded` to fold what the drag left collinear.
-export function applyEdgeStretchOnSelectionMoved(
+export const applyEdgeStretchOnSelectionMoved = (
   modelService: NgDiagramModelService,
   movedNodeIds: ReadonlySet<string>,
   merge: boolean,
-): void {
+): void => {
   const patches: { id: string; points: Point[] }[] = [];
   for (const edge of modelService.edges()) {
     if (edge.routingMode !== 'manual') continue;
@@ -81,12 +81,12 @@ export function applyEdgeStretchOnSelectionMoved(
 }
 
 // Returns null when the port isn't measured yet (transient mount state).
-function liveEndpointWorld(
+const liveEndpointWorld = (
   modelService: NgDiagramModelService,
   nodeId: string,
   portId: string | undefined,
   fallback: Point | undefined,
-): Point | null {
+): Point | null => {
   if (nodeId && portId) {
     const node = modelService.getNodeById(nodeId);
     return portFlowPosition(node, portId);

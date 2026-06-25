@@ -10,11 +10,11 @@ const COLLINEAR_TOL = POSITION_TOLERANCE_PX;
 // Equal endpoint deltas → rigid translation, otherwise each moved end slides the
 // touching bend along its cross-axis. Returns null when the result can't stay
 // orthogonal — `stretchPolylineWithBendInsertion` then inserts an L-bend.
-export function stretchPolyline(
+export const stretchPolyline = (
   points: readonly Point[],
   newSource: Point | null,
   newTarget: Point | null,
-): Point[] | null {
+): Point[] | null => {
   if (points.length < 2) return null;
   if (!newSource && !newTarget) return points.map((p) => ({ x: p.x, y: p.y }));
 
@@ -82,12 +82,12 @@ export function stretchPolyline(
 // Null only when even bend insertion fails. `merge` folds redundant collinear
 // bends at the end; pass `false` to defer that to the end of the gesture (so a
 // live drag isn't simplified before the user drops).
-export function stretchPolylineWithBendInsertion(
+export const stretchPolylineWithBendInsertion = (
   points: readonly Point[],
   newSource: Point | null,
   newTarget: Point | null,
   merge = true,
-): Point[] | null {
+): Point[] | null => {
   if (points.length < 2) return null;
   const fold = (route: Point[]): Point[] => (merge ? collapseCollinearBends(route) : route);
   if (!newSource && !newTarget) return fold(points.map((p) => ({ x: p.x, y: p.y })));
@@ -119,7 +119,7 @@ export function stretchPolylineWithBendInsertion(
 // Re-anchor the source end to `newSource`, adding one L-bend so the first
 // segment keeps its original axis. Null when the original first segment wasn't
 // axis-aligned.
-function insertSourceBend(points: readonly Point[], newSource: Point): Point[] | null {
+const insertSourceBend = (points: readonly Point[], newSource: Point): Point[] | null => {
   const sourcePoint = points[0];
   const nextPoint = points[1];
   const wasVertical = Math.abs(sourcePoint.x - nextPoint.x) < COLLINEAR_TOL;
@@ -141,7 +141,7 @@ function insertSourceBend(points: readonly Point[], newSource: Point): Point[] |
 }
 
 // Mirror of `insertSourceBend` for the target end.
-function insertTargetBend(points: readonly Point[], newTarget: Point): Point[] | null {
+const insertTargetBend = (points: readonly Point[], newTarget: Point): Point[] | null => {
   const lastIdx = points.length - 1;
   const targetPoint = points[lastIdx];
   const prevPoint = points[lastIdx - 1];

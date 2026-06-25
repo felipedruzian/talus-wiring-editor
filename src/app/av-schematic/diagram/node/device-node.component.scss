@@ -12,7 +12,8 @@
     cursor: grabbing;
   }
 
-  &:hover,
+  &:not(.is-linking):hover,
+  &.is-linking:has(.port-shape:hover),
   &.is-link-target {
     --card-border-color: var(--av-color-selection-border);
   }

@@ -3,11 +3,11 @@ import { POSITION_TOLERANCE_PX } from './constants';
 import { type Orientation, type ReshapeEndpointKind, type ReshapeSegment } from './types';
 
 // Degenerate (diagonal/zero-length) segments are skipped.
-export function findReshapeableSegments(
+export const findReshapeableSegments = (
   points: readonly Point[] | undefined,
   sourceKind: ReshapeEndpointKind,
   targetKind: ReshapeEndpointKind,
-): ReshapeSegment[] {
+): ReshapeSegment[] => {
   const segments: ReshapeSegment[] = [];
   if (!points || points.length < 2) return segments;
   const lastSegmentIndex = points.length - 2;
@@ -34,14 +34,14 @@ export function findReshapeableSegments(
 // move together so the segment stays straight; neighbours are left untouched
 // (anchoring / orthogonalizing happens in the callers). `grid` snaps the moved
 // coordinate to the grid; pass `null` to move freely (snapping disabled).
-export function reshapeSegment(
+export const reshapeSegment = (
   points: readonly Point[],
   segmentIndex: number,
   axis: Orientation,
   dxWorld: number,
   dyWorld: number,
   grid: { x: number; y: number } | null,
-): Point[] {
+): Point[] => {
   const result = points.map((p) => ({ ...p }));
   const segStart = result[segmentIndex];
   const segEnd = result[segmentIndex + 1];
@@ -61,7 +61,7 @@ export function reshapeSegment(
 
 // Reshape with optional L-bend insertion at port-anchored ends so the port stays
 // put. `grid` is forwarded to `reshapeSegment`; `null` disables snapping.
-export function reshapeAnchoredSegment(
+export const reshapeAnchoredSegment = (
   initialPoints: readonly Point[],
   segmentIndex: number,
   axis: Orientation,
@@ -70,7 +70,7 @@ export function reshapeAnchoredSegment(
   grid: { x: number; y: number } | null,
   anchorSource: boolean,
   anchorTarget: boolean,
-): Point[] {
+): Point[] => {
   const shifted = reshapeSegment(initialPoints, segmentIndex, axis, dxWorld, dyWorld, grid);
   const lastIndex = shifted.length - 1;
   const willAnchorSource = anchorSource && segmentIndex === 0;

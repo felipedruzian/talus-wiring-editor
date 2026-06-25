@@ -4,6 +4,7 @@ import {
   NgDiagramService,
   type Edge,
   type EdgeDrawEndedEvent,
+  type Node,
   type Point,
 } from 'ng-diagram';
 import {
@@ -34,6 +35,10 @@ export class DanglingEdgeService {
 
   handleEdgeDrawEnded(event: EdgeDrawEndedEvent): void {
     if (event.success || event.reason !== 'noTarget' || !event.sourcePort) return;
+
+    // Dropped over a node but missed its ports: leave it unconnected rather than
+    // minting a dangling wire that visually overlaps the node.
+    if (this.isOverNode(event.dropPosition)) return;
 
     const sourceNode = this.modelService.getNodeById(event.source.id);
     if (!sourceNode) return;
@@ -70,6 +75,22 @@ export class DanglingEdgeService {
         data: { type: 'wire', wireId: randomShortId('W') },
       } satisfies Edge<WireEdgeData>,
     ]);
+  }
+
+  private isOverNode(point: Point): boolean {
+    return this.modelService.nodes().some((node) => this.containsPoint(node, point));
+  }
+
+  private containsPoint(node: Node, point: Point): boolean {
+    const bounds = node.measuredBounds;
+    const rect = bounds ?? (node.size ? { ...node.position, ...node.size } : undefined);
+    if (!rect) return false;
+    return (
+      point.x >= rect.x &&
+      point.x <= rect.x + rect.width &&
+      point.y >= rect.y &&
+      point.y <= rect.y + rect.height
+    );
   }
 
   private stubPath(
