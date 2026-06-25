@@ -26,7 +26,7 @@ export const collapseCollinearBends = (points: readonly Point[]): Point[] => {
   }
   result.push({ x: points[points.length - 1].x, y: points[points.length - 1].y });
   return result;
-}
+};
 
 // `b` within [a, c] (either order), with tolerance — pass-through vs U-turn.
 const isBetween = (a: number, b: number, c: number): boolean =>
@@ -58,7 +58,7 @@ export const dropSameAxisBends = (points: readonly Point[]): Point[] => {
   }
   result.push({ x: points[points.length - 1].x, y: points[points.length - 1].y });
   return result;
-}
+};
 
 /**
  * Drop collinear interior points within the given tolerance, merging three
@@ -89,4 +89,4 @@ export const removeStraightSegments = (
   }
   result.push(points[points.length - 1]);
   return result;
-}
+};

@@ -75,7 +75,7 @@ export const stretchPolyline = (
   }
 
   return result;
-}
+};
 
 // Like `stretchPolyline`, but for manual-mode moves: inserts at most one L-bend
 // at each drifted end when strict stretch can't preserve the interior bends.
@@ -114,7 +114,7 @@ export const stretchPolylineWithBendInsertion = (
     if (!sameX && !sameY) return null;
   }
   return fold(working);
-}
+};
 
 // Re-anchor the source end to `newSource`, adding one L-bend so the first
 // segment keeps its original axis. Null when the original first segment wasn't
@@ -138,7 +138,7 @@ const insertSourceBend = (points: readonly Point[], newSource: Point): Point[] |
     return [{ x: newSource.x, y: newSource.y }, ...tail];
   }
   return [{ x: newSource.x, y: newSource.y }, { x: newSource.x, y: nextPoint.y }, ...tail];
-}
+};
 
 // Mirror of `insertSourceBend` for the target end.
 const insertTargetBend = (points: readonly Point[], newTarget: Point): Point[] | null => {
@@ -161,4 +161,4 @@ const insertTargetBend = (points: readonly Point[], newTarget: Point): Point[] |
     return [...head, { x: newTarget.x, y: newTarget.y }];
   }
   return [...head, { x: newTarget.x, y: prevPoint.y }, { x: newTarget.x, y: newTarget.y }];
-}
+};

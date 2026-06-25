@@ -28,7 +28,7 @@ export const findReshapeableSegments = (
     });
   }
   return segments;
-}
+};
 
 // Slide one segment perpendicular to its axis. Both of the segment's vertices
 // move together so the segment stays straight; neighbours are left untouched
@@ -57,7 +57,7 @@ export const reshapeSegment = (
     segEnd.x = snapped;
   }
   return result;
-}
+};
 
 // Reshape with optional L-bend insertion at port-anchored ends so the port stays
 // put. `grid` is forwarded to `reshapeSegment`; `null` disables snapping.
@@ -97,4 +97,4 @@ export const reshapeAnchoredSegment = (
   }
 
   return result;
-}
+};

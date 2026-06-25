@@ -16,12 +16,15 @@ import type { ReshapeFinishCommand, ReshapeMoveCommand, SetEdgeRouteCommand } fr
 export const setEdgeRoute = (model: NgDiagramModelService, command: SetEdgeRouteCommand): void => {
   const points = command.points.map((p) => ({ x: p.x, y: p.y }));
   model.updateEdge(command.edgeId, { points, routingMode: 'manual' });
-}
+};
 
 // Apply one live segment move: slide the segment, snap endpoints to the live
 // ports, realign their stubs, orthogonalize any diagonal, and commit. No merge
 // here — that is deferred to `finishReshape` so the drop matches the preview.
-export const applyReshapeMove = (model: NgDiagramModelService, command: ReshapeMoveCommand): void => {
+export const applyReshapeMove = (
+  model: NgDiagramModelService,
+  command: ReshapeMoveCommand,
+): void => {
   const newPoints = reshapeAnchoredSegment(
     command.initialPoints,
     command.segmentIndex,
@@ -42,17 +45,20 @@ export const applyReshapeMove = (model: NgDiagramModelService, command: ReshapeM
   const orthoPoints = orthogonalizePolyline(newPoints);
 
   model.updateEdge(command.edgeId, { points: orthoPoints, routingMode: 'manual' });
-}
+};
 
 // Fold redundant bends once the gesture ends. Folding collinear/same-axis points
 // is invisible, so the committed route matches what was on screen.
-export const finishReshape = (model: NgDiagramModelService, command: ReshapeFinishCommand): void => {
+export const finishReshape = (
+  model: NgDiagramModelService,
+  command: ReshapeFinishCommand,
+): void => {
   const edge = model.getEdgeById(command.edgeId);
   if (!edge?.points || edge.points.length < 3) return;
   const collapsed = dropSameAxisBends(collapseCollinearBends(edge.points));
   if (collapsed.length === edge.points.length) return;
   model.updateEdge(command.edgeId, { points: collapsed, routingMode: 'manual' });
-}
+};
 
 // Replace the end vertex with the live port world position.
 const anchorEndpointToPort = (
@@ -71,4 +77,4 @@ const anchorEndpointToPort = (
   if (!anchor) return;
   const idx = side === 'source' ? 0 : points.length - 1;
   points[idx] = anchor;
-}
+};

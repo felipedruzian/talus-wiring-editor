@@ -152,12 +152,7 @@ export class DiagramComponent {
     target: Node | null,
     targetPort: Port | null,
   ): boolean {
-    return (
-      !!source &&
-      source.id === target?.id &&
-      !!sourcePort &&
-      sourcePort.id === targetPort?.id
-    );
+    return !!source && source.id === target?.id && !!sourcePort && sourcePort.id === targetPort?.id;
   }
 
   private snapTemporaryTarget(edge: Edge): Pick<Edge, 'targetPosition'> | undefined {

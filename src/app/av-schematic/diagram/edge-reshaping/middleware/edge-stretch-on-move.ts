@@ -78,7 +78,7 @@ export const applyEdgeStretchOnSelectionMoved = (
   if (patches.length > 0) {
     modelService.updateEdges(patches);
   }
-}
+};
 
 // Returns null when the port isn't measured yet (transient mount state).
 const liveEndpointWorld = (
@@ -92,4 +92,4 @@ const liveEndpointWorld = (
     return portFlowPosition(node, portId);
   }
   return fallback ? { x: fallback.x, y: fallback.y } : null;
-}
+};
