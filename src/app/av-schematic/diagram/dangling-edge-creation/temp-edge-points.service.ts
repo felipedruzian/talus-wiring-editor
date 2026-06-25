@@ -10,7 +10,7 @@ interface TempEdgeSnapshot {
 /**
  * Bridges the live link-draw preview to edge creation. While a wire is being
  * drawn, the temporary `WireEdgeComponent` publishes its *rendered* (routed)
- * points here each frame; on drop-to-background `LinkDanglingService` takes the
+ * points here each frame; on drop-to-background `DanglingEdgeService` takes the
  * last snapshot so the created dangling edge keeps the preview's exact bends —
  * which can't be recomputed afterwards (the routed points aren't on the model,
  * and a target-less edge can't be auto-routed).

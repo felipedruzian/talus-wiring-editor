@@ -1,30 +1,44 @@
 # Edge reshaping, linking & relinking
 
 Wires in the AV schematic are orthogonal edges the user can reshape, draw out to
-nothing (dangling), and reconnect to other ports. The feature is built in three
-decoupled layers so the geometry stays portable and the interaction code stays
-thin.
-
-## Layers
+nothing (dangling), and reconnect to other ports. These are **three separate
+features**. Reshaping is the one structured as ng-diagram's pipeline
+(interaction → command → middleware → model) so it can move into core; relinking
+and dangling-edge creation are self-contained features that share only the pure
+geometry.
 
 ```
-edge-geometry/        pure functions — no ng-diagram model access, fully unit-tested
-edge-reshaping/       segment-drag overlay + node-move re-anchoring
-edge-relinking/       endpoint-drag handler + hovered-port highlight
-edge-linking/         dangling-link creation from a port-to-empty draw
+diagram/
+├── edge-reshaping/            reshaping feature (pipeline) + shared geometry
+│   ├── directives/            gesture detection      pointer capture → start/move/end
+│   ├── handlers/              gesture → command       own drag state, dispatch commands
+│   ├── commands/              command + dispatcher    reshaping's only model-write surface
+│   ├── middleware/            cross-cutting           node-move re-anchor (edge-stretch-on-move)
+│   ├── logic/                 pure fns + types        shared geometry — no model access, unit-tested
+│   └── edge-reshape-overlay.component.*               thin UI host: renders handles → handler
+│
+├── edge-relinking/            separate feature — drag an endpoint to reconnect / dangle
+│   ├── relink-endpoint.handler.ts          owns the gesture + its own model writes
+│   ├── relink-handle.directive.ts          endpoint-grip pointer capture
+│   └── relink-target-highlight.service.ts  hovered-port highlight signal
+│
+└── dangling-edge-creation/    separate, AV-specific feature — draw a port into empty space
+    ├── dangling-edge.service.ts            on edgeDrawEnded(noTarget) → add a one-ended wire
+    └── temp-edge-points.service.ts         captures the live preview's bends for that wire
 ```
 
-`edge-geometry/` is the only place the orthogonal-path math lives. Everything
-above it converts pointer input to flow coordinates, calls the geometry, and
-writes the result back through `NgDiagramModelService.updateEdge(s)`. This mirrors
-ng-diagram's unidirectional flow (interaction → model write → signal re-render)
-and keeps the geometry layer free to move into ng-diagram core later.
+`edge-reshaping/logic/` is a leaf (imported by every layer and by the other two
+features, importing none) — the unit intended to lift into core. Reshaping's
+data flow: a **directive** captures the pointer → a **handler** owns the drag
+state and dispatches a typed `EdgeCommand` → the **commands/** dispatcher is the
+single place reshaping calls `NgDiagramModelService.updateEdge(s)`. Relinking and
+dangling creation do their **own** writes directly (they are not on the command
+pipeline); they depend on reshaping only for `logic/`.
 
 Manual-routed edges (`routingMode: 'manual'`, explicit `points`) own their path;
-auto edges are routed by ng-diagram. Reshaping and relinking always pin an edge
-to `manual`.
+auto edges are routed by ng-diagram. All three features pin edges to `manual`.
 
-## Reshaping (`edge-reshaping/`)
+## Reshaping
 
 `EdgeReshapeOverlayComponent` is a single overlay layered over the canvas (not
 handles embedded per-edge): its inner layer is transformed by the viewport
@@ -56,11 +70,12 @@ reshape/relink merge timing:
 - `selectionMoved` (live drag) → `merge: false`: re-anchor only, never simplify.
 - `nodeDragEnded` (drop) → `merge: true`: fold the now-collinear bends once.
 
-The overlay drives the gesture through `PointerDragController` (pointer capture +
-move/up plumbing). The L-bend mask keeps the grabbed handle's `@for` track key
-stable when a bend is injected mid-drag.
+`EdgeReshapeHandler` drives the gesture through `PointerDragController` (pointer
+capture + move/up plumbing) and dispatches the commands. The overlay's L-bend
+mask keeps the grabbed handle's `@for` track key stable when a bend is injected
+mid-drag.
 
-## Relinking (`edge-relinking/`)
+## Relinking
 
 Selecting a wire shows a ring grip at each endpoint (`appRelinkHandle` directive
 for pointer capture). Dragging a grip moves that endpoint; the path is rebuilt
@@ -77,13 +92,14 @@ from the original points each move (bends never accumulate) and re-orthogonalize
 
 Relinking is intentionally independent of reshaping.
 
-## Linking — dangling cables (`edge-linking/`)
+## Dangling-edge creation
 
-ng-diagram discards a port-to-empty draw. `LinkDanglingService`
-(on `edgeDrawEnded`) turns that into a one-ended manual edge. `TempEdgePointsService`
-captures the live preview's rendered points each frame so the created edge keeps
-the exact bends the user saw; otherwise a simple orthogonal stub is built. The
-dangling end is grid-snapped.
+ng-diagram discards a port-to-empty draw. `DanglingEdgeService` (on
+`edgeDrawEnded` with no target) turns that into a one-ended manual edge.
+`TempEdgePointsService` captures the live preview's rendered points each frame so
+the created edge keeps the exact bends the user saw; otherwise a simple
+orthogonal stub is built. The dangling end is grid-snapped. AV-specific: it mints
+a `WireEdge` with a `wireId`.
 
 ## Grid
 
@@ -97,12 +113,12 @@ lines.
 
 ## Tests
 
-`edge-geometry/*.spec.ts` cover the pure layer (segment reshaping, simplify
+`logic/*.spec.ts` cover the pure layer (segment reshaping, simplify
 passes, orthogonalize, stretch, snap, axis classification). Run with `npm test`.
 
 ## Porting to ng-diagram core — known seams
 
-The pure layer (`edge-geometry/`) imports only `ng-diagram` types and is the
+The pure layer (`logic/`) imports only `ng-diagram` types and is the
 intended unit to lift into core. Three places knowingly depend on app context
 and would change on the way in:
 
@@ -115,7 +131,8 @@ and would change on the way in:
   recreated with a new side (direction flip). The general, side-based version
   (all four sides) belongs in core, where the underlying `port.side` staleness
   should be fixed instead.
-- **Gesture → direct model write.** The overlay/handlers write through
-  `NgDiagramModelService` directly. That is the sanctioned services API, but in
-  core the natural shape is a first-class reshape command/action (and an optional
-  routing-policy middleware) with the geometry as pure utilities underneath.
+- **The command pipeline is emulated.** `commands/` + its dispatcher mirror
+  ng-diagram's command flow, but ng-diagram exposes no public command-registration
+  API, so the dispatcher ultimately calls `NgDiagramModelService` directly. In
+  core these become first-class registered commands (and `middleware/` real
+  middleware), with `directives/handlers/logic/` mapping across largely unchanged.

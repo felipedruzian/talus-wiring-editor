@@ -1,56 +1,20 @@
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject } from '@angular/core';
+import { NgDiagramSelectionService, NgDiagramViewportService } from 'ng-diagram';
 import {
-  ChangeDetectionStrategy,
-  Component,
-  DestroyRef,
-  computed,
-  inject,
-  signal,
-} from '@angular/core';
-import {
-  NgDiagramModelService,
-  NgDiagramSelectionService,
-  NgDiagramService,
-  NgDiagramViewportService,
-  type Edge,
-  type Point,
-} from 'ng-diagram';
-import {
-  collapseCollinearBends,
-  dropSameAxisBends,
-  edgeGridReferenceNode,
-  endpointNeighborAxis,
   findReshapeableSegments,
-  orthogonalizePolyline,
-  portFlowPosition,
-  realignEndpointNeighbor,
-  reshapeAnchoredSegment,
-  resolveEdgeGrid,
-  type EdgeEndpointSide,
+  normalizeRoute,
   type ReshapeEndpointKind,
   type ReshapeSegment,
-} from '../edge-geometry';
-import { PointerDragController } from './pointer-drag-controller';
+} from './logic';
+import {
+  EdgeReshapeHandler,
+  type ReshapeDragState,
+  type ReshapeStartDescriptor,
+} from './handlers/edge-reshape.handler';
 
-interface HandleDescriptor extends ReshapeSegment {
-  readonly edgeId: string;
-}
-
-interface DragState {
-  readonly edgeId: string;
-  readonly segmentIndex: number;
-  readonly axis: 'horizontal' | 'vertical';
-  readonly anchorPortAtSource: boolean;
-  readonly anchorPortAtTarget: boolean;
-  readonly initialPoints: { readonly x: number; readonly y: number }[];
-  readonly initialClientX: number;
-  readonly initialClientY: number;
-  // Grid resolved from snap config at gesture start; null when snapping is off.
-  readonly grid: { x: number; y: number } | null;
-}
-
-// Reshape handles on every orthogonal segment of a selected edge. Dragging a
-// segment flips the edge to `routingMode: 'manual'`; first/last segments anchor
-// their port end (an L-bend grows off the port instead of dragging it).
+// Renders a reshape handle on every orthogonal segment of a selected edge and
+// forwards the pointer gesture to the handler. UI only — no geometry, no model
+// writes (those live in handlers/ and commands/).
 @Component({
   selector: 'app-edge-reshape-overlay',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -58,45 +22,22 @@ interface DragState {
   styleUrl: './edge-reshape-overlay.component.scss',
 })
 export class EdgeReshapeOverlayComponent {
-  private readonly modelService = inject(NgDiagramModelService);
   private readonly selectionService = inject(NgDiagramSelectionService);
   private readonly viewportService = inject(NgDiagramViewportService);
-  private readonly diagramService = inject(NgDiagramService);
-
-  // Handle-bound, no frame coalescing: the reshape compute is light and the
-  // grabbed handle stays mounted through the gesture (the L-bend mask keeps its
-  // track key).
-  private readonly drag = new PointerDragController<DragState>(
-    {
-      onMove: (event, state) => {
-        this.applyPointerMove(event, state);
-      },
-      onEnd: (event, state) => {
-        this.finishReshape(event, state);
-      },
-      onTeardown: () => {
-        this.gestureActive.set(false);
-      },
-    },
-    { listenerTarget: 'handle', coalesce: false },
-  );
-
-  // Masks L-bend insertions so the `@for track segmentIndex` doesn't
-  // remap the grabbed DOM element off the cursor mid-drag.
-  private readonly gestureActive = signal(false);
+  private readonly handler = inject(EdgeReshapeHandler);
 
   constructor() {
     // Release capture + clear the mask if destroyed mid-drag.
     inject(DestroyRef).onDestroy(() => {
-      this.drag.teardown();
+      this.handler.teardown();
     });
   }
 
-  protected readonly handles = computed<readonly HandleDescriptor[]>(() => {
-    const drag = this.drag.current;
-    const gestureOn = this.gestureActive();
+  protected readonly handles = computed<readonly ReshapeStartDescriptor[]>(() => {
+    const drag = this.handler.current;
+    const gestureOn = this.handler.gestureActive();
     const selection = this.selectionService.selection();
-    const handles: HandleDescriptor[] = [];
+    const handles: ReshapeStartDescriptor[] = [];
     for (const edge of selection.edges) {
       const sourceKind = this.classifyEndpoint(edge.source);
       const targetKind = this.classifyEndpoint(edge.target);
@@ -108,7 +49,7 @@ export class EdgeReshapeOverlayComponent {
         }
       } else {
         const segments = findReshapeableSegments(
-          this.normalizeRoute(edge.points),
+          normalizeRoute(edge.points),
           sourceKind,
           targetKind,
         );
@@ -120,11 +61,28 @@ export class EdgeReshapeOverlayComponent {
     return handles;
   });
 
+  protected readonly transform = computed(() => {
+    const viewport = this.viewportService.viewport();
+    return `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`;
+  });
+
+  protected onPointerDown(event: PointerEvent, handle: ReshapeStartDescriptor): void {
+    // Stop ng-diagram from treating this as selection / box-select.
+    event.stopPropagation();
+    event.preventDefault();
+    this.handler.start(event, event.currentTarget as HTMLElement, handle);
+  }
+
+  // An edge end is anchored when connected to a port, dangling when loose.
+  private classifyEndpoint(nodeId: string): ReshapeEndpointKind {
+    return nodeId ? 'anchored' : 'dangling';
+  }
+
   // Drop L-bends injected this gesture and shift the remaining indices so
   // the dragged handle keeps its original track key.
   private maskInjectedBends(
     segments: readonly ReshapeSegment[],
-    drag: DragState,
+    drag: ReshapeDragState,
     liveLen: number,
   ): ReshapeSegment[] {
     const initialLen = drag.initialPoints.length;
@@ -149,134 +107,5 @@ export class EdgeReshapeOverlayComponent {
       result.push(remapped);
     }
     return result;
-  }
-
-  // An edge end is anchored when connected to a port, dangling when loose.
-  private classifyEndpoint(nodeId: string): ReshapeEndpointKind {
-    return nodeId ? 'anchored' : 'dangling';
-  }
-
-  // Fold collinear vertices so a visually straight run is one reshape segment.
-  private normalizeRoute(points: readonly Point[] | undefined): Point[] {
-    if (!points) return [];
-    return dropSameAxisBends(collapseCollinearBends(points));
-  }
-
-  protected readonly transform = computed(() => {
-    const viewport = this.viewportService.viewport();
-    return `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`;
-  });
-
-  protected onPointerDown(event: PointerEvent, handle: HandleDescriptor): void {
-    // Stop ng-diagram from treating this as selection / box-select.
-    event.stopPropagation();
-    event.preventDefault();
-
-    const edge = this.modelService.getEdgeById(handle.edgeId);
-    if (!edge?.points) return;
-
-    const initialPoints = this.normalizeRoute(edge.points);
-    if (initialPoints.length < 2) return;
-    if (initialPoints.length !== edge.points.length) {
-      this.modelService.updateEdge(handle.edgeId, {
-        points: initialPoints,
-        routingMode: 'manual',
-      });
-    }
-
-    const handleEl = event.currentTarget as HTMLElement;
-    this.gestureActive.set(true);
-    this.drag.begin(event, handleEl, {
-      edgeId: handle.edgeId,
-      segmentIndex: handle.segmentIndex,
-      axis: handle.axis,
-      anchorPortAtSource: handle.anchorPortAtSource,
-      anchorPortAtTarget: handle.anchorPortAtTarget,
-      initialPoints,
-      initialClientX: event.clientX,
-      initialClientY: event.clientY,
-      grid: this.gridForEdge(edge),
-    });
-  }
-
-  // Mirror the node-drag snap config: reshape snaps only when the edge's
-  // reference node would snap on drag. Null → snapping disabled, reshape moves
-  // freely. Keeps snapping config-driven and optional for a core port.
-  private gridForEdge(edge: Edge): { x: number; y: number } | null {
-    const refNode = edgeGridReferenceNode(this.modelService.nodes(), edge);
-    return resolveEdgeGrid(this.diagramService, refNode) ?? null;
-  }
-
-  private applyPointerMove(event: PointerEvent, drag: DragState): void {
-    const scale = this.viewportService.scale() || 1;
-    const dxWorld = (event.clientX - drag.initialClientX) / scale;
-    const dyWorld = (event.clientY - drag.initialClientY) / scale;
-
-    const newPoints = reshapeAnchoredSegment(
-      drag.initialPoints,
-      drag.segmentIndex,
-      drag.axis,
-      dxWorld,
-      dyWorld,
-      drag.grid,
-      drag.anchorPortAtSource,
-      drag.anchorPortAtTarget,
-    );
-
-    // Snap endpoints to LIVE ports so port drift doesn't freeze into the
-    // route. Capture each end-segment's axis first so we can rebuild the stub
-    // orthogonally after the anchor shift.
-    const sourceAxisBeforeAnchor = endpointNeighborAxis(newPoints, 'source');
-    const targetAxisBeforeAnchor = endpointNeighborAxis(newPoints, 'target');
-    this.anchorEndpointToPort(newPoints, drag.edgeId, 'source');
-    this.anchorEndpointToPort(newPoints, drag.edgeId, 'target');
-    realignEndpointNeighbor(newPoints, 'source', sourceAxisBeforeAnchor);
-    realignEndpointNeighbor(newPoints, 'target', targetAxisBeforeAnchor);
-    // Mops up diagonals when the dragged segment had a same-axis sibling.
-    const orthoPoints = orthogonalizePolyline(newPoints);
-
-    this.modelService.updateEdge(drag.edgeId, {
-      points: orthoPoints,
-      routingMode: 'manual',
-    });
-  }
-
-  // Replace the end vertex with the live port world position.
-  private anchorEndpointToPort(
-    points: { x: number; y: number }[],
-    edgeId: string,
-    side: EdgeEndpointSide,
-  ): void {
-    const edge = this.modelService.getEdgeById(edgeId);
-    if (!edge) return;
-    const nodeId = side === 'source' ? edge.source : edge.target;
-    const portId = side === 'source' ? edge.sourcePort : edge.targetPort;
-    if (!nodeId || !portId) return;
-    const node = this.modelService.getNodeById(nodeId);
-    const anchor = portFlowPosition(node, portId);
-    if (!anchor) return;
-    const idx = side === 'source' ? 0 : points.length - 1;
-    points[idx] = anchor;
-  }
-
-  private finishReshape(event: PointerEvent, drag: DragState): void {
-    // Fold redundant bends now (deferred from pointerMove). The controller
-    // already cleared the gesture, so the recompute sees no L-bend mask.
-    this.collapseAfterReshape(drag);
-    // Prevent the trailing click from deselecting the edge.
-    event.stopPropagation();
-  }
-
-  private collapseAfterReshape(drag: DragState): void {
-    const edge = this.modelService.getEdgeById(drag.edgeId);
-    if (!edge?.points || edge.points.length < 3) return;
-    // Strict-collinear pass folds zero-length L-bends; same-axis pass
-    // catches consecutive bends left sub-grid-misaligned by the reshape.
-    const collapsed = dropSameAxisBends(collapseCollinearBends(edge.points));
-    if (collapsed.length === edge.points.length) return;
-    this.modelService.updateEdge(drag.edgeId, {
-      points: collapsed,
-      routingMode: 'manual',
-    });
   }
 }

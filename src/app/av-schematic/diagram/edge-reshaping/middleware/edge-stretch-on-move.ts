@@ -3,7 +3,7 @@ import {
   collapseCollinearBends,
   portFlowPosition,
   stretchPolylineWithBendInsertion,
-} from '../edge-geometry';
+} from '../logic';
 
 // Re-anchor manual edges to live ports after a node move. Skips edges not
 // incident to `movedNodeIds` before the per-edge probe (O(incident), not

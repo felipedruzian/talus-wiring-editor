@@ -16,7 +16,7 @@ import {
   resolveEdgeGrid,
   snapPointToGrid,
   type EdgeEndpointSide,
-} from '../edge-geometry';
+} from '../edge-reshaping/logic';
 import { RelinkTargetHighlightService } from './relink-target-highlight.service';
 
 interface RelinkState {
@@ -40,7 +40,8 @@ interface PortHit {
  *
  * The edge is kept `routingMode: 'manual'` throughout: plain orthogonal routing
  * won't render a dangling end, so we build the orthogonal path ourselves and
- * let a dangling end live in the stored points.
+ * let a dangling end live in the stored points. Geometry comes from
+ * `edge-reshaping/logic`; the writes are this feature's own.
  */
 @Injectable()
 export class RelinkEndpointHandler {
@@ -73,12 +74,11 @@ export class RelinkEndpointHandler {
     const drag = this.state;
     const hit = this.portHitAt(clientX, clientY);
     if (hit) {
-      // Latch the preview onto the port and highlight it, mirroring the
-      // hover feedback ng-diagram shows while drawing a new edge.
+      // Latch the preview onto the port and highlight it, mirroring the hover
+      // feedback ng-diagram shows while drawing a new edge. Preview only —
+      // never connect or merge mid-drag (point #4: no early simplification).
       this.highlight.set(hit.nodeId, hit.portId);
       const portPos = this.portPosition(hit);
-      // Live preview: orthogonalize only, never merge (point #4 — no early
-      // simplification mid-relink).
       this.leaveDangling(drag, portPos ?? this.danglingPosition(drag, clientX, clientY), false);
     } else {
       this.highlight.clear();
@@ -134,16 +134,6 @@ export class RelinkEndpointHandler {
     this.modelService.updateEdge(drag.edgeId, patch);
   }
 
-  private portHitAt(clientX: number, clientY: number): PortHit | null {
-    const flow = this.viewport.clientToFlowPosition({ x: clientX, y: clientY });
-    return this.findPortNear(flow);
-  }
-
-  private portPosition(hit: PortHit): Point | null {
-    const node = this.modelService.nodes().find((n) => n.id === hit.nodeId);
-    return node ? portFlowPosition(node, hit.portId) : null;
-  }
-
   private connect(drag: RelinkState, hit: PortHit): void {
     const portPos = this.portPosition(hit);
     const points = portPos ? this.pathWithEndpointAt(drag, portPos, true) : undefined;
@@ -168,15 +158,24 @@ export class RelinkEndpointHandler {
 
   /**
    * Original path with the dragged endpoint moved to `position`, re-orthogonalised.
-   * Recomputed from `originalPoints` each call, so bends never accumulate across
-   * moves. `merge` (drop only) folds the now-collinear L-bend orthogonalize adds
-   * for the moved end; mid-drag we skip it so the route isn't simplified early.
+   * Recomputed from `originalPoints` each call so bends never accumulate across
+   * moves. `merge` (drop only) folds the collinear L-bend orthogonalize adds.
    */
   private pathWithEndpointAt(drag: RelinkState, position: Point, merge: boolean): Point[] {
     const next = drag.originalPoints.map((p) => ({ x: p.x, y: p.y }));
     next[drag.side === 'source' ? 0 : next.length - 1] = { x: position.x, y: position.y };
     const ortho = orthogonalizePolyline(next);
     return merge ? removeStraightSegments(ortho, ALIGNMENT_TOLERANCE) : ortho;
+  }
+
+  private portHitAt(clientX: number, clientY: number): PortHit | null {
+    const flow = this.viewport.clientToFlowPosition({ x: clientX, y: clientY });
+    return this.findPortNear(flow);
+  }
+
+  private portPosition(hit: PortHit): Point | null {
+    const node = this.modelService.nodes().find((n) => n.id === hit.nodeId);
+    return node ? portFlowPosition(node, hit.portId) : null;
   }
 
   private findPortNear(position: Point): PortHit | null {

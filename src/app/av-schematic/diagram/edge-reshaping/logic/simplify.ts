@@ -33,6 +33,13 @@ function isBetween(a: number, b: number, c: number): boolean {
   return b >= Math.min(a, c) - COLLINEAR_TOL && b <= Math.max(a, c) + COLLINEAR_TOL;
 }
 
+// Fold a route to its minimal set of bends: collinear pass-throughs, then
+// same-axis near-collinear runs. A visually straight run becomes one segment.
+export function normalizeRoute(points: readonly Point[] | undefined): Point[] {
+  if (!points) return [];
+  return dropSameAxisBends(collapseCollinearBends(points));
+}
+
 // Drop interior points whose incoming/outgoing segments share a dominant
 // axis. Looser than `collapseCollinearBends` — catches quasi-collinear
 // 3-point routes left sub-grid-misaligned by the reshape. L corners stay.

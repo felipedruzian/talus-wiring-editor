@@ -14,7 +14,12 @@ export {
 export { segmentAxis, endpointNeighborAxis, pathSourceOrientation } from './segment-axis';
 export { expectedSegmentOrientation, oppositeOrientation } from './expected-segment-orientation';
 export { orthogonalizePolyline, realignEndpointNeighbor } from './orthogonalize';
-export { collapseCollinearBends, dropSameAxisBends, removeStraightSegments } from './simplify';
+export {
+  collapseCollinearBends,
+  dropSameAxisBends,
+  normalizeRoute,
+  removeStraightSegments,
+} from './simplify';
 export { stretchPolyline, stretchPolylineWithBendInsertion } from './stretch';
 export { findReshapeableSegments, reshapeSegment, reshapeAnchoredSegment } from './reshape-segment';
 export { snapToGrid, type SnapToGridOptions } from './snap-to-grid';

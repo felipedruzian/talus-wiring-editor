@@ -17,8 +17,8 @@ import {
   type SelectionMovedEvent,
 } from 'ng-diagram';
 import { AV_SCHEMATIC_CONFIG } from '../av-schematic.config';
-import { snapPointToGrid } from './edge-geometry';
-import { LinkDanglingService } from './edge-linking/link-dangling.service';
+import { snapPointToGrid } from './edge-reshaping/logic';
+import { DanglingEdgeService } from './dangling-edge-creation/dangling-edge.service';
 import { DiagramExportService } from '../export/diagram-export.service';
 import { PropertiesSidebarService } from '../properties-sidebar/properties-sidebar.service';
 import { randomShortId } from '../shared/utils/random-short-id';
@@ -32,7 +32,7 @@ import {
 } from './model/interfaces';
 import { NodeVisibilityConfigService } from './node-visibility/node-visibility-config.service';
 import { DeviceNodeComponent } from './node/device-node.component';
-import { applyEdgeStretchOnSelectionMoved } from './edge-reshaping/edge-stretch-on-move';
+import { applyEdgeStretchOnSelectionMoved } from './edge-reshaping/middleware/edge-stretch-on-move';
 import { EdgeReshapeOverlayComponent } from './edge-reshaping/edge-reshape-overlay.component';
 import { WireEdgeComponent } from './wire-edge.component';
 import { diagramModel } from './data';
@@ -54,7 +54,7 @@ export class DiagramComponent {
   private readonly modelService = inject(NgDiagramModelService);
   private readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly exportService = inject(DiagramExportService);
-  private readonly linkDangling = inject(LinkDanglingService);
+  private readonly danglingEdge = inject(DanglingEdgeService);
 
   constructor() {
     this.exportService.setDiagramElement(this.elementRef);
@@ -116,7 +116,7 @@ export class DiagramComponent {
   }
 
   onEdgeDrawEnded(event: EdgeDrawEndedEvent): void {
-    this.linkDangling.handleEdgeDrawEnded(event);
+    this.danglingEdge.handleEdgeDrawEnded(event);
   }
 
   // Manual edges don't auto-reroute, so re-anchor their endpoints to the live

@@ -14,19 +14,20 @@ import {
   snapPointToGrid,
   snapToGrid,
   POSITION_TOLERANCE_PX,
-} from '../edge-geometry';
+} from '../edge-reshaping/logic';
 import { EdgeTemplateType, type WireEdgeData } from '../model/interfaces';
 import { randomShortId } from '../../shared/utils/random-short-id';
 import { TempEdgePointsService } from './temp-edge-points.service';
 
 /**
- * Turns a port-to-background draw into a dangling cable. ng-diagram discards a
- * draw that ends without a target; on that `edgeDrawEnded` we add a one-end
- * edge from the source port to the drop point, routed orthogonally so it
- * matches the live preview.
+ * Turns a port-to-background draw into a dangling wire. ng-diagram discards a
+ * draw that ends without a target; on that `edgeDrawEnded` this adds a one-ended
+ * edge from the source port to the drop point, routed orthogonally so it matches
+ * the live preview (reusing the preview's captured points when available).
+ * AV-specific: it mints a `WireEdge` with a `wireId`.
  */
 @Injectable()
-export class LinkDanglingService {
+export class DanglingEdgeService {
   private readonly modelService = inject(NgDiagramModelService);
   private readonly diagramService = inject(NgDiagramService);
   private readonly tempEdgePoints = inject(TempEdgePointsService);

@@ -13,13 +13,13 @@ import {
   type Edge,
   type NgDiagramEdgeTemplate,
 } from 'ng-diagram';
-import { type EdgeEndpointSide } from './edge-geometry';
+import { type EdgeEndpointSide } from './edge-reshaping/logic';
 import { RelinkEndpointHandler } from './edge-relinking/relink-endpoint.handler';
 import {
   RelinkHandleDirective,
   type RelinkPointerEvent,
 } from './edge-relinking/relink-handle.directive';
-import { TempEdgePointsService } from './edge-linking/temp-edge-points.service';
+import { TempEdgePointsService } from './dangling-edge-creation/temp-edge-points.service';
 import { type WireEdgeData } from './model/interfaces';
 
 interface EndpointHandleView {
