@@ -1,6 +1,5 @@
 import type { NgDiagramModelService, Point } from 'ng-diagram';
-import { portWorldPosition } from './port-position';
-import { stretchPolylineWithBendInsertion } from './edge-stretch';
+import { portFlowPosition, stretchPolylineWithBendInsertion } from '../edge-geometry';
 
 // Re-anchor manual edges to live ports after a node move. Skips edges not
 // incident to `movedNodeIds` before the per-edge probe (O(incident), not
@@ -13,7 +12,7 @@ export function applyEdgeStretchOnSelectionMoved(
   for (const edge of modelService.edges()) {
     if (edge.routingMode !== 'manual') continue;
     if (!edge.points || edge.points.length < 2) continue;
-    // Skip before the getNodeById + portWorldPosition probe below.
+    // Skip before the getNodeById + portFlowPosition probe below.
     if (!movedNodeIds.has(edge.source) && !movedNodeIds.has(edge.target)) continue;
 
     const liveSource = liveEndpointWorld(
@@ -69,7 +68,7 @@ function liveEndpointWorld(
 ): Point | null {
   if (nodeId && portId) {
     const node = modelService.getNodeById(nodeId);
-    return portWorldPosition(node ?? null, portId);
+    return portFlowPosition(node, portId);
   }
   return fallback ? { x: fallback.x, y: fallback.y } : null;
 }

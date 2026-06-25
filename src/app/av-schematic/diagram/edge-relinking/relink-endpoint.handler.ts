@@ -6,14 +6,17 @@ import {
   type Edge,
   type Point,
 } from 'ng-diagram';
-import { edgeGridReferenceNode, resolveEdgeGrid, snapPointToGrid } from '../edge-routing/edge-grid';
 import {
   ALIGNMENT_TOLERANCE,
-  getPortFlowPosition,
+  PORT_SNAP_PX,
+  edgeGridReferenceNode,
   orthogonalizePolyline,
+  portFlowPosition,
   removeStraightSegments,
+  resolveEdgeGrid,
+  snapPointToGrid,
   type EdgeEndpointSide,
-} from '../edge-routing';
+} from '../edge-geometry';
 import { RelinkTargetHighlightService } from './relink-target-highlight.service';
 
 interface RelinkState {
@@ -29,12 +32,10 @@ interface PortHit {
   portId: string;
 }
 
-const SNAP_TO_PORT_PX = 24;
-
 /**
  * Drag either endpoint of a selected edge. During the drag the dragged end
  * follows the cursor; on drop it reconnects to the nearest port within
- * {@link SNAP_TO_PORT_PX}, or stays dangling (one free end) if dropped in empty
+ * {@link PORT_SNAP_PX}, or stays dangling (one free end) if dropped in empty
  * space.
  *
  * The edge is kept `routingMode: 'manual'` throughout: plain orthogonal routing
@@ -76,10 +77,12 @@ export class RelinkEndpointHandler {
       // hover feedback ng-diagram shows while drawing a new edge.
       this.highlight.set(hit.nodeId, hit.portId);
       const portPos = this.portPosition(hit);
-      this.leaveDangling(drag, portPos ?? this.danglingPosition(drag, clientX, clientY));
+      // Live preview: orthogonalize only, never merge (point #4 — no early
+      // simplification mid-relink).
+      this.leaveDangling(drag, portPos ?? this.danglingPosition(drag, clientX, clientY), false);
     } else {
       this.highlight.clear();
-      this.leaveDangling(drag, this.danglingPosition(drag, clientX, clientY));
+      this.leaveDangling(drag, this.danglingPosition(drag, clientX, clientY), false);
     }
   }
 
@@ -88,10 +91,12 @@ export class RelinkEndpointHandler {
     const drag = this.state;
     this.highlight.clear();
     const hit = this.portHitAt(clientX, clientY);
+    // Merge only now, on drop — folding collinear points is invisible, so the
+    // committed route matches the preview the user just saw.
     if (hit) {
       this.connect(drag, hit);
     } else {
-      this.leaveDangling(drag, this.danglingPosition(drag, clientX, clientY));
+      this.leaveDangling(drag, this.danglingPosition(drag, clientX, clientY), true);
     }
     this.state = null;
   }
@@ -108,8 +113,8 @@ export class RelinkEndpointHandler {
     return resolveEdgeGrid(this.diagramService, refNode);
   }
 
-  private leaveDangling(drag: RelinkState, position: Point): void {
-    const points = this.pathWithEndpointAt(drag, position);
+  private leaveDangling(drag: RelinkState, position: Point, merge: boolean): void {
+    const points = this.pathWithEndpointAt(drag, position, merge);
     const patch: Partial<Edge> =
       drag.side === 'target'
         ? {
@@ -136,12 +141,12 @@ export class RelinkEndpointHandler {
 
   private portPosition(hit: PortHit): Point | null {
     const node = this.modelService.nodes().find((n) => n.id === hit.nodeId);
-    return node ? getPortFlowPosition(node, hit.portId) : null;
+    return node ? portFlowPosition(node, hit.portId) : null;
   }
 
   private connect(drag: RelinkState, hit: PortHit): void {
     const portPos = this.portPosition(hit);
-    const points = portPos ? this.pathWithEndpointAt(drag, portPos) : undefined;
+    const points = portPos ? this.pathWithEndpointAt(drag, portPos, true) : undefined;
     const patch: Partial<Edge> =
       drag.side === 'target'
         ? {
@@ -162,23 +167,24 @@ export class RelinkEndpointHandler {
   }
 
   /**
-   * Original path with the dragged endpoint moved to `position`, re-orthogonalised
-   * and collapsed. The collapse folds the collinear L-bend orthogonalize adds for
-   * the moved end — without it, every drag would split the second-to-last segment
-   * and the bends would accumulate.
+   * Original path with the dragged endpoint moved to `position`, re-orthogonalised.
+   * Recomputed from `originalPoints` each call, so bends never accumulate across
+   * moves. `merge` (drop only) folds the now-collinear L-bend orthogonalize adds
+   * for the moved end; mid-drag we skip it so the route isn't simplified early.
    */
-  private pathWithEndpointAt(drag: RelinkState, position: Point): Point[] {
+  private pathWithEndpointAt(drag: RelinkState, position: Point, merge: boolean): Point[] {
     const next = drag.originalPoints.map((p) => ({ x: p.x, y: p.y }));
     next[drag.side === 'source' ? 0 : next.length - 1] = { x: position.x, y: position.y };
-    return removeStraightSegments(orthogonalizePolyline(next), ALIGNMENT_TOLERANCE);
+    const ortho = orthogonalizePolyline(next);
+    return merge ? removeStraightSegments(ortho, ALIGNMENT_TOLERANCE) : ortho;
   }
 
   private findPortNear(position: Point): PortHit | null {
     let best: PortHit | null = null;
-    let bestDistSq = SNAP_TO_PORT_PX * SNAP_TO_PORT_PX;
+    let bestDistSq = PORT_SNAP_PX * PORT_SNAP_PX;
     for (const node of this.modelService.nodes()) {
       for (const port of node.measuredPorts ?? []) {
-        const portPos = getPortFlowPosition(node, port.id);
+        const portPos = portFlowPosition(node, port.id);
         if (!portPos) continue;
         const dx = portPos.x - position.x;
         const dy = portPos.y - position.y;

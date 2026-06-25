@@ -1,16 +1,14 @@
 import { type Point } from 'ng-diagram';
-import { POSITION_TOLERANCE } from './constants';
-import { type EdgeEndpointSide, type Orientation } from './path-types';
+import { POSITION_TOLERANCE_PX } from './constants';
+import { type EdgeEndpointSide, type Orientation } from './types';
 
 /**
  * The orthogonal axis of the segment between `a` and `b`, derived purely from
  * coordinates — `null` when the segment is oblique or degenerate (collocated).
- * Coordinate-derived (not source-orientation parity) so it holds for any port
- * side, including top/bottom (vertical) ports.
  */
 export const segmentAxis = (a: Point, b: Point): Orientation | null => {
-  const sameX = Math.abs(a.x - b.x) < POSITION_TOLERANCE;
-  const sameY = Math.abs(a.y - b.y) < POSITION_TOLERANCE;
+  const sameX = Math.abs(a.x - b.x) < POSITION_TOLERANCE_PX;
+  const sameY = Math.abs(a.y - b.y) < POSITION_TOLERANCE_PX;
   if (sameY && !sameX) return 'horizontal';
   if (sameX && !sameY) return 'vertical';
   return null;
@@ -28,12 +26,11 @@ export const endpointNeighborAxis = (
 };
 
 /**
- * The orientation to feed parity-based passes (`correctPath`, `snapToGrid`):
- * the actual axis of the first segment, not the source port's. A wire grown at
- * the source exits perpendicular to its port, so the port axis is wrong there;
- * the first segment's coordinate-derived axis is always right for a clean
- * orthogonal path. Falls back to `fallback` (the port axis) for a degenerate
- * first segment.
+ * The orientation to feed parity-based passes (`snapToGrid`): the actual axis of
+ * the first segment, not the source port's. A wire grown at the source exits
+ * perpendicular to its port, so the port axis is wrong there; the first
+ * segment's coordinate-derived axis is always right for a clean orthogonal
+ * path. Falls back to `fallback` (the port axis) for a degenerate first segment.
  */
 export const pathSourceOrientation = (
   points: readonly Point[],

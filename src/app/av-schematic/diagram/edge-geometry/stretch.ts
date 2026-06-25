@@ -1,15 +1,15 @@
+// Reshapes an orthogonal edge when its endpoints move (a node drag, a relink),
+// keeping every segment axis-aligned and preserving the user's interior bends.
 import type { Point } from 'ng-diagram';
 import { POSITION_TOLERANCE_PX } from './constants';
+import { collapseCollinearBends } from './simplify';
 
-// Slack for "are these two coordinates on the same axis line". Aliased from the
-// shared point tolerance so collinearity and point-equality never diverge.
 const COLLINEAR_TOL = POSITION_TOLERANCE_PX;
 
-// Project an orthogonal route onto new endpoints, preserving interior
-// bends. Equal endpoint deltas → rigid translation, otherwise each moved
-// end slides the touching bend along its cross-axis. Returns `null` when the
-// result can't stay orthogonal — `stretchPolylineWithBendInsertion` then
-// falls back to inserting an L-bend at the drifted end.
+// Project an orthogonal route onto new endpoints, preserving interior bends.
+// Equal endpoint deltas → rigid translation, otherwise each moved end slides the
+// touching bend along its cross-axis. Returns null when the result can't stay
+// orthogonal — `stretchPolylineWithBendInsertion` then inserts an L-bend.
 export function stretchPolyline(
   points: readonly Point[],
   newSource: Point | null,
@@ -66,9 +66,8 @@ export function stretchPolyline(
     }
   }
 
-  // Reject any middle-seam diagonal — without this guard a degenerate
-  // bend can leak through and get cached. Zero-length segments are kept
-  // and folded later by `collapseCollinearBends`.
+  // Reject any middle-seam diagonal; zero-length segments are kept and folded
+  // later by `collapseCollinearBends`.
   for (let i = 0; i < result.length - 1; i++) {
     const sameX = Math.abs(result[i].x - result[i + 1].x) < COLLINEAR_TOL;
     const sameY = Math.abs(result[i].y - result[i + 1].y) < COLLINEAR_TOL;
@@ -78,9 +77,9 @@ export function stretchPolyline(
   return result;
 }
 
-// Like `stretchPolyline`, but for manual-mode reshapes: inserts at most
-// one L-bend at each drifted end when strict stretch can't preserve the
-// user's interior bends. Null only when even bend insertion fails.
+// Like `stretchPolyline`, but for manual-mode moves: inserts at most one L-bend
+// at each drifted end when strict stretch can't preserve the interior bends.
+// Null only when even bend insertion fails.
 export function stretchPolylineWithBendInsertion(
   points: readonly Point[],
   newSource: Point | null,
@@ -115,8 +114,8 @@ export function stretchPolylineWithBendInsertion(
 }
 
 // Re-anchor the source end to `newSource`, adding one L-bend so the first
-// segment keeps its original axis. If the move stays on that axis, no bend is
-// needed. Null when the original first segment wasn't axis-aligned.
+// segment keeps its original axis. Null when the original first segment wasn't
+// axis-aligned.
 function insertSourceBend(points: readonly Point[], newSource: Point): Point[] | null {
   const sourcePoint = points[0];
   const nextPoint = points[1];
@@ -138,8 +137,7 @@ function insertSourceBend(points: readonly Point[], newSource: Point): Point[] |
   return [{ x: newSource.x, y: newSource.y }, { x: newSource.x, y: nextPoint.y }, ...tail];
 }
 
-// Mirror of `insertSourceBend` for the target end: re-anchor to `newTarget`,
-// inserting one L-bend before it so the last segment keeps its axis.
+// Mirror of `insertSourceBend` for the target end.
 function insertTargetBend(points: readonly Point[], newTarget: Point): Point[] | null {
   const lastIdx = points.length - 1;
   const targetPoint = points[lastIdx];
@@ -160,57 +158,4 @@ function insertTargetBend(points: readonly Point[], newTarget: Point): Point[] |
     return [...head, { x: newTarget.x, y: newTarget.y }];
   }
   return [...head, { x: newTarget.x, y: prevPoint.y }, { x: newTarget.x, y: newTarget.y }];
-}
-
-// Fold genuinely redundant interior points. A point folds only when collinear
-// with its neighbours AND between them (a straight pass-through); a U-turn
-// extremum is a real bend (e.g. a collapsed reshape) and is kept.
-export function collapseCollinearBends(points: readonly Point[]): Point[] {
-  if (points.length < 3) return points.map((p) => ({ x: p.x, y: p.y }));
-  const result: Point[] = [{ x: points[0].x, y: points[0].y }];
-  for (let i = 1; i < points.length - 1; i++) {
-    const prev = result[result.length - 1];
-    const curr = points[i];
-    const next = points[i + 1];
-    const collinearX =
-      Math.abs(prev.x - curr.x) < COLLINEAR_TOL &&
-      Math.abs(curr.x - next.x) < COLLINEAR_TOL &&
-      isBetween(prev.y, curr.y, next.y);
-    const collinearY =
-      Math.abs(prev.y - curr.y) < COLLINEAR_TOL &&
-      Math.abs(curr.y - next.y) < COLLINEAR_TOL &&
-      isBetween(prev.x, curr.x, next.x);
-    if (collinearX || collinearY) continue;
-    result.push({ x: curr.x, y: curr.y });
-  }
-  result.push({ x: points[points.length - 1].x, y: points[points.length - 1].y });
-  return result;
-}
-
-// `b` within [a, c] (either order), with tolerance — pass-through vs U-turn.
-function isBetween(a: number, b: number, c: number): boolean {
-  return b >= Math.min(a, c) - COLLINEAR_TOL && b <= Math.max(a, c) + COLLINEAR_TOL;
-}
-
-// Drop interior points whose incoming/outgoing segments share a dominant
-// axis. Looser than `collapseCollinearBends` — catches quasi-collinear
-// 3-point routes left sub-grid-misaligned by the reshape. L corners stay.
-export function dropSameAxisBends(points: readonly Point[]): Point[] {
-  if (points.length < 3) return points.map((p) => ({ x: p.x, y: p.y }));
-  const result: Point[] = [{ x: points[0].x, y: points[0].y }];
-  for (let i = 1; i < points.length - 1; i++) {
-    const prev = result[result.length - 1];
-    const curr = points[i];
-    const next = points[i + 1];
-    const incomingDx = Math.abs(curr.x - prev.x);
-    const incomingDy = Math.abs(curr.y - prev.y);
-    const outgoingDx = Math.abs(next.x - curr.x);
-    const outgoingDy = Math.abs(next.y - curr.y);
-    const incomingAxis: 'h' | 'v' = incomingDx > incomingDy ? 'h' : 'v';
-    const outgoingAxis: 'h' | 'v' = outgoingDx > outgoingDy ? 'h' : 'v';
-    if (incomingAxis === outgoingAxis) continue;
-    result.push({ x: curr.x, y: curr.y });
-  }
-  result.push({ x: points[points.length - 1].x, y: points[points.length - 1].y });
-  return result;
 }

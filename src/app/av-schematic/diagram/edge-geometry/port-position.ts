@@ -22,8 +22,13 @@ const portCenter = (port: Port, node: Node): Point => {
     : { x: x + width, y: y + height / 2 };
 };
 
-export const getPortFlowPosition = (node: Node, portId: string | undefined): Point | null => {
-  if (!portId) return null;
+// Flow-space centre of a port, or null when node/port/measurement isn't
+// available. The single source of truth for "where does an edge attach".
+export const portFlowPosition = (
+  node: Node | null | undefined,
+  portId: string | undefined,
+): Point | null => {
+  if (!node || !portId) return null;
   const port = node.measuredPorts?.find((p) => p.id === portId);
   if (!port) return null;
   return portCenter(port, node);

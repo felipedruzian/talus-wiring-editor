@@ -16,7 +16,7 @@ import {
   type SelectionMovedEvent,
 } from 'ng-diagram';
 import { AV_SCHEMATIC_CONFIG } from '../av-schematic.config';
-import { snapPointToGrid } from './edge-routing/edge-grid';
+import { snapPointToGrid } from './edge-geometry';
 import { LinkDanglingService } from './edge-linking/link-dangling.service';
 import { DiagramExportService } from '../export/diagram-export.service';
 import { PropertiesSidebarService } from '../properties-sidebar/properties-sidebar.service';

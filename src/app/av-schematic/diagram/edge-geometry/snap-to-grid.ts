@@ -1,6 +1,6 @@
 import { type Point } from 'ng-diagram';
 import { expectedSegmentOrientation } from './expected-segment-orientation';
-import { type Orientation } from './path-types';
+import { type Orientation } from './types';
 
 export interface SnapToGridOptions {
   /** Source endpoint is dangling (not port-driven) — its stub segment may snap. */

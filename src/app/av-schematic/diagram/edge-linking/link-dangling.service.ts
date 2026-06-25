@@ -6,14 +6,15 @@ import {
   type EdgeDrawEndedEvent,
   type Point,
 } from 'ng-diagram';
-import { resolveEdgeGrid, snapPointToGrid } from '../edge-routing/edge-grid';
 import {
   getNodePortOrientation,
-  getPortFlowPosition,
   pathSourceOrientation,
+  portFlowPosition,
+  resolveEdgeGrid,
+  snapPointToGrid,
   snapToGrid,
-  POSITION_TOLERANCE,
-} from '../edge-routing';
+  POSITION_TOLERANCE_PX,
+} from '../edge-geometry';
 import { EdgeTemplateType, type WireEdgeData } from '../model/interfaces';
 import { randomShortId } from '../../shared/utils/random-short-id';
 import { TempEdgePointsService } from './temp-edge-points.service';
@@ -35,7 +36,7 @@ export class LinkDanglingService {
 
     const sourceNode = this.modelService.getNodeById(event.source.id);
     if (!sourceNode) return;
-    const start = getPortFlowPosition(sourceNode, event.sourcePort);
+    const start = portFlowPosition(sourceNode, event.sourcePort);
     if (!start) return;
 
     // Prefer the preview's own rendered points so the created edge keeps its
@@ -80,8 +81,8 @@ export class LinkDanglingService {
     const end = grid ? snapPointToGrid(drop, grid) : drop;
     const orientation = getNodePortOrientation(sourceNode, sourcePort);
     const aligned =
-      Math.abs(start.x - end.x) < POSITION_TOLERANCE ||
-      Math.abs(start.y - end.y) < POSITION_TOLERANCE;
+      Math.abs(start.x - end.x) < POSITION_TOLERANCE_PX ||
+      Math.abs(start.y - end.y) < POSITION_TOLERANCE_PX;
     if (aligned) return [start, end];
     const elbow: Point =
       orientation === 'horizontal' ? { x: end.x, y: start.y } : { x: start.x, y: end.y };

@@ -9,22 +9,24 @@ import {
 import {
   NgDiagramModelService,
   NgDiagramSelectionService,
-  NgDiagramService,
   NgDiagramViewportService,
   type Point,
 } from 'ng-diagram';
 import { AV_SCHEMATIC_CONFIG } from '../../av-schematic.config';
-import { POSITION_TOLERANCE_PX } from './constants';
-import { portWorldPosition } from './port-position';
-import { collapseCollinearBends, dropSameAxisBends } from './edge-stretch';
-import { PointerDragController } from './pointer-drag-controller';
 import {
+  collapseCollinearBends,
+  dropSameAxisBends,
+  endpointNeighborAxis,
   findReshapeableSegments,
+  orthogonalizePolyline,
+  portFlowPosition,
+  realignEndpointNeighbor,
   reshapeAnchoredSegment,
+  type EdgeEndpointSide,
   type ReshapeEndpointKind,
   type ReshapeSegment,
-} from './edge-reshape';
-import { EDGE_RESHAPE_EXTENSION, type ReshapeDragContext } from './reshape-extension';
+} from '../edge-geometry';
+import { PointerDragController } from './pointer-drag-controller';
 
 interface HandleDescriptor extends ReshapeSegment {
   readonly edgeId: string;
@@ -34,20 +36,16 @@ interface DragState {
   readonly edgeId: string;
   readonly segmentIndex: number;
   readonly axis: 'horizontal' | 'vertical';
-  readonly propagateToFreeEnd: 'source' | 'target' | null;
   readonly anchorPortAtSource: boolean;
   readonly anchorPortAtTarget: boolean;
   readonly initialPoints: { readonly x: number; readonly y: number }[];
   readonly initialClientX: number;
   readonly initialClientY: number;
-  // Opaque baseline from the reshape extension (null = no free-end propagation).
-  readonly propagation: unknown;
 }
 
-// Reshape handles on every orthogonal segment of a selected edge. Drag flips to
-// `routingMode: 'manual'` and first/last segments anchor port ends. A free end
-// (e.g. a junction) is dragged with its segment; what happens to whatever sits
-// on that end is delegated entirely to an optional ReshapeExtension.
+// Reshape handles on every orthogonal segment of a selected edge. Dragging a
+// segment flips the edge to `routingMode: 'manual'`; first/last segments anchor
+// their port end (an L-bend grows off the port instead of dragging it).
 @Component({
   selector: 'app-edge-reshape-overlay',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -58,11 +56,7 @@ export class EdgeReshapeOverlayComponent {
   private readonly modelService = inject(NgDiagramModelService);
   private readonly selectionService = inject(NgDiagramSelectionService);
   private readonly viewportService = inject(NgDiagramViewportService);
-  private readonly ngDiagramService = inject(NgDiagramService);
   private readonly avConfig = inject(AV_SCHEMATIC_CONFIG);
-  // Optional: lets another feature (e.g. junctions) teach reshape about free
-  // ends and propagate the reshape across them. Absent → plain port reshaping.
-  private readonly extension = inject(EDGE_RESHAPE_EXTENSION, { optional: true });
 
   private readonly gridPx = this.avConfig.snapping.gridSize;
 
@@ -71,9 +65,15 @@ export class EdgeReshapeOverlayComponent {
   // track key).
   private readonly drag = new PointerDragController<DragState>(
     {
-      onMove: (event, state) => this.applyPointerMove(event, state),
-      onEnd: (event, state) => this.finishReshape(event, state),
-      onTeardown: () => this.gestureActive.set(false),
+      onMove: (event, state) => {
+        this.applyPointerMove(event, state);
+      },
+      onEnd: (event, state) => {
+        this.finishReshape(event, state);
+      },
+      onTeardown: () => {
+        this.gestureActive.set(false);
+      },
     },
     { listenerTarget: 'handle', coalesce: false },
   );
@@ -84,7 +84,9 @@ export class EdgeReshapeOverlayComponent {
 
   constructor() {
     // Release capture + clear the mask if destroyed mid-drag.
-    inject(DestroyRef).onDestroy(() => this.drag.teardown());
+    inject(DestroyRef).onDestroy(() => {
+      this.drag.teardown();
+    });
   }
 
   protected readonly handles = computed<readonly HandleDescriptor[]>(() => {
@@ -146,10 +148,8 @@ export class EdgeReshapeOverlayComponent {
     return result;
   }
 
-  // Delegate endpoint classification to the extension; without one, an edge end
-  // is anchored when connected, dangling when loose — never free.
+  // An edge end is anchored when connected to a port, dangling when loose.
   private classifyEndpoint(nodeId: string): ReshapeEndpointKind {
-    if (this.extension) return this.extension.classifyEndpoint(nodeId);
     return nodeId ? 'anchored' : 'dangling';
   }
 
@@ -180,13 +180,6 @@ export class EdgeReshapeOverlayComponent {
         routingMode: 'manual',
       });
     }
-    const ctx: ReshapeDragContext = {
-      edgeId: handle.edgeId,
-      axis: handle.axis,
-      segmentIndex: handle.segmentIndex,
-      propagateToFreeEnd: handle.propagateToFreeEnd,
-      initialPoints,
-    };
 
     const handleEl = event.currentTarget as HTMLElement;
     this.gestureActive.set(true);
@@ -194,14 +187,11 @@ export class EdgeReshapeOverlayComponent {
       edgeId: handle.edgeId,
       segmentIndex: handle.segmentIndex,
       axis: handle.axis,
-      propagateToFreeEnd: handle.propagateToFreeEnd,
       anchorPortAtSource: handle.anchorPortAtSource,
       anchorPortAtTarget: handle.anchorPortAtTarget,
       initialPoints,
       initialClientX: event.clientX,
       initialClientY: event.clientY,
-      // Hand the extension the same folded route the indices refer to.
-      propagation: this.extension?.snapshot({ ...edge, points: initialPoints }, ctx) ?? null,
     });
   }
 
@@ -222,54 +212,36 @@ export class EdgeReshapeOverlayComponent {
     );
 
     // Snap endpoints to LIVE ports so port drift doesn't freeze into the
-    // route. Capture each end-segment's axis first so we can rebuild
-    // the stub orthogonally after the anchor shift.
-    const sourceAxisBeforeAnchor = neighborAxis(newPoints, 'source');
-    const targetAxisBeforeAnchor = neighborAxis(newPoints, 'target');
-    this.anchorEndpointToPort(newPoints, drag.edgeId, 'source', drag.propagateToFreeEnd);
-    this.anchorEndpointToPort(newPoints, drag.edgeId, 'target', drag.propagateToFreeEnd);
+    // route. Capture each end-segment's axis first so we can rebuild the stub
+    // orthogonally after the anchor shift.
+    const sourceAxisBeforeAnchor = endpointNeighborAxis(newPoints, 'source');
+    const targetAxisBeforeAnchor = endpointNeighborAxis(newPoints, 'target');
+    this.anchorEndpointToPort(newPoints, drag.edgeId, 'source');
+    this.anchorEndpointToPort(newPoints, drag.edgeId, 'target');
     realignEndpointNeighbor(newPoints, 'source', sourceAxisBeforeAnchor);
     realignEndpointNeighbor(newPoints, 'target', targetAxisBeforeAnchor);
     // Mops up diagonals when the dragged segment had a same-axis sibling.
     const orthoPoints = orthogonalizePolyline(newPoints);
 
-    if (drag.propagation != null && this.extension) {
-      // Edge + the extension's edits (free-node move, partner re-route) must
-      // commit atomically — siblings routed against partial state visibly
-      // detach mid-drag.
-      this.ngDiagramService.transaction(() => {
-        this.modelService.updateEdge(drag.edgeId, {
-          points: orthoPoints,
-          routingMode: 'manual',
-        });
-        this.extension!.apply(drag.propagation, drag, orthoPoints);
-      });
-    } else {
-      // Direct commit — a transaction wrap has been observed to detach
-      // manual endpoints from their ports under continuous drag.
-      this.modelService.updateEdge(drag.edgeId, {
-        points: orthoPoints,
-        routingMode: 'manual',
-      });
-    }
+    this.modelService.updateEdge(drag.edgeId, {
+      points: orthoPoints,
+      routingMode: 'manual',
+    });
   }
 
-  // Replace the end vertex with the live port world position. Skipped on the
-  // side being propagated (that one follows its free node, via the extension).
+  // Replace the end vertex with the live port world position.
   private anchorEndpointToPort(
     points: { x: number; y: number }[],
     edgeId: string,
-    side: 'source' | 'target',
-    propagateToFreeEnd: 'source' | 'target' | null,
+    side: EdgeEndpointSide,
   ): void {
-    if (propagateToFreeEnd === side) return;
     const edge = this.modelService.getEdgeById(edgeId);
     if (!edge) return;
     const nodeId = side === 'source' ? edge.source : edge.target;
     const portId = side === 'source' ? edge.sourcePort : edge.targetPort;
     if (!nodeId || !portId) return;
     const node = this.modelService.getNodeById(nodeId);
-    const anchor = portWorldPosition(node, portId);
+    const anchor = portFlowPosition(node, portId);
     if (!anchor) return;
     const idx = side === 'source' ? 0 : points.length - 1;
     points[idx] = anchor;
@@ -283,7 +255,6 @@ export class EdgeReshapeOverlayComponent {
     event.stopPropagation();
   }
 
-  // Dragged edge only — collapsing the partner mid-flight detaches its endpoint.
   private collapseAfterReshape(drag: DragState): void {
     const edge = this.modelService.getEdgeById(drag.edgeId);
     if (!edge?.points || edge.points.length < 3) return;
@@ -296,62 +267,4 @@ export class EdgeReshapeOverlayComponent {
       routingMode: 'manual',
     });
   }
-}
-
-// Orthogonal axis of the end-segment, or null if oblique / too short.
-function neighborAxis(
-  points: readonly { readonly x: number; readonly y: number }[],
-  side: 'source' | 'target',
-): 'horizontal' | 'vertical' | null {
-  if (points.length < 2) return null;
-  const endIdx = side === 'source' ? 0 : points.length - 1;
-  const neighborIdx = side === 'source' ? 1 : points.length - 2;
-  const end = points[endIdx];
-  const neighbor = points[neighborIdx];
-  const sameX = Math.abs(end.x - neighbor.x) < POSITION_TOLERANCE_PX;
-  const sameY = Math.abs(end.y - neighbor.y) < POSITION_TOLERANCE_PX;
-  if (sameX && !sameY) return 'vertical';
-  if (sameY && !sameX) return 'horizontal';
-  return null;
-}
-
-// Snap the anchored end-point's neighbour onto the captured axis to undo
-// sub-pixel port drift. No-op for oblique end-segments.
-function realignEndpointNeighbor(
-  points: { x: number; y: number }[],
-  side: 'source' | 'target',
-  axis: 'horizontal' | 'vertical' | null,
-): void {
-  if (axis === null) return;
-  if (points.length < 2) return;
-  const endIdx = side === 'source' ? 0 : points.length - 1;
-  const neighborIdx = side === 'source' ? 1 : points.length - 2;
-  if (axis === 'vertical') {
-    points[neighborIdx].x = points[endIdx].x;
-  } else {
-    points[neighborIdx].y = points[endIdx].y;
-  }
-}
-
-// Replace each oblique segment with a vertical-first L-bend. PointerUp
-// collapse later folds any bend that turns out collinear.
-function orthogonalizePolyline(
-  points: readonly { readonly x: number; readonly y: number }[],
-): { x: number; y: number }[] {
-  if (points.length < 2) return points.map((p) => ({ x: p.x, y: p.y }));
-  const result: { x: number; y: number }[] = [{ x: points[0].x, y: points[0].y }];
-  for (let i = 1; i < points.length; i++) {
-    const prev = result[result.length - 1];
-    const curr = points[i];
-    const sameX = Math.abs(prev.x - curr.x) < POSITION_TOLERANCE_PX;
-    const sameY = Math.abs(prev.y - curr.y) < POSITION_TOLERANCE_PX;
-    if (sameX || sameY) {
-      result.push({ x: curr.x, y: curr.y });
-      continue;
-    }
-    // Vertical-first matches SLD's top/bottom-port convention.
-    result.push({ x: prev.x, y: curr.y });
-    result.push({ x: curr.x, y: curr.y });
-  }
-  return result;
 }

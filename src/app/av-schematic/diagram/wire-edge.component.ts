@@ -13,7 +13,7 @@ import {
   type Edge,
   type NgDiagramEdgeTemplate,
 } from 'ng-diagram';
-import { type EdgeEndpointSide } from './edge-routing';
+import { type EdgeEndpointSide } from './edge-geometry';
 import { RelinkEndpointHandler } from './edge-relinking/relink-endpoint.handler';
 import {
   RelinkHandleDirective,
