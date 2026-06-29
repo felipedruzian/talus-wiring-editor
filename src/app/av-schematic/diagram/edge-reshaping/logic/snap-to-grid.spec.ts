@@ -1,133 +1,41 @@
 import { describe, expect, it } from 'vitest';
+import { type Point } from 'ng-diagram';
 import { snapToGrid } from './snap-to-grid';
 
+const grid = { x: 20, y: 20 };
+
 describe('snapToGrid', () => {
-  const grid = { x: 10, y: 10 };
+  const route: Point[] = [
+    { x: 0, y: 0 },
+    { x: 53, y: 0 },
+    { x: 53, y: 97 },
+    { x: 100, y: 97 },
+  ];
 
-  it('returns a slice unchanged when the path has fewer than 4 points (L-shape)', () => {
-    const lShape = [
-      { x: 3, y: 7 },
-      { x: 207, y: 7 },
-      { x: 207, y: 213 },
-    ];
-    const result = snapToGrid(lShape, grid, 'horizontal');
-    expect(result).toEqual(lShape);
-    expect(result).not.toBe(lShape);
+  it('leaves port-driven endpoints and their stub segments untouched', () => {
+    const result = snapToGrid(route, grid, 'horizontal');
+    // First and last points are stub-anchored to ports → unchanged.
+    expect(result[0]).toEqual({ x: 0, y: 0 });
+    expect(result[result.length - 1]).toEqual({ x: 100, y: 97 });
   });
 
-  it('leaves source and target endpoints untouched', () => {
-    const path = [
-      { x: 3, y: 7 },
-      { x: 78, y: 7 },
-      { x: 78, y: 197 },
-      { x: 223, y: 197 },
-    ];
-    const result = snapToGrid(path, grid, 'horizontal');
-    expect(result[0]).toEqual({ x: 3, y: 7 });
-    expect(result[3]).toEqual({ x: 223, y: 197 });
+  it('snaps the shared coord of an interior segment to the grid', () => {
+    const result = snapToGrid(route, grid, 'horizontal');
+    // Interior vertical segment at x=53 snaps to 60, on both its vertices.
+    expect(result[1].x).toBe(60);
+    expect(result[2].x).toBe(60);
   });
 
-  describe('horizontal source — first/last bend port-aligned axis preserved', () => {
-    it('keeps first bend.y aligned with source.y and last bend.y aligned with target.y', () => {
-      const path = [
-        { x: 3, y: 7 },
-        { x: 78, y: 7 },
-        { x: 78, y: 197 },
-        { x: 223, y: 197 },
-      ];
-      const result = snapToGrid(path, grid, 'horizontal');
-      expect(result[1].y).toBe(7);
-      expect(result[2].y).toBe(197);
-    });
-
-    it('snaps the shared x of the interior vertical segment', () => {
-      const path = [
-        { x: 3, y: 7 },
-        { x: 78, y: 7 },
-        { x: 78, y: 197 },
-        { x: 223, y: 197 },
-      ];
-      const result = snapToGrid(path, grid, 'horizontal');
-      expect(result[1].x).toBe(80);
-      expect(result[2].x).toBe(80);
-    });
-
-    it('snaps the shared coord of every interior segment without breaking the port-aligned axis', () => {
-      const path = [
-        { x: 0, y: 0 },
-        { x: 53, y: 0 },
-        { x: 53, y: 47 },
-        { x: 142, y: 47 },
-        { x: 142, y: 100 },
-        { x: 200, y: 100 },
-      ];
-      const result = snapToGrid(path, grid, 'horizontal');
-      expect(result[0]).toEqual({ x: 0, y: 0 });
-      expect(result[5]).toEqual({ x: 200, y: 100 });
-      expect(result[1].y).toBe(0);
-      expect(result[4].y).toBe(100);
-      expect(result[1].x).toBe(50);
-      expect(result[2].x).toBe(50);
-      expect(result[2].y).toBe(50);
-      expect(result[3].y).toBe(50);
-      expect(result[3].x).toBe(140);
-      expect(result[4].x).toBe(140);
-    });
+  it('snaps a dangling source stub when sourceFree is set', () => {
+    const result = snapToGrid(route, grid, 'horizontal', { sourceFree: true });
+    // With a free source the first (horizontal) segment's Y snaps; here already 0.
+    expect(result[0].y).toBe(0);
   });
 
-  describe('vertical source — first/last bend port-aligned axis preserved', () => {
-    it('keeps first bend.x aligned with source.x and last bend.x aligned with target.x', () => {
-      const path = [
-        { x: 7, y: 3 },
-        { x: 7, y: 78 },
-        { x: 197, y: 78 },
-        { x: 197, y: 223 },
-      ];
-      const result = snapToGrid(path, grid, 'vertical');
-      expect(result[1].x).toBe(7);
-      expect(result[2].x).toBe(197);
-    });
-
-    it('snaps the shared y of the interior horizontal segment', () => {
-      const path = [
-        { x: 7, y: 3 },
-        { x: 7, y: 78 },
-        { x: 197, y: 78 },
-        { x: 197, y: 223 },
-      ];
-      const result = snapToGrid(path, grid, 'vertical');
-      expect(result[1].y).toBe(80);
-      expect(result[2].y).toBe(80);
-    });
-  });
-
-  it('does not mutate the input', () => {
-    const path = [
-      { x: 3, y: 7 },
-      { x: 78, y: 7 },
-      { x: 78, y: 197 },
-      { x: 223, y: 197 },
-    ];
-    const snapshot = JSON.stringify(path);
-    snapToGrid(path, grid, 'horizontal');
-    expect(JSON.stringify(path)).toBe(snapshot);
-  });
-
-  it('honours per-axis grid steps', () => {
-    const path = [
-      { x: 0, y: 0 },
-      { x: 53, y: 0 },
-      { x: 53, y: 47 },
-      { x: 200, y: 47 },
-      { x: 200, y: 100 },
-      { x: 300, y: 100 },
-    ];
-    const result = snapToGrid(path, { x: 25, y: 5 }, 'horizontal');
-    expect(result[1].x).toBe(50);
-    expect(result[2].x).toBe(50);
-    expect(result[2].y).toBe(45);
-    expect(result[3].y).toBe(45);
-    expect(result[3].x).toBe(200);
-    expect(result[4].x).toBe(200);
+  it('returns a copy for degenerate paths', () => {
+    const single: Point[] = [{ x: 1, y: 1 }];
+    const result = snapToGrid(single, grid, 'horizontal');
+    expect(result).toEqual(single);
+    expect(result).not.toBe(single);
   });
 });

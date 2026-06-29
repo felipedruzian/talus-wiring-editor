@@ -1,36 +1,29 @@
 import { Injectable, inject } from '@angular/core';
-import { NgDiagramModelService, NgDiagramService } from 'ng-diagram';
-import { EdgeReshapeLifecycleEmitter } from '../middleware/edge-reshape-lifecycle.emitter';
-import { reshapeEdge } from './reshape-edge';
-import { type ReshapeCommand } from './types';
+import { NgDiagramModelService } from 'ng-diagram';
+import { applyReshapeMove, finishReshape, setEdgeRoute } from './reshape-edge';
+import type { EdgeCommand } from './types';
 
 /**
- * App-local dispatcher that routes reshape commands to executors. Mirrors
- * what `commandHandler.emit('reshapeEdge', ...)` does inside ng-diagram.
- * Lifecycle commands fan out to the lifecycle emitter; the data command
- * runs the normalization pipeline (when finalize=true) and writes to the
- * model.
+ * The reshaping feature's model-write surface. The handler builds a typed
+ * {@link EdgeCommand} and dispatches it here; this is the only place reshaping
+ * mutates the model. Maps onto ng-diagram's command pipeline — when reshaping
+ * moves into core, these become first-class commands.
  */
 @Injectable()
-export class EdgeReshapeCommandDispatcher {
-  private readonly modelService = inject(NgDiagramModelService);
-  private readonly diagramService = inject(NgDiagramService);
-  private readonly lifecycle = inject(EdgeReshapeLifecycleEmitter);
+export class EdgeCommandDispatcher {
+  private readonly model = inject(NgDiagramModelService);
 
-  dispatch(command: ReshapeCommand): void {
-    switch (command.type) {
-      case 'reshapeEdgeStart': {
-        this.lifecycle.emitStarted(command.edgeId);
+  dispatch(command: EdgeCommand): void {
+    switch (command.kind) {
+      case 'set-edge-route':
+        setEdgeRoute(this.model, command);
         return;
-      }
-      case 'reshapeEdgeStop': {
-        this.lifecycle.emitEnded(command.edgeId);
+      case 'reshape-move':
+        applyReshapeMove(this.model, command);
         return;
-      }
-      case 'reshapeEdge': {
-        reshapeEdge(this.modelService, this.diagramService, command);
+      case 'reshape-finish':
+        finishReshape(this.model, command);
         return;
-      }
     }
   }
 }

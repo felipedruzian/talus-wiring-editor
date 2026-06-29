@@ -9,11 +9,18 @@ import {
   NgDiagramNodeTemplateMap,
   NgDiagramViewportService,
   type Edge,
+  type EdgeDrawEndedEvent,
   type NgDiagramConfig,
+  type Node,
+  type NodeDragEndedEvent,
   type PaletteItemDroppedEvent,
+  type Port,
   type SelectionGestureEndedEvent,
+  type SelectionMovedEvent,
 } from 'ng-diagram';
 import { AV_SCHEMATIC_CONFIG } from '../av-schematic.config';
+import { snapPointToGrid } from './edge-reshaping/logic';
+import { DanglingEdgeService } from './dangling-edge-creation/dangling-edge.service';
 import { DiagramExportService } from '../export/diagram-export.service';
 import { PropertiesSidebarService } from '../properties-sidebar/properties-sidebar.service';
 import { randomShortId } from '../shared/utils/random-short-id';
@@ -27,6 +34,8 @@ import {
 } from './model/interfaces';
 import { NodeVisibilityConfigService } from './node-visibility/node-visibility-config.service';
 import { DeviceNodeComponent } from './node/device-node.component';
+import { applyEdgeStretchOnSelectionMoved } from './edge-reshaping/middleware/edge-stretch-on-move';
+import { EdgeReshapeOverlayComponent } from './edge-reshaping/edge-reshape-overlay.component';
 import { WireEdgeComponent } from './wire-edge.component';
 import { diagramModel } from './data';
 
@@ -34,7 +43,7 @@ const generateWireId = (): string => randomShortId('W');
 
 @Component({
   selector: 'app-diagram',
-  imports: [NgDiagramComponent, NgDiagramBackgroundComponent],
+  imports: [NgDiagramComponent, NgDiagramBackgroundComponent, EdgeReshapeOverlayComponent],
   templateUrl: './diagram.component.html',
   styleUrl: './diagram.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -47,6 +56,7 @@ export class DiagramComponent {
   private readonly modelService = inject(NgDiagramModelService);
   private readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly exportService = inject(DiagramExportService);
+  private readonly danglingEdge = inject(DanglingEdgeService);
 
   constructor() {
     this.exportService.setDiagramElement(this.elementRef);
@@ -56,6 +66,9 @@ export class DiagramComponent {
   }
 
   config = {
+    background: {
+      dotSpacing: this.avConfig.snapping.gridSize,
+    },
     edgeRouting: {
       defaultRouting: 'orthogonal',
       orthogonal: {
@@ -64,8 +77,15 @@ export class DiagramComponent {
       },
     },
     linking: {
+      validateConnection: (
+        source: Node | null,
+        sourcePort: Port | null,
+        target: Node | null,
+        targetPort: Port | null,
+      ): boolean => !this.isSamePort(source, sourcePort, target, targetPort),
       temporaryEdgeDataBuilder: (edge: Edge): Edge<WireEdgeData> => ({
         ...edge,
+        ...this.snapTemporaryTarget(edge),
         type: EdgeTemplateType.WireEdge,
         routing: 'orthogonal',
         sourceArrowhead: undefined,
@@ -104,6 +124,41 @@ export class DiagramComponent {
 
   onDiagramInit(_: DiagramInitEvent): void {
     this.zoomToFit();
+  }
+
+  onEdgeDrawEnded(event: EdgeDrawEndedEvent): void {
+    this.danglingEdge.handleEdgeDrawEnded(event);
+  }
+
+  // Manual edges don't auto-reroute, so re-anchor their endpoints to the live
+  // ports of any moved node (auto edges are handled by ng-diagram's router).
+  // Mid-drag: re-anchor only, no merge — the route mustn't simplify before drop.
+  onSelectionMoved(event: SelectionMovedEvent): void {
+    applyEdgeStretchOnSelectionMoved(this.modelService, this.nodeIds(event.nodes), false);
+  }
+
+  // On drop: fold the bends the drag left collinear, once (point #4).
+  onNodeDragEnded(event: NodeDragEndedEvent): void {
+    applyEdgeStretchOnSelectionMoved(this.modelService, this.nodeIds(event.nodes), true);
+  }
+
+  private nodeIds(nodes: readonly { id: string }[]): Set<string> {
+    return new Set(nodes.map((node) => node.id));
+  }
+
+  private isSamePort(
+    source: Node | null,
+    sourcePort: Port | null,
+    target: Node | null,
+    targetPort: Port | null,
+  ): boolean {
+    return !!source && source.id === target?.id && !!sourcePort && sourcePort.id === targetPort?.id;
+  }
+
+  private snapTemporaryTarget(edge: Edge): Pick<Edge, 'targetPosition'> | undefined {
+    if (!this.avConfig.snapping.enabled || edge.target || !edge.targetPosition) return undefined;
+    const step = this.avConfig.snapping.gridSize;
+    return { targetPosition: snapPointToGrid(edge.targetPosition, { x: step, y: step }) };
   }
 
   onSelectionGestureEnded(event: SelectionGestureEndedEvent): void {

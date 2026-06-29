@@ -1,79 +1,80 @@
+import type { NgDiagramModelService } from 'ng-diagram';
 import {
-  type Edge,
-  type NgDiagramModelService,
-  type NgDiagramService,
-  type Node,
-  type Point,
-  type SnappingConfig,
-} from 'ng-diagram';
-import {
-  getDefaultMinInteriorBends,
-  getNodePortOrientation,
-  simplifyPath,
-  snapToGrid,
+  collapseCollinearBends,
+  dropSameAxisBends,
+  endpointNeighborAxis,
+  orthogonalizePolyline,
+  portFlowPosition,
+  realignEndpointNeighbor,
+  reshapeAnchoredSegment,
+  type EdgeEndpointSide,
 } from '../logic';
+import type { ReshapeFinishCommand, ReshapeMoveCommand, SetEdgeRouteCommand } from './types';
 
-export interface ReshapeEdgeCommand {
-  type: 'reshapeEdge';
-  edgeId: string;
-  points: Point[];
-  finalize: boolean;
-}
-
-/**
- * Resolve the grid to apply to this edge by mirroring node-drag snap config:
- * the edge snaps only when the source node would snap on drag. Uses the
- * source node's per-node `computeSnapForNodeDrag` when defined, falling back
- * to `defaultDragSnap`. With the ng-diagram defaults (`shouldSnapDragForNode:
- * () => false`) no snap fires — so a user has to opt in by enabling node-drag
- * snap, and the edge follows the same opt-in.
- */
-const gridForEdge = (
-  diagramService: NgDiagramService,
-  edge: Edge | null | undefined,
-  sourceNode: Node | undefined,
-): { x: number; y: number } | undefined => {
-  if (!edge || !sourceNode) return undefined;
-
-  const snapping = diagramService.config()?.snapping as Partial<SnappingConfig> | undefined;
-  if (!snapping?.shouldSnapDragForNode?.(sourceNode)) return undefined;
-
-  const snap = snapping.computeSnapForNodeDrag?.(sourceNode) ?? snapping.defaultDragSnap;
-  if (!snap?.width || !snap.height) return undefined;
-  return { x: snap.width, y: snap.height };
+// Pin an edge to manual mode with an explicit route (e.g. after normalizing the
+// displayed route on gesture start).
+export const setEdgeRoute = (model: NgDiagramModelService, command: SetEdgeRouteCommand): void => {
+  const points = command.points.map((p) => ({ x: p.x, y: p.y }));
+  model.updateEdge(command.edgeId, { points, routingMode: 'manual' });
 };
 
-/**
- * Writes the new path to the model. Constraints applied:
- * - Grid snap on every dispatch (continue and finalize) when the edge's
- *   source node has node-drag snap enabled.
- * - Full normalization pipeline (collinear merge, alternation snap,
- *   endpoint nudge) on finalize only.
- */
-export const reshapeEdge = (
-  modelService: NgDiagramModelService,
-  diagramService: NgDiagramService,
-  command: ReshapeEdgeCommand,
+// Apply one live segment move: slide the segment, snap endpoints to the live
+// ports, realign their stubs, orthogonalize any diagonal, and commit. No merge
+// here — that is deferred to `finishReshape` so the drop matches the preview.
+export const applyReshapeMove = (
+  model: NgDiagramModelService,
+  command: ReshapeMoveCommand,
 ): void => {
-  const edge = modelService.getEdgeById(command.edgeId);
-  const nodes = modelService.nodes();
-  const sourceNode = edge ? nodes.find((node) => node.id === edge.source) : undefined;
-  const targetNode = edge ? nodes.find((node) => node.id === edge.target) : undefined;
+  const newPoints = reshapeAnchoredSegment(
+    command.initialPoints,
+    command.segmentIndex,
+    command.axis,
+    command.dxWorld,
+    command.dyWorld,
+    command.grid,
+    command.anchorPortAtSource,
+    command.anchorPortAtTarget,
+  );
 
-  const sourceOrientation = getNodePortOrientation(sourceNode, edge?.sourcePort);
-  const targetOrientation = getNodePortOrientation(targetNode, edge?.targetPort);
-  const grid = gridForEdge(diagramService, edge, sourceNode);
+  const sourceAxisBeforeAnchor = endpointNeighborAxis(newPoints, 'source');
+  const targetAxisBeforeAnchor = endpointNeighborAxis(newPoints, 'target');
+  anchorEndpointToPort(model, newPoints, command.edgeId, 'source');
+  anchorEndpointToPort(model, newPoints, command.edgeId, 'target');
+  realignEndpointNeighbor(newPoints, 'source', sourceAxisBeforeAnchor);
+  realignEndpointNeighbor(newPoints, 'target', targetAxisBeforeAnchor);
+  const orthoPoints = orthogonalizePolyline(newPoints);
 
-  let points = command.points;
+  model.updateEdge(command.edgeId, { points: orthoPoints, routingMode: 'manual' });
+};
 
-  if (command.finalize) {
-    points = simplifyPath(points, sourceOrientation, targetOrientation, {
-      minInteriorBends: getDefaultMinInteriorBends(sourceOrientation, targetOrientation),
-      gridSize: grid,
-    });
-  } else if (grid) {
-    points = snapToGrid(points, grid, sourceOrientation);
-  }
+// Fold redundant bends once the gesture ends. Folding collinear/same-axis points
+// is invisible, so the committed route matches what was on screen.
+export const finishReshape = (
+  model: NgDiagramModelService,
+  command: ReshapeFinishCommand,
+): void => {
+  const edge = model.getEdgeById(command.edgeId);
+  if (!edge?.points || edge.points.length < 3) return;
+  const collapsed = dropSameAxisBends(collapseCollinearBends(edge.points));
+  if (collapsed.length === edge.points.length) return;
+  model.updateEdge(command.edgeId, { points: collapsed, routingMode: 'manual' });
+};
 
-  modelService.updateEdge(command.edgeId, { points, routingMode: 'manual' });
+// Replace the end vertex with the live port world position.
+const anchorEndpointToPort = (
+  model: NgDiagramModelService,
+  points: { x: number; y: number }[],
+  edgeId: string,
+  side: EdgeEndpointSide,
+): void => {
+  const edge = model.getEdgeById(edgeId);
+  if (!edge) return;
+  const nodeId = side === 'source' ? edge.source : edge.target;
+  const portId = side === 'source' ? edge.sourcePort : edge.targetPort;
+  if (!nodeId || !portId) return;
+  const node = model.getNodeById(nodeId);
+  const anchor = portFlowPosition(node, portId);
+  if (!anchor) return;
+  const idx = side === 'source' ? 0 : points.length - 1;
+  points[idx] = anchor;
 };

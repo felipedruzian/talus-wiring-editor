@@ -1,0 +1,199 @@
+import { Injectable, inject } from '@angular/core';
+import {
+  NgDiagramModelService,
+  NgDiagramService,
+  NgDiagramViewportService,
+  type Edge,
+  type Point,
+} from 'ng-diagram';
+import {
+  ALIGNMENT_TOLERANCE,
+  PORT_SNAP_PX,
+  edgeGridReferenceNode,
+  orthogonalizePolyline,
+  portFlowPosition,
+  removeStraightSegments,
+  resolveEdgeGrid,
+  snapPointToGrid,
+  type EdgeEndpointSide,
+} from '../edge-reshaping/logic';
+import { RelinkTargetHighlightService } from './relink-target-highlight.service';
+
+interface RelinkState {
+  edgeId: string;
+  side: EdgeEndpointSide;
+  pointerId: number;
+  originalPoints: readonly Point[];
+  grid?: { x: number; y: number };
+}
+
+interface PortHit {
+  nodeId: string;
+  portId: string;
+}
+
+/**
+ * Drag either endpoint of a selected edge. During the drag the dragged end
+ * follows the cursor; on drop it reconnects to the nearest port within
+ * {@link PORT_SNAP_PX}, or stays dangling (one free end) if dropped in empty
+ * space.
+ *
+ * The edge is kept `routingMode: 'manual'` throughout: plain orthogonal routing
+ * won't render a dangling end, so we build the orthogonal path ourselves and
+ * let a dangling end live in the stored points. Geometry comes from
+ * `edge-reshaping/logic`; the writes are this feature's own.
+ */
+@Injectable()
+export class RelinkEndpointHandler {
+  private readonly viewport = inject(NgDiagramViewportService);
+  private readonly modelService = inject(NgDiagramModelService);
+  private readonly diagramService = inject(NgDiagramService);
+  private readonly highlight = inject(RelinkTargetHighlightService);
+
+  private state: RelinkState | null = null;
+
+  onEndpointStart(
+    edgeId: string,
+    side: EdgeEndpointSide,
+    points: readonly Point[],
+    pointerId: number,
+  ): void {
+    if (points.length < 2) return;
+    this.highlight.clear();
+    this.state = {
+      edgeId,
+      side,
+      pointerId,
+      originalPoints: points.slice(),
+      grid: this.gridForEdge(edgeId),
+    };
+  }
+
+  onEndpointContinue(clientX: number, clientY: number, pointerId: number): void {
+    if (this.state?.pointerId !== pointerId) return;
+    const drag = this.state;
+    const hit = this.portHitAt(clientX, clientY);
+    if (hit) {
+      // Latch the preview onto the port and highlight it, mirroring the hover
+      // feedback ng-diagram shows while drawing a new edge. Preview only —
+      // never connect or merge mid-drag (point #4: no early simplification).
+      this.highlight.set(hit.nodeId, hit.portId);
+      const portPos = this.portPosition(hit);
+      this.leaveDangling(drag, portPos ?? this.danglingPosition(drag, clientX, clientY), false);
+    } else {
+      this.highlight.clear();
+      this.leaveDangling(drag, this.danglingPosition(drag, clientX, clientY), false);
+    }
+  }
+
+  onEndpointEnd(clientX: number, clientY: number, pointerId: number): void {
+    if (this.state?.pointerId !== pointerId) return;
+    const drag = this.state;
+    this.highlight.clear();
+    const hit = this.portHitAt(clientX, clientY);
+    // Merge only now, on drop — folding collinear points is invisible, so the
+    // committed route matches the preview the user just saw.
+    if (hit) {
+      this.connect(drag, hit);
+    } else {
+      this.leaveDangling(drag, this.danglingPosition(drag, clientX, clientY), true);
+    }
+    this.state = null;
+  }
+
+  /** Cursor in flow coords, snapped to grid when snap is enabled for the edge. */
+  private danglingPosition(drag: RelinkState, clientX: number, clientY: number): Point {
+    const flow = this.viewport.clientToFlowPosition({ x: clientX, y: clientY });
+    return drag.grid ? snapPointToGrid(flow, drag.grid) : flow;
+  }
+
+  private gridForEdge(edgeId: string): { x: number; y: number } | undefined {
+    const edge = this.modelService.getEdgeById(edgeId);
+    const refNode = edgeGridReferenceNode(this.modelService.nodes(), edge);
+    return resolveEdgeGrid(this.diagramService, refNode);
+  }
+
+  private leaveDangling(drag: RelinkState, position: Point, merge: boolean): void {
+    const points = this.pathWithEndpointAt(drag, position, merge);
+    const patch: Partial<Edge> =
+      drag.side === 'target'
+        ? {
+            points,
+            routingMode: 'manual',
+            target: '',
+            targetPort: undefined,
+            targetPosition: position,
+          }
+        : {
+            points,
+            routingMode: 'manual',
+            source: '',
+            sourcePort: undefined,
+            sourcePosition: position,
+          };
+    this.modelService.updateEdge(drag.edgeId, patch);
+  }
+
+  private connect(drag: RelinkState, hit: PortHit): void {
+    const portPos = this.portPosition(hit);
+    const points = portPos ? this.pathWithEndpointAt(drag, portPos, true) : undefined;
+    const patch: Partial<Edge> =
+      drag.side === 'target'
+        ? {
+            points,
+            routingMode: 'manual',
+            target: hit.nodeId,
+            targetPort: hit.portId,
+            targetPosition: undefined,
+          }
+        : {
+            points,
+            routingMode: 'manual',
+            source: hit.nodeId,
+            sourcePort: hit.portId,
+            sourcePosition: undefined,
+          };
+    this.modelService.updateEdge(drag.edgeId, patch);
+  }
+
+  /**
+   * Original path with the dragged endpoint moved to `position`, re-orthogonalised.
+   * Recomputed from `originalPoints` each call so bends never accumulate across
+   * moves. `merge` (drop only) folds the collinear L-bend orthogonalize adds.
+   */
+  private pathWithEndpointAt(drag: RelinkState, position: Point, merge: boolean): Point[] {
+    const next = drag.originalPoints.map((p) => ({ x: p.x, y: p.y }));
+    next[drag.side === 'source' ? 0 : next.length - 1] = { x: position.x, y: position.y };
+    const ortho = orthogonalizePolyline(next);
+    return merge ? removeStraightSegments(ortho, ALIGNMENT_TOLERANCE) : ortho;
+  }
+
+  private portHitAt(clientX: number, clientY: number): PortHit | null {
+    const flow = this.viewport.clientToFlowPosition({ x: clientX, y: clientY });
+    return this.findPortNear(flow);
+  }
+
+  private portPosition(hit: PortHit): Point | null {
+    const node = this.modelService.nodes().find((n) => n.id === hit.nodeId);
+    return node ? portFlowPosition(node, hit.portId) : null;
+  }
+
+  private findPortNear(position: Point): PortHit | null {
+    let best: PortHit | null = null;
+    let bestDistSq = PORT_SNAP_PX * PORT_SNAP_PX;
+    for (const node of this.modelService.nodes()) {
+      for (const port of node.measuredPorts ?? []) {
+        const portPos = portFlowPosition(node, port.id);
+        if (!portPos) continue;
+        const dx = portPos.x - position.x;
+        const dy = portPos.y - position.y;
+        const distSq = dx * dx + dy * dy;
+        if (distSq <= bestDistSq) {
+          bestDistSq = distSq;
+          best = { nodeId: node.id, portId: port.id };
+        }
+      }
+    }
+    return best;
+  }
+}

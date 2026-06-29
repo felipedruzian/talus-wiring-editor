@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   inject,
   input,
   viewChild,
@@ -12,23 +13,18 @@ import {
   type Edge,
   type NgDiagramEdgeTemplate,
 } from 'ng-diagram';
+import { type EdgeEndpointSide } from './edge-reshaping/logic';
+import { RelinkEndpointHandler } from './edge-relinking/relink-endpoint.handler';
 import {
-  EdgeReshapeDirective,
-  type EdgeReshapePointerEvent,
-} from './edge-reshaping/directives/edge-reshape.directive';
-import { EdgeReshapeEventHandler } from './edge-reshaping/handlers/edge-reshape.handler';
-import { getHandlerPositions } from './edge-reshaping/logic';
+  RelinkHandleDirective,
+  type RelinkPointerEvent,
+} from './edge-relinking/relink-handle.directive';
+import { TempEdgePointsService } from './dangling-edge-creation/temp-edge-points.service';
 import { type WireEdgeData } from './model/interfaces';
 
-interface BendHandleView {
+interface EndpointHandleView {
   id: string;
-  index: number;
-  transform: string;
-}
-
-interface GhostHandleView {
-  id: string;
-  segmentIndex: number;
+  side: EdgeEndpointSide;
   transform: string;
 }
 
@@ -36,17 +32,31 @@ const handleTransform = (x: number, y: number, originX: number, originY: number)
   `translate(${x - originX}px, ${y - originY}px) translate(-50%, -50%)`;
 
 @Component({
-  imports: [NgDiagramBaseEdgeComponent, NgDiagramBaseEdgeLabelComponent, EdgeReshapeDirective],
+  imports: [NgDiagramBaseEdgeComponent, NgDiagramBaseEdgeLabelComponent, RelinkHandleDirective],
   templateUrl: './wire-edge.component.html',
   styleUrl: './wire-edge.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class WireEdgeComponent implements NgDiagramEdgeTemplate<WireEdgeData> {
-  private readonly reshapeHandler = inject(EdgeReshapeEventHandler);
+  private readonly relinkHandler = inject(RelinkEndpointHandler);
+  private readonly tempEdgePoints = inject(TempEdgePointsService);
 
   edge = input.required<Edge<WireEdgeData>>();
 
   private readonly baseEdge = viewChild(NgDiagramBaseEdgeComponent);
+
+  constructor() {
+    // While this is the link-draw preview, publish its rendered (routed) points
+    // so a drop-to-background can create a real edge with identical bends.
+    effect(() => {
+      const edge = this.edge();
+      if (!edge.temporary) return;
+      const points = this.baseEdge()?.points();
+      if (points && points.length >= 2) {
+        this.tempEdgePoints.publish(edge.source, edge.sourcePort, points);
+      }
+    });
+  }
 
   protected readonly strokeColor = computed(() =>
     this.edge().selected ? 'var(--av-color-accent)' : 'var(--av-color-wire-stroke)',
@@ -54,68 +64,37 @@ export class WireEdgeComponent implements NgDiagramEdgeTemplate<WireEdgeData> {
 
   protected readonly strokeWidth = computed(() => (this.edge().selected ? 2 : 1));
 
-  private readonly handlerPositions = computed(() => {
-    if (!this.edge().selected) return { bends: [], ghosts: [] };
+  protected readonly endpointHandles = computed<EndpointHandleView[]>(() => {
+    if (!this.edge().selected) return [];
     const points = this.baseEdge()?.points();
-    if (!points) return { bends: [], ghosts: [] };
-    return getHandlerPositions(points);
-  });
-
-  protected readonly bendHandles = computed<BendHandleView[]>(() => {
-    const points = this.baseEdge()?.points();
-    if (!points || points.length === 0) return [];
+    if (!points || points.length < 2) return [];
     const source = points[0];
-    return this.handlerPositions().bends.map((b) => ({
-      id: `bend-${b.pointIndex}`,
-      index: b.pointIndex,
-      transform: handleTransform(b.x, b.y, source.x, source.y),
-    }));
+    const target = points[points.length - 1];
+    return [
+      {
+        id: 'endpoint-source',
+        side: 'source' as const,
+        transform: handleTransform(source.x, source.y, source.x, source.y),
+      },
+      {
+        id: 'endpoint-target',
+        side: 'target' as const,
+        transform: handleTransform(target.x, target.y, source.x, source.y),
+      },
+    ];
   });
 
-  protected readonly ghostHandles = computed<GhostHandleView[]>(() => {
-    const points = this.baseEdge()?.points();
-    if (!points || points.length === 0) return [];
-    const source = points[0];
-    return this.handlerPositions().ghosts.map((g) => ({
-      id: `ghost-${g.segmentIndex}`,
-      segmentIndex: g.segmentIndex,
-      transform: handleTransform(g.x, g.y, source.x, source.y),
-    }));
-  });
-
-  protected onVertexStart(event: EdgeReshapePointerEvent, bendIndex: number): void {
+  protected onEndpointStart(event: RelinkPointerEvent, side: EdgeEndpointSide): void {
     const points = this.baseEdge()?.points();
     if (!points) return;
-    this.reshapeHandler.onVertexStart(this.edge().id, bendIndex, points, event.pointerId);
+    this.relinkHandler.onEndpointStart(this.edge().id, side, points, event.pointerId);
   }
 
-  protected onGhostStart(event: EdgeReshapePointerEvent, segmentIndex: number): void {
-    const points = this.baseEdge()?.points();
-    if (!points) return;
-    this.reshapeHandler.onGhostStart(this.edge().id, segmentIndex, points, event.pointerId);
+  protected onEndpointContinue(event: RelinkPointerEvent): void {
+    this.relinkHandler.onEndpointContinue(event.clientX, event.clientY, event.pointerId);
   }
 
-  protected onReshapeContinue(event: EdgeReshapePointerEvent): void {
-    this.reshapeHandler.onContinue(event.clientX, event.clientY, event.pointerId);
-  }
-
-  protected onReshapeEnd(event: EdgeReshapePointerEvent): void {
-    this.reshapeHandler.onEnd(event.pointerId);
-  }
-
-  protected onBendContextMenu(event: MouseEvent, bendIndex: number): void {
-    event.preventDefault();
-    event.stopPropagation();
-    const points = this.baseEdge()?.points();
-    if (!points) return;
-    this.reshapeHandler.onRemoveSegmentRequest(this.edge().id, bendIndex, points);
-  }
-
-  protected onGhostContextMenu(event: MouseEvent, segmentIndex: number): void {
-    event.preventDefault();
-    event.stopPropagation();
-    const points = this.baseEdge()?.points();
-    if (!points) return;
-    this.reshapeHandler.onRemoveSegmentRequest(this.edge().id, segmentIndex, points);
+  protected onEndpointEnd(event: RelinkPointerEvent): void {
+    this.relinkHandler.onEndpointEnd(event.clientX, event.clientY, event.pointerId);
   }
 }

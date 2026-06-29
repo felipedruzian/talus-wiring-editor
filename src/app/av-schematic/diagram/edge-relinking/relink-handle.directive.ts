@@ -1,20 +1,25 @@
 import { Directive, ElementRef, OnDestroy, inject, output } from '@angular/core';
 
-export interface EdgeReshapePointerEvent {
+export interface RelinkPointerEvent {
   pointerId: number;
   clientX: number;
   clientY: number;
 }
 
+/**
+ * Pointer-capture plumbing for a relink endpoint grip: emits start/continue/end
+ * with flow-independent client coords, capturing the pointer on the host so the
+ * gesture survives the cursor leaving the small handle.
+ */
 @Directive({
-  selector: '[appEdgeReshape]',
+  selector: '[appRelinkHandle]',
 })
-export class EdgeReshapeDirective implements OnDestroy {
+export class RelinkHandleDirective implements OnDestroy {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
-  reshapeStart = output<EdgeReshapePointerEvent>();
-  reshapeContinue = output<EdgeReshapePointerEvent>();
-  reshapeEnd = output<EdgeReshapePointerEvent>();
+  relinkStart = output<RelinkPointerEvent>();
+  relinkContinue = output<RelinkPointerEvent>();
+  relinkEnd = output<RelinkPointerEvent>();
 
   private activePointerId: number | null = null;
 
@@ -33,7 +38,7 @@ export class EdgeReshapeDirective implements OnDestroy {
     event.stopPropagation();
     this.activePointerId = event.pointerId;
     this.host.nativeElement.setPointerCapture(event.pointerId);
-    this.reshapeStart.emit(this.toEvent(event));
+    this.relinkStart.emit(this.toEvent(event));
     document.addEventListener('pointermove', this.onDocumentPointerMove);
     document.addEventListener('pointerup', this.onDocumentPointerUp);
     document.addEventListener('pointercancel', this.onDocumentPointerUp);
@@ -41,12 +46,12 @@ export class EdgeReshapeDirective implements OnDestroy {
 
   private readonly onDocumentPointerMove = (event: PointerEvent): void => {
     if (event.pointerId !== this.activePointerId) return;
-    this.reshapeContinue.emit(this.toEvent(event));
+    this.relinkContinue.emit(this.toEvent(event));
   };
 
   private readonly onDocumentPointerUp = (event: PointerEvent): void => {
     if (event.pointerId !== this.activePointerId) return;
-    this.reshapeEnd.emit(this.toEvent(event));
+    this.relinkEnd.emit(this.toEvent(event));
     if (this.host.nativeElement.hasPointerCapture(event.pointerId)) {
       this.host.nativeElement.releasePointerCapture(event.pointerId);
     }
@@ -60,7 +65,7 @@ export class EdgeReshapeDirective implements OnDestroy {
     document.removeEventListener('pointercancel', this.onDocumentPointerUp);
   }
 
-  private toEvent(event: PointerEvent): EdgeReshapePointerEvent {
+  private toEvent(event: PointerEvent): RelinkPointerEvent {
     return { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY };
   }
 }

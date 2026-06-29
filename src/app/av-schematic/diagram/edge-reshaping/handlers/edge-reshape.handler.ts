@@ -1,155 +1,124 @@
-import { Injectable, inject } from '@angular/core';
-import { NgDiagramModelService, NgDiagramViewportService, type Point } from 'ng-diagram';
-import { EdgeReshapeCommandDispatcher } from '../commands/dispatcher';
+import { Injectable, inject, signal } from '@angular/core';
 import {
-  getDefaultMinInteriorBends,
-  getEdgePortOrientations,
-  insertCollocatedBends,
-  moveBend,
+  NgDiagramModelService,
+  NgDiagramService,
+  NgDiagramViewportService,
+  type Edge,
+} from 'ng-diagram';
+import {
+  edgeGridReferenceNode,
+  normalizeRoute,
+  resolveEdgeGrid,
   type Orientation,
+  type ReshapeSegment,
 } from '../logic';
+import { PointerDragController } from '../directives/pointer-drag-controller';
+import { EdgeCommandDispatcher } from '../commands';
 
-interface DragState {
-  edgeId: string;
-  bendIndex: number;
-  pointerId: number;
-  originalPoints: readonly Point[];
-  lastComputedPoints: readonly Point[];
+export interface ReshapeStartDescriptor extends ReshapeSegment {
+  readonly edgeId: string;
 }
 
-const fallbackOrientation: Orientation = 'horizontal';
+export interface ReshapeDragState {
+  readonly edgeId: string;
+  readonly segmentIndex: number;
+  readonly axis: Orientation;
+  readonly anchorPortAtSource: boolean;
+  readonly anchorPortAtTarget: boolean;
+  readonly initialPoints: { readonly x: number; readonly y: number }[];
+  readonly initialClientX: number;
+  readonly initialClientY: number;
+  // Grid resolved from snap config at gesture start; null when snapping is off.
+  readonly grid: { x: number; y: number } | null;
+}
 
 /**
- * Translates pointer-phase events from `EdgeReshapeDirective` into reshape
- * commands. Owns the in-flight drag state for the duration of a gesture.
- *
- * Porting target: when this lands inside ng-diagram, the inline `state`
- * field moves to `ActionStateManager.edgeReshape` so other parts of the
- * system can observe it (mirror of how dragging/resize state lives there
- * today). Method shapes don't change.
+ * Owns the in-flight reshape gesture: captures the pointer, translates each
+ * move into world deltas, and dispatches reshape commands. Holds no geometry or
+ * model-write logic itself — that lives in `logic/` and `commands/`.
  */
 @Injectable()
-export class EdgeReshapeEventHandler {
-  private readonly viewport = inject(NgDiagramViewportService);
+export class EdgeReshapeHandler {
   private readonly modelService = inject(NgDiagramModelService);
-  private readonly dispatcher = inject(EdgeReshapeCommandDispatcher);
+  private readonly viewportService = inject(NgDiagramViewportService);
+  private readonly diagramService = inject(NgDiagramService);
+  private readonly dispatcher = inject(EdgeCommandDispatcher);
 
-  private state: DragState | null = null;
+  // Masks L-bend insertions so the overlay's `@for` track key doesn't remap the
+  // grabbed element off the cursor mid-drag. Read by the overlay.
+  readonly gestureActive = signal(false);
 
-  onVertexStart(
-    edgeId: string,
-    bendIndex: number,
-    points: readonly Point[],
-    pointerId: number,
-  ): void {
-    if (points.length < 3) return;
-    const snapshot = points.slice();
-    this.state = {
-      edgeId,
-      bendIndex,
-      pointerId,
-      originalPoints: snapshot,
-      lastComputedPoints: snapshot,
-    };
-    this.dispatcher.dispatch({ type: 'reshapeEdgeStart', edgeId });
+  // Handle-bound, no frame coalescing: the reshape compute is light and the
+  // grabbed handle stays mounted through the gesture.
+  private readonly drag = new PointerDragController<ReshapeDragState>(
+    {
+      onMove: (event, state) => {
+        this.dispatcher.dispatch({
+          kind: 'reshape-move',
+          edgeId: state.edgeId,
+          initialPoints: state.initialPoints,
+          segmentIndex: state.segmentIndex,
+          axis: state.axis,
+          anchorPortAtSource: state.anchorPortAtSource,
+          anchorPortAtTarget: state.anchorPortAtTarget,
+          grid: state.grid,
+          dxWorld: (event.clientX - state.initialClientX) / (this.viewportService.scale() || 1),
+          dyWorld: (event.clientY - state.initialClientY) / (this.viewportService.scale() || 1),
+        });
+      },
+      onEnd: (event, state) => {
+        this.dispatcher.dispatch({ kind: 'reshape-finish', edgeId: state.edgeId });
+        // Prevent the trailing click from deselecting the edge.
+        event.stopPropagation();
+      },
+      onTeardown: () => {
+        this.gestureActive.set(false);
+      },
+    },
+    { listenerTarget: 'handle', coalesce: false },
+  );
+
+  get current(): ReshapeDragState | null {
+    return this.drag.current;
   }
 
-  onGhostStart(
-    edgeId: string,
-    segmentIndex: number,
-    points: readonly Point[],
-    pointerId: number,
-  ): void {
-    const insertion = insertCollocatedBends(points, segmentIndex);
-    if (!insertion) return;
+  start(event: PointerEvent, handleEl: HTMLElement, descriptor: ReshapeStartDescriptor): void {
+    const edge = this.modelService.getEdgeById(descriptor.edgeId);
+    if (!edge?.points) return;
 
-    this.state = {
-      edgeId,
-      bendIndex: insertion.newBendIndex,
-      pointerId,
-      originalPoints: insertion.points,
-      lastComputedPoints: insertion.points,
-    };
-    this.dispatcher.dispatch({ type: 'reshapeEdgeStart', edgeId });
-    this.dispatcher.dispatch({
-      type: 'reshapeEdge',
-      edgeId,
-      points: insertion.points,
-      finalize: false,
+    const initialPoints = normalizeRoute(edge.points);
+    if (initialPoints.length < 2) return;
+    if (initialPoints.length !== edge.points.length) {
+      this.dispatcher.dispatch({
+        kind: 'set-edge-route',
+        edgeId: descriptor.edgeId,
+        points: initialPoints,
+      });
+    }
+
+    this.gestureActive.set(true);
+    this.drag.begin(event, handleEl, {
+      edgeId: descriptor.edgeId,
+      segmentIndex: descriptor.segmentIndex,
+      axis: descriptor.axis,
+      anchorPortAtSource: descriptor.anchorPortAtSource,
+      anchorPortAtTarget: descriptor.anchorPortAtTarget,
+      initialPoints,
+      initialClientX: event.clientX,
+      initialClientY: event.clientY,
+      grid: this.gridForEdge(edge),
     });
   }
 
-  onContinue(clientX: number, clientY: number, pointerId: number): void {
-    const drag = this.dragFor(pointerId);
-    if (!drag) return;
-
-    const sourceOrientation = this.sourceOrientationFor(drag.edgeId);
-    const flowPos = this.viewport.clientToFlowPosition({ x: clientX, y: clientY });
-    const next = moveBend(drag.originalPoints, drag.bendIndex, flowPos, sourceOrientation);
-
-    this.state = { ...drag, lastComputedPoints: next };
-    this.dispatcher.dispatch({
-      type: 'reshapeEdge',
-      edgeId: drag.edgeId,
-      points: next,
-      finalize: false,
-    });
+  teardown(): void {
+    this.drag.teardown();
   }
 
-  onEnd(pointerId: number): void {
-    const drag = this.dragFor(pointerId);
-    if (!drag) return;
-
-    this.dispatcher.dispatch({
-      type: 'reshapeEdge',
-      edgeId: drag.edgeId,
-      points: drag.lastComputedPoints.slice(),
-      finalize: true,
-    });
-    this.dispatcher.dispatch({ type: 'reshapeEdgeStop', edgeId: drag.edgeId });
-    this.state = null;
-  }
-
-  /**
-   * Removes an interior orthogonal segment. Both endpoint bends of the
-   * segment go away; simplifyPath snaps the bridging segment back to
-   * orthogonal alternation. Refused when:
-   * - the segment touches a port stub (segmentIndex 0 or last segment),
-   * - removal would drop interior bends below the per-edge minimum.
-   *
-   * Vertex right-click invokes this with `segmentIndex = bendIndex` —
-   * "remove the segment after the clicked bend." Ghost right-click invokes
-   * it with the ghost's own segment index.
-   */
-  onRemoveSegmentRequest(edgeId: string, segmentIndex: number, points: readonly Point[]): void {
-    if (segmentIndex < 1 || segmentIndex > points.length - 3) return;
-
-    const orientations = this.orientationsFor(edgeId);
-    const minBends = getDefaultMinInteriorBends(orientations.source, orientations.target);
-    const remainingInteriorBends = points.length - 2 - 2;
-    if (remainingInteriorBends < minBends) return;
-
-    const next = [...points.slice(0, segmentIndex), ...points.slice(segmentIndex + 2)];
-
-    this.dispatcher.dispatch({
-      type: 'reshapeEdge',
-      edgeId,
-      points: next,
-      finalize: true,
-    });
-  }
-
-  private dragFor(pointerId: number): DragState | null {
-    return this.state?.pointerId === pointerId ? this.state : null;
-  }
-
-  private sourceOrientationFor(edgeId: string): Orientation {
-    return this.orientationsFor(edgeId).source;
-  }
-
-  private orientationsFor(edgeId: string): { source: Orientation; target: Orientation } {
-    const edge = this.modelService.getEdgeById(edgeId);
-    if (!edge) return { source: fallbackOrientation, target: fallbackOrientation };
-    return getEdgePortOrientations(this.modelService.nodes(), edge);
+  // Mirror the node-drag snap config: reshape snaps only when the edge's
+  // reference node would snap on drag. Null → snapping disabled, reshape moves
+  // freely. Keeps snapping config-driven and optional for a core port.
+  private gridForEdge(edge: Edge): { x: number; y: number } | null {
+    const refNode = edgeGridReferenceNode(this.modelService.nodes(), edge);
+    return resolveEdgeGrid(this.diagramService, refNode) ?? null;
   }
 }

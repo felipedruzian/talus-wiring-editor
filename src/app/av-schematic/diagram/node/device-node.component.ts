@@ -2,10 +2,12 @@ import { ChangeDetectionStrategy, Component, computed, inject, input } from '@an
 import {
   NgDiagramPortComponent,
   NgDiagramSelectionService,
+  NgDiagramService,
   type NgDiagramNodeTemplate,
   type Node,
 } from 'ng-diagram';
 import { PortFocusService } from '../port-focus.service';
+import { RelinkTargetHighlightService } from '../edge-relinking/relink-target-highlight.service';
 import { type DeviceNodeData, type DevicePort } from '../model/interfaces';
 
 @Component({
@@ -17,11 +19,15 @@ import { type DeviceNodeData, type DevicePort } from '../model/interfaces';
   host: {
     '[class.selected]': 'node().selected',
     '[class.edge-highlighted]': 'edgeHighlighted()',
+    '[class.is-link-target]': 'linkTargetPortId() !== null',
+    '[class.is-linking]': 'isLinking()',
   },
 })
 export class DeviceNodeComponent implements NgDiagramNodeTemplate<DeviceNodeData> {
   private readonly selectionService = inject(NgDiagramSelectionService);
+  private readonly diagramService = inject(NgDiagramService);
   private readonly portFocusService = inject(PortFocusService);
+  private readonly relinkHighlight = inject(RelinkTargetHighlightService);
 
   node = input.required<Node<DeviceNodeData>>();
 
@@ -35,6 +41,13 @@ export class DeviceNodeComponent implements NgDiagramNodeTemplate<DeviceNodeData
     return this.selectionService
       .selection()
       .edges.some((e) => e.source === nodeId || e.target === nodeId);
+  });
+
+  protected readonly isLinking = computed(() => !!this.diagramService.actionState().linking);
+
+  protected readonly linkTargetPortId = computed(() => {
+    const target = this.relinkHighlight.target();
+    return target?.nodeId === this.node().id ? target.portId : null;
   });
 
   protected onPortDblClick(portId: string): void {

@@ -10,32 +10,29 @@
   pointer-events: none;
 }
 
-.bend-handle {
-  display: block;
+// Relink endpoint dot — a clean hollow ring at rest; glow + fill on hover/drag.
+.wire-handle--endpoint {
   position: absolute;
   top: 0;
   left: 0;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  cursor: move;
+  background: var(--ngd-node-bg-primary-default);
+  border: 2px solid var(--av-color-accent);
+  pointer-events: auto;
   touch-action: none;
+  cursor: grab;
+  transition:
+    background 0.1s ease,
+    box-shadow 0.1s ease;
 
-  &--vertex {
-    width: 8px;
-    height: 8px;
-    background: var(--ngd-node-bg-primary-default);
-    border: 1px solid var(--av-color-accent);
+  &:hover {
+    box-shadow: 0 0 0 3px var(--av-color-selection-halo);
   }
-
-  &--ghost {
-    width: 8px;
-    height: 8px;
+  &:active {
     background: var(--av-color-accent);
-    opacity: 0.55;
-    cursor: crosshair;
-    transition: opacity 0.1s ease;
-
-    &:hover {
-      opacity: 1;
-    }
+    box-shadow: 0 0 0 3px var(--av-color-selection-halo);
+    cursor: grabbing;
   }
 }
