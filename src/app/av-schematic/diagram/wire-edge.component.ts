@@ -5,7 +5,6 @@ import {
   effect,
   inject,
   input,
-  viewChild,
 } from '@angular/core';
 import {
   NgDiagramBaseEdgeComponent,
@@ -43,15 +42,13 @@ export class WireEdgeComponent implements NgDiagramEdgeTemplate<WireEdgeData> {
 
   edge = input.required<Edge<WireEdgeData>>();
 
-  private readonly baseEdge = viewChild(NgDiagramBaseEdgeComponent);
-
   constructor() {
     // While this is the link-draw preview, publish its rendered (routed) points
     // so a drop-to-background can create a real edge with identical bends.
     effect(() => {
       const edge = this.edge();
       if (!edge.temporary) return;
-      const points = this.baseEdge()?.points();
+      const points = edge.points;
       if (points && points.length >= 2) {
         this.tempEdgePoints.publish(edge.source, edge.sourcePort, points);
       }
@@ -65,8 +62,9 @@ export class WireEdgeComponent implements NgDiagramEdgeTemplate<WireEdgeData> {
   protected readonly strokeWidth = computed(() => (this.edge().selected ? 2 : 1));
 
   protected readonly endpointHandles = computed<EndpointHandleView[]>(() => {
-    if (!this.edge().selected) return [];
-    const points = this.baseEdge()?.points();
+    const edge = this.edge();
+    if (!edge.selected) return [];
+    const points = edge.points;
     if (!points || points.length < 2) return [];
     const source = points[0];
     const target = points[points.length - 1];
@@ -85,7 +83,7 @@ export class WireEdgeComponent implements NgDiagramEdgeTemplate<WireEdgeData> {
   });
 
   protected onEndpointStart(event: RelinkPointerEvent, side: EdgeEndpointSide): void {
-    const points = this.baseEdge()?.points();
+    const points = this.edge().points;
     if (!points) return;
     this.relinkHandler.onEndpointStart(this.edge().id, side, points, event.pointerId);
   }
