@@ -92,17 +92,23 @@ export class DxfText extends DxfEntity {
       this.pair(100, 'AcDbText'),
       this.pair(10, formatCoord(this.x)),
       this.pair(20, formatCoord(this.y)),
+      this.pair(30, formatCoord(0)),
       this.pair(40, formatCoord(this.height)),
       this.pair(1, this.text),
       this.pair(7, this.styleName),
       this.pair(72, this.halign),
     );
-    // Second AcDbText subclass marker — required by the DXF spec before the
-    // 73 (valign) group; AutoCAD R2000+ readers depend on it.
-    lines.push(this.pair(100, 'AcDbText'));
     if (aligned) {
-      lines.push(this.pair(11, formatCoord(this.x)), this.pair(21, formatCoord(this.y)));
+      lines.push(
+        this.pair(11, formatCoord(this.x)),
+        this.pair(21, formatCoord(this.y)),
+        this.pair(31, formatCoord(0)),
+      );
     }
+    // Second AcDbText subclass marker — per the DXF spec only the 73 (valign)
+    // group may follow it; the second alignment point (11/21/31) belongs to
+    // the first AcDbText subclass.
+    lines.push(this.pair(100, 'AcDbText'));
     lines.push(this.pair(73, this.valign));
     return lines;
   }

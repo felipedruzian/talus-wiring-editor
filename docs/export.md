@@ -26,6 +26,8 @@ export/
 
 The `dxf/` folder has no knowledge of devices, ports, or wires — it could be lifted into a standalone package as-is. All av-schematic specifics live in `dxf-av-schematic/`.
 
+**AutoCAD compatibility.** AutoCAD parses DXF strictly according to the declared `$ACADVER` and rejects R2000+ files missing any mandatory structure ("Invalid or incomplete DXF input -- drawing discarded"), while online viewers are lenient. `dxf-writer.ts` therefore wraps the document content in the full R2000+ skeleton, mirroring dxflib/QCAD output: the VPORT / LTYPE (`ByBlock`, `ByLayer`) / LAYER (incl. layer `0`) / STYLE / VIEW / UCS / APPID / DIMSTYLE / BLOCK_RECORD tables, `*Model_Space` / `*Paper_Space` block definitions, the named-object dictionary tree with `Model` + `Layout1` layouts, and `$HANDSEED`. Any appid referenced by XDATA (group 1001 — the text styles use `ACAD` for TrueType font data) must be registered in the APPID table. `dxf-writer.spec.ts` locks these requirements down at the tag level.
+
 **DXF layers and lineweights.** Two layers (`DEVICES`, `WIRES`) so a CAD user can hide one or the other. Visual hierarchy is expressed through DXF lineweights (group code 370): `WIRE` 0.35mm, `FRAME` / `DETAIL` 0.25mm, `SUBTLE` 0.13mm. Tunable in `av-dxf-constants.ts`.
 
 **Coordinate scale.** Renderers operate in diagram coordinates (matching `node.position` / `edge.points`); `CoordinateMapper` converts to DXF millimetres at a fixed `0.3 mm` per diagram unit. This is intentional — not paper-fitted — so a device's physical size in the DXF stays constant regardless of overall diagram size (large diagrams just produce a large extent, which is normal for CAD).

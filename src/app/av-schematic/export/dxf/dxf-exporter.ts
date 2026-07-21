@@ -100,13 +100,16 @@ export class DxfExporter {
         { code: 10, value: formatCoord(widthMm) },
         { code: 20, value: formatCoord(heightMm) },
       ],
+      // $EXTMIN/$EXTMAX are 3D points (10/20/30), unlike the 2D $LIMMIN/$LIMMAX.
       $EXTMIN: [
         { code: 10, value: formatCoord(0) },
         { code: 20, value: formatCoord(0) },
+        { code: 30, value: formatCoord(0) },
       ],
       $EXTMAX: [
         { code: 10, value: formatCoord(widthMm) },
         { code: 20, value: formatCoord(heightMm) },
+        { code: 30, value: formatCoord(0) },
       ],
     };
 
