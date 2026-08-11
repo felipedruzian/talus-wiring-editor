@@ -173,8 +173,10 @@ export class DiagramComponent {
     const node = event.node;
     if (!isDeviceNode(node) || node.data.deviceId) return;
 
-    const deviceId = generateDeviceId(node.data.category, this.modelService.nodes());
-    this.modelService.updateNodeData<DeviceNodeData>(node.id, {
+    // Committed model, not the nodes() signal — on rapid consecutive drops the
+    // signal may not include the previous drop yet, minting a duplicate id.
+    const deviceId = generateDeviceId(node.data.category, this.modelService.getModel().getNodes());
+    void this.modelService.updateNodeData<DeviceNodeData>(node.id, {
       ...node.data,
       deviceId,
     });
@@ -183,7 +185,7 @@ export class DiagramComponent {
   private zoomToFit(): void {
     const insets = this.nodeVisibilityConfigService.getViewportInsets();
     const pad = this.avConfig.viewport.zoomToFitPadding;
-    this.viewportService.zoomToFit({
+    void this.viewportService.zoomToFit({
       padding: [
         (insets.top ?? 0) + pad,
         (insets.right ?? 0) + pad,

@@ -62,7 +62,7 @@ export class DanglingEdgeService {
         )
       : rawPoints;
 
-    this.modelService.addEdges([
+    void this.modelService.addEdges([
       {
         id: randomShortId('wire'),
         type: EdgeTemplateType.WireEdge,
@@ -78,7 +78,12 @@ export class DanglingEdgeService {
   }
 
   private isOverNode(point: Point): boolean {
-    return this.modelService.nodes().some((node) => this.containsPoint(node, point));
+    // Committed model, not the nodes() signal — inside an event handler the
+    // signal still shows the state from before the current interaction.
+    return this.modelService
+      .getModel()
+      .getNodes()
+      .some((node) => this.containsPoint(node, point));
   }
 
   private containsPoint(node: Node, point: Point): boolean {

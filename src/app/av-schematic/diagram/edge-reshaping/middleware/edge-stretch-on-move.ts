@@ -18,7 +18,10 @@ export const applyEdgeStretchOnSelectionMoved = (
   merge: boolean,
 ): void => {
   const patches: { id: string; points: Point[] }[] = [];
-  for (const edge of modelService.edges()) {
+  // Committed model, not the edges() signal: this runs inside diagram event
+  // handlers and right after awaited writes, where the signal still shows the
+  // previous state (it refreshes on the next CD pass).
+  for (const edge of modelService.getModel().getEdges()) {
     if (edge.routingMode !== 'manual') continue;
     if (!edge.points || edge.points.length < 2) continue;
     // Skip before the getNodeById + portFlowPosition probe below.
@@ -76,7 +79,7 @@ export const applyEdgeStretchOnSelectionMoved = (
     }
   }
   if (patches.length > 0) {
-    modelService.updateEdges(patches);
+    void modelService.updateEdges(patches);
   }
 };
 

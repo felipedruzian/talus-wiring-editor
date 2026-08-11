@@ -42,7 +42,7 @@ export class ViewportAnimationService {
       const nextX = lerp(fromX, target.x, easedProgress);
       const nextY = lerp(fromY, target.y, easedProgress);
 
-      this.viewportService.moveViewport(nextX, nextY);
+      void this.viewportService.moveViewport(nextX, nextY);
 
       if (linearProgress < 1) {
         this.rafId = requestAnimationFrame(tick);

@@ -131,7 +131,7 @@ export class RelinkEndpointHandler {
             sourcePort: undefined,
             sourcePosition: position,
           };
-    this.modelService.updateEdge(drag.edgeId, patch);
+    void this.modelService.updateEdge(drag.edgeId, patch);
   }
 
   private connect(drag: RelinkState, hit: PortHit): void {
@@ -153,7 +153,7 @@ export class RelinkEndpointHandler {
             sourcePort: hit.portId,
             sourcePosition: undefined,
           };
-    this.modelService.updateEdge(drag.edgeId, patch);
+    void this.modelService.updateEdge(drag.edgeId, patch);
   }
 
   /**
