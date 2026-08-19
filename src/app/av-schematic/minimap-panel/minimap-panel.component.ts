@@ -46,13 +46,13 @@ export class MinimapPanelComponent {
   protected zoomIn(): void {
     const currentScale = this.viewportService.scale();
     const factor = (currentScale + this.config.viewport.zoomStep) / currentScale;
-    this.viewportService.zoom(factor);
+    void this.viewportService.zoom(factor);
   }
 
   protected zoomOut(): void {
     const currentScale = this.viewportService.scale();
     const factor = (currentScale - this.config.viewport.zoomStep) / currentScale;
-    this.viewportService.zoom(factor);
+    void this.viewportService.zoom(factor);
   }
 
   protected toggleExpanded(): void {

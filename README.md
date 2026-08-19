@@ -78,7 +78,7 @@ This template wires up a focused subset of the ng-diagram public surface. Useful
 | Edge routing | `NgDiagramConfig.edgeRouting` (`orthogonal` with `firstLastSegmentLength`, `maxCornerRadius`) | `diagram/diagram.component.ts` |
 | Manual edge points | `Edge.points`, `Edge.routingMode: 'manual'` | `diagram/edge-reshaping/*` |
 | Node-drag lifecycle | `NgDiagramService.addEventListener('nodeDragStarted' / 'nodeDragEnded')` | `diagram/edge-reshaping/middleware/edge-endpoint-sync.service.ts` |
-| Port-side metadata | `Node.measuredPorts[].side`, `Edge.sourcePort` / `targetPort` | `diagram/edge-reshaping/logic/port-orientation.ts`, `diagram/edge-reshaping/logic/get-port-flow-position.ts` |
+| Port-side metadata | `Node.measuredPorts[].side`, `Edge.sourcePort` / `targetPort` — since ng-diagram 1.3 the `side` is refreshed when a port is recreated with a different side (e.g. direction flip), so the app trusts it directly | `diagram/edge-reshaping/logic/port-orientation.ts`, `diagram/edge-reshaping/logic/port-position.ts` |
 | Snap config | `NgDiagramConfig.snapping` (`shouldSnapDragForNode`, `defaultDragSnap`, `computeSnapForNodeDrag`) | `diagram/edge-reshaping/commands/reshape-edge.ts` |
 | Linking | `NgDiagramConfig.linking.finalEdgeDataBuilder` (assigns wire type and generates a wireId) | `diagram/diagram.component.ts` |
 | Model init | `initializeModel()` | `diagram/diagram.component.ts` |
@@ -86,6 +86,7 @@ This template wires up a focused subset of the ng-diagram public surface. Useful
 | Model writes | `NgDiagramModelService` (`deleteNodes`, `deleteEdges`) | `properties-sidebar/element-mutation.service.ts` |
 | Live data edits | `NgDiagramModelService` (`updateNodeData`, `updateEdgeData`) | `properties-sidebar/element-mutation.service.ts` |
 | Atomic transactions | `NgDiagramService.transaction(..., { waitForMeasurements: true })` | `properties-sidebar/element-mutation.service.ts` |
+| Measurement invalidation | `NgDiagramService.invalidateMeasurements({ nodes })` — awaitable since ng-diagram 1.3, resolves once re-measurement lands in the model | `properties-sidebar/element-mutation.service.ts` |
 | Template-output event payloads | `DiagramInitEvent`, `SelectionGestureEndedEvent` | `diagram/diagram.component.ts` |
 | Viewport state | `NgDiagramViewportService` (`scale()`, `viewport()`, `canZoomIn`, `canZoomOut`) | `minimap-panel/minimap-panel.component.ts` |
 | Viewport actions | `NgDiagramViewportService` (`zoomToFit`, `zoom`, `moveViewport`) | `diagram/diagram.component.ts`, `diagram/viewport-animation.service.ts`, `minimap-panel/minimap-panel.component.ts` |

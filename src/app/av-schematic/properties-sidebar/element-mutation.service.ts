@@ -13,8 +13,7 @@ import {
 } from '../diagram/model/interfaces';
 import { formDataToDeviceData, type DeviceFieldChange } from '../device-form/device-form.mappers';
 import { formDataToWireData, type WireFieldChange } from './components/wire-form/wire-form.mappers';
-
-const ORTHOGONAL_STUB_PX = 80;
+import { applyEdgeStretchOnSelectionMoved } from '../diagram/edge-reshaping/middleware/edge-stretch-on-move';
 
 /** Mutates diagram nodes and edges in response to sidebar form changes and removal requests, including port-direction-flip reflow and orphaned-edge cleanup. */
 @Injectable()
@@ -23,25 +22,11 @@ export class ElementMutationService {
   private readonly diagramService = inject(NgDiagramService);
 
   async removeNode(nodeId: string): Promise<void> {
-    await this.diagramService.transaction(
-      () => {
-        if (this.modelService.getNodeById(nodeId)) {
-          this.modelService.deleteNodes([nodeId]);
-        }
-      },
-      { waitForMeasurements: true },
-    );
+    await this.modelService.deleteNodes([nodeId]);
   }
 
   async removeEdge(edgeId: string): Promise<void> {
-    await this.diagramService.transaction(
-      () => {
-        if (this.modelService.getEdgeById(edgeId)) {
-          this.modelService.deleteEdges([edgeId]);
-        }
-      },
-      { waitForMeasurements: true },
-    );
+    await this.modelService.deleteEdges([edgeId]);
   }
 
   handleDeviceFieldChange(change: DeviceFieldChange): void {
@@ -51,7 +36,7 @@ export class ElementMutationService {
     const portsChanged = change.fields.includes('ports');
 
     if (!portsChanged) {
-      this.modelService.updateNodeData(change.entityId, updatedData);
+      void this.modelService.updateNodeData(change.entityId, updatedData);
       return;
     }
 
@@ -74,41 +59,32 @@ export class ElementMutationService {
           .map((edge) => edge.id)
       : [];
 
-    const portSidesFromForm = new Map<string, 'left' | 'right'>(
-      updatedData.ports.map((p) => [p.id, p.direction === 'input' ? 'left' : 'right']),
-    );
-
     void this.diagramService
       .transaction(
         () => {
-          this.modelService.updateNodeData(change.entityId, updatedData);
+          void this.modelService.updateNodeData(change.entityId, updatedData);
           if (orphanedEdgeIds.length > 0) {
-            this.modelService.deleteEdges(orphanedEdgeIds);
+            void this.modelService.deleteEdges(orphanedEdgeIds);
           }
         },
         { waitForMeasurements: true },
       )
       .then(async () => {
-        this.diagramService.invalidateMeasurements({ nodes: [{ nodeId: change.entityId }] });
-        if (affectedEdgeIds.length === 0) return;
-        // Empty transaction body is intentional — purpose is the waitForMeasurements settle.
-        // eslint-disable-next-line @typescript-eslint/no-empty-function
-        await this.diagramService.transaction(() => {}, { waitForMeasurements: true });
-        this.reflowFlippedPortEdges(
-          change.entityId,
-          flippedPortIds,
-          affectedEdgeIds,
-          portSidesFromForm,
-        );
+        await this.diagramService.invalidateMeasurements({ nodes: [{ nodeId: change.entityId }] });
+        if (affectedEdgeIds.length > 0) {
+          await this.reflowFlippedPortEdges(change.entityId, flippedPortIds, affectedEdgeIds);
+        }
+        // Any ports change (flip, reorder, removal) shifts sibling port rows, so
+        // manual edges on unchanged ports need re-anchoring too.
+        applyEdgeStretchOnSelectionMoved(this.modelService, new Set([change.entityId]), true);
       });
   }
 
-  private reflowFlippedPortEdges(
+  private async reflowFlippedPortEdges(
     nodeId: string,
     flippedPortIds: ReadonlySet<string>,
     edgeIds: readonly string[],
-    portSidesFromForm: ReadonlyMap<string, 'left' | 'right'>,
-  ): void {
+  ): Promise<void> {
     const updates: {
       id: string;
       points: Point[] | undefined;
@@ -117,7 +93,7 @@ export class ElementMutationService {
     for (const edgeId of edgeIds) {
       const edge = this.modelService.getEdgeById(edgeId);
       if (!edge) continue;
-      const next = this.computeFlippedPath(edge, nodeId, flippedPortIds, portSidesFromForm);
+      const next = this.computeFlippedPath(edge, nodeId, flippedPortIds);
       if (!next) continue;
       if (next === 'reset') {
         updates.push({ id: edgeId, points: undefined, routingMode: 'auto' });
@@ -126,21 +102,13 @@ export class ElementMutationService {
       }
     }
     if (updates.length === 0) return;
-    this.diagramService.transaction(() => {
-      for (const update of updates) {
-        this.modelService.updateEdge(update.id, {
-          points: update.points,
-          routingMode: update.routingMode,
-        });
-      }
-    });
+    await this.modelService.updateEdges(updates);
   }
 
   private computeFlippedPath(
     edge: Edge,
     nodeId: string,
     flippedPortIds: ReadonlySet<string>,
-    portSidesFromForm: ReadonlyMap<string, 'left' | 'right'>,
   ): Point[] | 'reset' | null {
     const node = this.modelService.getNodeById(nodeId);
     if (!node) return null;
@@ -149,38 +117,29 @@ export class ElementMutationService {
     const targetFlipped = edge.target === nodeId && flippedPortIds.has(edge.targetPort ?? '');
     if (!sourceFlipped && !targetFlipped) return null;
 
+    // Auto-routed edges need no app reflow: the router routes to the
+    // re-measured port side on its own. Only mirror user-shaped paths.
+    const manualPoints =
+      edge.routingMode === 'manual' && edge.points && edge.points.length >= 3 ? edge.points : null;
+    if (!manualPoints) return null;
+
     const sourceNode = edge.source === nodeId ? node : this.modelService.getNodeById(edge.source);
     const targetNode = edge.target === nodeId ? node : this.modelService.getNodeById(edge.target);
     if (!sourceNode || !targetNode) return 'reset';
 
-    const srcSide =
-      (edge.source === nodeId ? portSidesFromForm.get(edge.sourcePort ?? '') : null) ??
-      getHorizontalPortSide(sourceNode, edge.sourcePort);
-    const tgtSide =
-      (edge.target === nodeId ? portSidesFromForm.get(edge.targetPort ?? '') : null) ??
-      getHorizontalPortSide(targetNode, edge.targetPort);
+    const srcSide = getHorizontalPortSide(sourceNode, edge.sourcePort);
+    const tgtSide = getHorizontalPortSide(targetNode, edge.targetPort);
     if (!srcSide || !tgtSide) return 'reset';
 
-    // `measuredPorts.side` doesn't refresh when an ng-diagram-port is destroyed
-    // in one @for and recreated in another with a different `side` attribute,
-    // so `edge.sourcePosition` lands on the wrong side after a direction flip.
-    // Recompute the anchor from `position` + the authoritative form-driven side.
     const srcPos = computePortAnchor(sourceNode, edge.sourcePort, srcSide);
     const tgtPos = computePortAnchor(targetNode, edge.targetPort, tgtSide);
     if (!srcPos || !tgtPos) return 'reset';
 
-    const manualPoints =
-      edge.routingMode === 'manual' && edge.points && edge.points.length >= 3 ? edge.points : null;
-
-    if (manualPoints) {
-      const nodeCenterX = node.position.x + (node.size?.width ?? 0) / 2;
-      let next: Point[] = manualPoints.slice();
-      if (sourceFlipped) next = flipEndpointAcrossNode(next, 'source', srcPos, nodeCenterX);
-      if (targetFlipped) next = flipEndpointAcrossNode(next, 'target', tgtPos, nodeCenterX);
-      return next;
-    }
-
-    return synthesizeOrthogonalPath(srcPos, srcSide, tgtPos, tgtSide);
+    const nodeCenterX = node.position.x + (node.size?.width ?? 0) / 2;
+    let next: Point[] = manualPoints.slice();
+    if (sourceFlipped) next = flipEndpointAcrossNode(next, 'source', srcPos, nodeCenterX);
+    if (targetFlipped) next = flipEndpointAcrossNode(next, 'target', tgtPos, nodeCenterX);
+    return next;
   }
 
   private findOrphanedEdgeIds(
@@ -206,11 +165,11 @@ export class ElementMutationService {
     const edge = this.modelService.getEdgeById<WireEdgeData>(change.edgeId);
     if (!edge) return;
     const updatedData = formDataToWireData(change.formData, edge.data);
-    this.modelService.updateEdgeData(change.edgeId, updatedData);
+    void this.modelService.updateEdgeData(change.edgeId, updatedData);
   }
 
   resetEdgeRouting(edgeId: string): void {
-    this.modelService.updateEdge(edgeId, {
+    void this.modelService.updateEdge(edgeId, {
       points: undefined,
       routingMode: 'auto',
     });
@@ -254,25 +213,6 @@ const computePortAnchor = (
       : port.position.x + node.position.x + port.size.width;
   const y = port.position.y + node.position.y + port.size.height / 2;
   return { x, y };
-};
-
-const synthesizeOrthogonalPath = (
-  src: Point,
-  srcSide: 'left' | 'right',
-  tgt: Point,
-  tgtSide: 'left' | 'right',
-): Point[] => {
-  const srcStubX = src.x + (srcSide === 'right' ? ORTHOGONAL_STUB_PX : -ORTHOGONAL_STUB_PX);
-  const tgtStubX = tgt.x + (tgtSide === 'right' ? ORTHOGONAL_STUB_PX : -ORTHOGONAL_STUB_PX);
-  const midY = (src.y + tgt.y) / 2;
-  return [
-    { x: src.x, y: src.y },
-    { x: srcStubX, y: src.y },
-    { x: srcStubX, y: midY },
-    { x: tgtStubX, y: midY },
-    { x: tgtStubX, y: tgt.y },
-    { x: tgt.x, y: tgt.y },
-  ];
 };
 
 const flipEndpointAcrossNode = (

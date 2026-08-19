@@ -15,7 +15,7 @@ import type { ReshapeFinishCommand, ReshapeMoveCommand, SetEdgeRouteCommand } fr
 // displayed route on gesture start).
 export const setEdgeRoute = (model: NgDiagramModelService, command: SetEdgeRouteCommand): void => {
   const points = command.points.map((p) => ({ x: p.x, y: p.y }));
-  model.updateEdge(command.edgeId, { points, routingMode: 'manual' });
+  void model.updateEdge(command.edgeId, { points, routingMode: 'manual' });
 };
 
 // Apply one live segment move: slide the segment, snap endpoints to the live
@@ -44,7 +44,7 @@ export const applyReshapeMove = (
   realignEndpointNeighbor(newPoints, 'target', targetAxisBeforeAnchor);
   const orthoPoints = orthogonalizePolyline(newPoints);
 
-  model.updateEdge(command.edgeId, { points: orthoPoints, routingMode: 'manual' });
+  void model.updateEdge(command.edgeId, { points: orthoPoints, routingMode: 'manual' });
 };
 
 // Fold redundant bends once the gesture ends. Folding collinear/same-axis points
@@ -57,7 +57,7 @@ export const finishReshape = (
   if (!edge?.points || edge.points.length < 3) return;
   const collapsed = dropSameAxisBends(collapseCollinearBends(edge.points));
   if (collapsed.length === edge.points.length) return;
-  model.updateEdge(command.edgeId, { points: collapsed, routingMode: 'manual' });
+  void model.updateEdge(command.edgeId, { points: collapsed, routingMode: 'manual' });
 };
 
 // Replace the end vertex with the live port world position.

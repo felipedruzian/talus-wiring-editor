@@ -126,11 +126,10 @@ and would change on the way in:
   `shouldSnapDragForNode` because ng-diagram has no dedicated edge-snap config.
   Core should give edge snapping its own switch rather than piggybacking on the
   node one (also flagged in `edge-grid.ts`).
-- **`portFlowPosition` assumes left/right ports.** It infers a port's side from
-  its measured X to work around `port.side` being frozen when a same-id port is
-  recreated with a new side (direction flip). The general, side-based version
-  (all four sides) belongs in core, where the underlying `port.side` staleness
-  should be fixed instead.
+- **`portFlowPosition` assumes left/right ports.** It reads
+  `measuredPorts[].side` directly (refreshed on port recreation since
+  ng-diagram 1.3) but only anchors to the left or right port edge. The general,
+  side-based version (all four sides) belongs in core.
 - **The command pipeline is emulated.** `commands/` + its dispatcher mirror
   ng-diagram's command flow, but ng-diagram exposes no public command-registration
   API, so the dispatcher ultimately calls `NgDiagramModelService` directly. In
