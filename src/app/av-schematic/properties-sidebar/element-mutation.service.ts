@@ -22,25 +22,11 @@ export class ElementMutationService {
   private readonly diagramService = inject(NgDiagramService);
 
   async removeNode(nodeId: string): Promise<void> {
-    await this.diagramService.transaction(
-      () => {
-        if (this.modelService.getNodeById(nodeId)) {
-          void this.modelService.deleteNodes([nodeId]);
-        }
-      },
-      { waitForMeasurements: true },
-    );
+    await this.modelService.deleteNodes([nodeId]);
   }
 
   async removeEdge(edgeId: string): Promise<void> {
-    await this.diagramService.transaction(
-      () => {
-        if (this.modelService.getEdgeById(edgeId)) {
-          void this.modelService.deleteEdges([edgeId]);
-        }
-      },
-      { waitForMeasurements: true },
-    );
+    await this.modelService.deleteEdges([edgeId]);
   }
 
   handleDeviceFieldChange(change: DeviceFieldChange): void {
