@@ -6,18 +6,19 @@ import {
   type JunctionNodeData,
   type WireEdgeData,
 } from '../diagram/model/interfaces';
+import { describeWireEndpoints, type WireEndpointInfo } from '../diagram/model/wire-endpoints';
 
 export type SidebarState = 'empty' | 'single-node' | 'single-junction' | 'single-edge' | 'multi';
 
-export interface WireEndpointInfo {
-  deviceId: string;
-  portLabel: string;
-}
+// Re-exported so existing consumers keep their import path.
+export type { WireEndpointInfo } from '../diagram/model/wire-endpoints';
 
 export interface SelectedWireDetails {
   edge: Edge<WireEdgeData>;
   source: WireEndpointInfo | null;
   target: WireEndpointInfo | null;
+  /** Number of physical conductors selected by a net highlight. */
+  netSize: number;
 }
 
 /** Manages sidebar visibility and exposes selection-derived data. */
@@ -67,11 +68,12 @@ export class PropertiesSidebarService {
   readonly selectedWireDetails = computed<SelectedWireDetails | null>(() => {
     const edge = this.selectedEdge();
     if (!edge) return null;
-    const nodes = this.modelService.nodes();
+    const { source, target } = describeWireEndpoints(this.modelService.nodes(), edge);
     return {
       edge,
-      source: this.resolveEndpoint(nodes, edge.source, edge.sourcePort),
-      target: this.resolveEndpoint(nodes, edge.target, edge.targetPort),
+      source,
+      target,
+      netSize: this.countNetMembers(edge.data.netId),
     };
   });
 
@@ -83,25 +85,10 @@ export class PropertiesSidebarService {
     this.isExpanded.update((v) => !v);
   }
 
-  private resolveEndpoint(
-    nodes: readonly Node[],
-    nodeId: string | undefined,
-    portId: string | undefined,
-  ): WireEndpointInfo | null {
-    if (!nodeId) return null;
-    const node = nodes.find((n) => n.id === nodeId);
-    if (!node) return null;
-    if (isJunctionNode(node)) {
-      return {
-        deviceId: node.data.label,
-        portLabel: portId ?? 'junção',
-      };
-    }
-    if (!isDeviceNode(node)) return null;
-    const port = portId ? node.data.ports.find((candidate) => candidate.id === portId) : undefined;
-    return {
-      deviceId: node.data.deviceId,
-      portLabel: port?.label ?? portId ?? '',
-    };
+  private countNetMembers(netId: string | undefined): number {
+    if (!netId) return 0;
+    return this.modelService
+      .edges()
+      .filter((edge) => isWireEdge(edge) && edge.data.netId === netId).length;
   }
 }

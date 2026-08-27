@@ -5,7 +5,7 @@
 `CanonicalProjectV2` possui `formatVersion: 2` e duas seções independentes:
 
 - `electrical`: componentes, junções, cabos e nets com seus endpoints e
-  condutores;
+  condutores, inclusive cor e metadados próprios de cada ligação;
 - `layout`: placas, posições, furos, taps visuais e rotas manuais.
 
 O WireViz importa e exporta somente `electrical`. Abrir ou exportar um projeto
@@ -47,9 +47,15 @@ severidade, código, caminho e mensagem. Ele registra:
 
 Uma cor WireViz RGB com exatamente seis dígitos, como `"#a1b2c3"`, é
 preservada e reemitida com a mesma grafia. Uma forma CSS diferente, como
-`#abc` ou um valor com alfa, nunca é aproximada: ela continua no projeto v2,
-o YAML deixa a posição sem cor e o relatório contém
+um valor com alfa ou uma cor nomeada, nunca é aproximada: ela continua no
+projeto v2, o YAML deixa a posição sem cor e o relatório contém
 `color-not-representable`.
+
+Bitola, comprimento e observação pertencem a cada condutor no editor. Como o
+WireViz oferece esses campos somente no cabo, a exportação os escreve quando
+os condutores do cabo concordam. Se houver divergência, o YAML omite o campo e
+o relatório usa `field-not-representable`; o projeto canônico conserva todos
+os valores individuais.
 
 ## Equivalência elétrica
 
@@ -86,6 +92,10 @@ via `ProjectStorageService`; a exportação lê o snapshot confirmado do mesmo
 serviço. A junção/trilho criada pelo fixture é selecionável e seus campos de
 nome, representação, taps e observação são editáveis na barra lateral, que
 também mostra id, net e a semântica elétrica compartilhada dos taps.
+
+O mesmo relatório global recebe os avisos de cores personalizadas gerados no
+fluxo real de `export-wireviz.ts`. Não existe um coletor paralelo de canvas que
+possa divergir do YAML efetivamente baixado.
 
 Os testes de round-trip não passam o primeiro resultado elétrico inteiro como
 opção da segunda importação. Eles reaproveitam somente identidade local e

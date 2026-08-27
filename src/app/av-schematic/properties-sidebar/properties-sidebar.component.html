@@ -1,9 +1,9 @@
 <aside class="sidebar" aria-labelledby="properties-sidebar-title">
   <app-sidebar-header
-    title="Properties"
+    title="Propriedades"
     titleId="properties-sidebar-title"
     iconClass="icon-sidebar"
-    ariaLabel="Toggle properties panel"
+    ariaLabel="Alternar painel de propriedades"
     tooltipPlacement="left"
     [subtitle]="headerSubtitle()"
     [isExpanded]="isExpanded()"
@@ -22,23 +22,24 @@
           [edgeData]="wire.edge.data"
           [source]="wire.source"
           [target]="wire.target"
+          [netSize]="wire.netSize"
         />
       } @else if (state() === 'empty') {
         <app-sidebar-placeholder
-          title="No selection"
-          description="Select a device or wire on the canvas to view its properties."
+          title="Nenhuma seleção"
+          description="Selecione um dispositivo ou fio no canvas para ver suas propriedades."
         />
       } @else {
         <app-sidebar-placeholder
-          title="Multiple items selected."
-          description="Please select a single device or wire to view properties."
+          title="Vários itens selecionados"
+          description="Selecione apenas um dispositivo ou fio para ver suas propriedades."
         />
       }
     </div>
     @if (state() === 'single-node') {
       <div class="sidebar-actions">
         <button class="remove-button p10" type="button" (click)="onRemoveNode()">
-          Remove device
+          Remover dispositivo
         </button>
       </div>
     } @else if (state() === 'single-junction') {
@@ -51,11 +52,11 @@
       <div class="sidebar-actions">
         @if (wire.edge.routingMode === 'manual') {
           <button class="action-button p10" type="button" (click)="onResetWireRouting()">
-            Reset routing
+            Restaurar rota automática
           </button>
         }
         <button class="remove-button p10" type="button" (click)="onRemoveWire()">
-          Remove wire
+          Remover fio
         </button>
       </div>
     }

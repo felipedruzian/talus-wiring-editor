@@ -5,12 +5,13 @@ import {
   type CanonicalNetEndpoint,
 } from './canonical-project';
 import { type PreservedFields, type PreservedValue } from './interfaces';
+import { canonicalColorValue } from './wire-colors';
 
 /**
  * Order-independent electrical fingerprint of a project.
  *
  * A WireViz round-trip is not expected to reproduce the original YAML byte
- * for byte — connection sets come back in a different order, quoting differs,
+ * for byte -- connection sets come back in a different order, quoting differs,
  * a comment is gone. Comparing text would therefore test the serializer's
  * formatting rather than whether the circuit survived. This module reduces a
  * project to what is electrically true about it, with every collection sorted
@@ -19,15 +20,15 @@ import { type PreservedFields, type PreservedValue } from './interfaces';
  *
  * Deliberately excluded, and why:
  *
- *   - **conductor ids** — regenerated on import; identity comes from the pair
+ *   - **conductor ids** -- regenerated on import; identity comes from the pair
  *     of endpoints and the wire, not from a name;
- *   - **net ids and names** — derived labels with no WireViz counterpart;
- *   - **junction kind** — rail versus junction is visual; both are one
+ *   - **net ids and names** -- derived labels with no WireViz counterpart;
+ *   - **junction kind** -- rail versus junction is visual; both are one
  *     electrical point and WireViz writes both as a one-pin connector;
- *   - **pin direction, connectorType, category, location** — editor fields a
+ *   - **pin direction, connectorType, category, location** -- editor fields a
  *     WireViz document never carried, so demanding them back would make the
  *     comparison fail for a reason that has nothing to do with the circuit;
- *   - **everything in the project's `layout` section** — geometry, by
+ *   - **everything in the project's `layout` section** -- geometry, by
  *     definition not electrical.
  *
  * Everything a WireViz document *can* express is included, so losing a
@@ -92,7 +93,7 @@ export interface SnapshotJunction {
 }
 
 export interface SnapshotConductor {
-  /** The two endpoint keys, sorted — a conductor has no direction. */
+  /** The two endpoint keys, sorted -- a conductor has no direction. */
   endpoints: [string, string];
   cable?: string;
   wireIndex?: number;
@@ -189,6 +190,11 @@ export function toElectricalSnapshot(electrical: CanonicalElectrical): Electrica
             conductor.wirevizLink,
             conductor.wirevizLoop,
             conductor.wireType,
+            conductor.color,
+            conductor.colorCode,
+            conductor.gauge,
+            conductor.length,
+            conductor.notes,
             cables,
           ),
         )
@@ -206,6 +212,11 @@ function toSnapshotConductor(
   wirevizLink: string | undefined,
   wirevizLoop: boolean | undefined,
   wireType: string | undefined,
+  color: string | undefined,
+  conductorColorCode: string | undefined,
+  gauge: string | undefined,
+  length: string | undefined,
+  notes: string | undefined,
   cables: ReadonlyMap<string, CanonicalCable>,
 ): SnapshotConductor {
   const fromKey = endpointKey(from);
@@ -224,10 +235,13 @@ function toSnapshotConductor(
     wireType,
     // An empty color slot and an absent one mean the same thing ("no color"),
     // so they must not read as a difference.
-    color: emptyToUndefined(cable?.colors[(cableRef?.wireIndex ?? 1) - 1]),
-    gauge: cable?.gauge,
-    length: cable?.length,
-    notes: cable?.notes,
+    color: emptyToUndefined(
+      canonicalColorValue({ color, colorCode: conductorColorCode }) ??
+        cable?.colors[(cableRef?.wireIndex ?? 1) - 1],
+    ),
+    gauge: gauge ?? cable?.gauge,
+    length: length ?? cable?.length,
+    notes: notes ?? cable?.notes,
     cableType: cable?.type,
     manufacturer: cable?.manufacturer,
     mpn: cable?.mpn,

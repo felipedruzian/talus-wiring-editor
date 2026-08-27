@@ -335,6 +335,15 @@ describe('WireViz electrical round-trip', () => {
       wireLabels: ['unused-a', 'unused-b'],
       notes: 'Disconnected spare cable',
     });
+    const harnessConductors = second.nets
+      .flatMap((net) => net.conductors)
+      .filter((conductor) => conductor.cable?.name === 'HARNESS');
+    expect(harnessConductors).toHaveLength(3);
+    expect(harnessConductors.every((conductor) => conductor.gauge === '0.50 mm2')).toBe(true);
+    expect(harnessConductors.every((conductor) => conductor.length === '0.25 m')).toBe(true);
+    expect(harnessConductors.every((conductor) => conductor.notes === 'Main 5 V fan-out')).toBe(
+      true,
+    );
     expect(second.components.find((component) => component.id === 'supply')).toMatchObject({
       wirevizSubtype: 'female',
       wirevizColor: 'BK',
@@ -376,11 +385,74 @@ describe('WireViz electrical round-trip', () => {
     const spare = electrical.cables.find((cable) => cable.name === 'SPARE');
     if (!spare) throw new Error('fixture has no SPARE cable');
     spare.colors[0] = '#abc';
+    const spareConductor = electrical.nets
+      .flatMap((net) => net.conductors)
+      .find((conductor) => conductor.cable?.name === 'SPARE' && conductor.cable.wireIndex === 1);
+    if (spareConductor) {
+      spareConductor.color = '#abc';
+      spareConductor.colorCode = undefined;
+    }
 
     const exported = exportWireViz(electrical);
     expect(entriesWithCode(exported.report, 'color-not-representable')).toHaveLength(1);
     expect(spare.colors[0]).toBe('#abc');
     expect(exported.yaml).not.toContain('#abc');
+  });
+
+  it('reports a canvas-only custom color from the real YAML export flow', () => {
+    const electrical = structuredClone(importMultidrop().electrical);
+    const conductor = electrical.nets
+      .flatMap((net) => net.conductors)
+      .find((candidate) => candidate.cable?.name === 'HARNESS');
+    if (!conductor?.cable) throw new Error('fixture has no HARNESS conductor');
+    conductor.color = 'rebeccapurple';
+    conductor.colorCode = undefined;
+    const cable = electrical.cables.find((candidate) => candidate.name === conductor.cable?.name);
+    if (!cable) throw new Error('fixture has no HARNESS cable');
+    cable.colors[conductor.cable.wireIndex - 1] = 'rebeccapurple';
+
+    const exported = exportWireViz(electrical);
+    expect(entriesWithCode(exported.report, 'color-not-representable')).toHaveLength(1);
+    expect(exported.yaml).not.toContain('rebeccapurple');
+    expect(conductor.color).toBe('rebeccapurple');
+  });
+
+  it('keeps an explicit custom RGB token even when it equals a palette color', () => {
+    const electrical = structuredClone(importMultidrop().electrical);
+    const conductor = electrical.nets
+      .flatMap((net) => net.conductors)
+      .find((candidate) => candidate.cable?.name === 'HARNESS');
+    if (!conductor?.cable) throw new Error('fixture has no HARNESS conductor');
+    conductor.color = '#e2231a';
+    conductor.colorCode = '#E2231A';
+    const cable = electrical.cables.find((candidate) => candidate.name === conductor.cable?.name);
+    if (!cable) throw new Error('fixture has no HARNESS cable');
+    cable.colors[conductor.cable.wireIndex - 1] = '#E2231A';
+
+    const exported = exportWireViz(electrical);
+    expect(exported.yaml).toContain('"#E2231A"');
+    expect(entriesWithCode(exported.report, 'color-not-representable')).toHaveLength(0);
+  });
+
+  it('omits and reports cable metadata when conductors in one harness disagree', () => {
+    const electrical = structuredClone(importMultidrop().electrical);
+    const conductors = electrical.nets
+      .flatMap((net) => net.conductors)
+      .filter((conductor) => conductor.cable?.name === 'HARNESS');
+    conductors[0].gauge = '20 AWG';
+    conductors[1].gauge = '22 AWG';
+
+    const exported = exportWireViz(electrical);
+    expect(
+      entriesWithCode(exported.report, 'field-not-representable').some(
+        (entry) => entry.path === 'cables.HARNESS.gauge',
+      ),
+    ).toBe(true);
+    const document = exported.document as Record<string, unknown>;
+    const cables = document['cables'] as Record<string, Record<string, unknown>>;
+    expect(cables['HARNESS']['gauge']).toBeUndefined();
+    expect(conductors[0].gauge).toBe('20 AWG');
+    expect(conductors[1].gauge).toBe('22 AWG');
   });
 
   it('fails equivalence after a real emitted-document mutation removes a disconnected cable', () => {

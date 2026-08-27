@@ -126,6 +126,26 @@ describe('canonical project round-trip', () => {
     ]);
   });
 
+  it('derives a render color from a known conductor colorCode', () => {
+    const project = toCanonicalProject(diagramModel.nodes, diagramModel.edges);
+    const conductor = project.electrical.nets.flatMap((net) => net.conductors)[0];
+    conductor.color = undefined;
+    conductor.colorCode = 'RD';
+
+    const rebuilt = fromCanonicalProject(parseCanonicalProject(clone(project)));
+    const edge = must(rebuilt.edges.find((candidate) => candidate.id === conductor.id));
+    expect(edge.data.colorCode).toBe('RD');
+    expect(edge.data.color).toBe('#e2231a');
+  });
+
+  it('rejects a deterministic conductor color/colorCode conflict', () => {
+    const project = toCanonicalProject(diagramModel.nodes, diagramModel.edges);
+    const conductor = project.electrical.nets.flatMap((net) => net.conductors)[0];
+    conductor.color = '#e2231a';
+    conductor.colorCode = 'YE';
+    expect(() => parseCanonicalProject(clone(project))).toThrow(/color does not match colorCode/);
+  });
+
   it('is stable under a second model round-trip', () => {
     const first = toCanonicalProject(diagramModel.nodes, diagramModel.edges);
     const rebuilt = fromCanonicalProject(first);
@@ -476,10 +496,15 @@ describe('parseCanonicalProject', () => {
     expect(() => parseCanonicalProject(raw)).toThrow(CanonicalProjectError);
   });
 
-  it('accepts only manual as an explicit persisted routing mode', () => {
+  it('accepts only a complete manual route as explicit persisted routing', () => {
     const manual = clone(validRaw) as {
-      layout: { conductors: { routingMode?: string }[] };
+      layout: { conductors: { routingMode?: string; points?: { x: number; y: number }[] }[] };
     };
+    manual.layout.conductors[0].points = [
+      { x: 0, y: 0 },
+      { x: 0.5, y: 20 },
+      { x: 40, y: 20 },
+    ];
     manual.layout.conductors[0].routingMode = 'manual';
     expect(() => parseCanonicalProject(manual)).not.toThrow();
 
@@ -488,6 +513,58 @@ describe('parseCanonicalProject', () => {
     };
     automatic.layout.conductors[0].routingMode = 'auto';
     expect(() => parseCanonicalProject(automatic)).toThrow(/routingMode/);
+
+    const missingPoints = clone(manual);
+    delete missingPoints.layout.conductors[0].points;
+    expect(() => parseCanonicalProject(missingPoints)).toThrow(/at least 2 points/);
+
+    const missingMode = clone(manual);
+    delete missingMode.layout.conductors[0].routingMode;
+    expect(() => parseCanonicalProject(missingMode)).toThrow(/require routingMode/);
+
+    const diagonal = clone(manual);
+    diagonal.layout.conductors[0].points = [
+      { x: 0, y: 0 },
+      { x: 10, y: 10 },
+    ];
+    expect(() => parseCanonicalProject(diagonal)).toThrow(/not orthogonal/);
+  });
+
+  it('recovers legacy points without routingMode and drops only a malformed legacy route', () => {
+    const recoverable = legacyTwoPointProject();
+    const recoverableNet = (recoverable['nets'] as Record<string, unknown>[])[0];
+    recoverableNet['gauge'] = '22 AWG';
+    recoverableNet['length'] = '120 mm';
+    recoverableNet['note'] = 'Rota legada';
+    recoverableNet['points'] = [
+      { x: 0, y: 0 },
+      { x: 0.5, y: 20 },
+      { x: 40, y: 20 },
+    ];
+
+    const migrated = parseCanonicalProject(recoverable);
+    expect(migrated.layout.conductors[0]).toMatchObject({
+      conductorId: 'wire-a',
+      routingMode: 'manual',
+      points: recoverableNet['points'],
+    });
+    expect(migrated.electrical.nets[0].conductors[0]).toMatchObject({
+      gauge: '22 AWG',
+      length: '120 mm',
+      notes: 'Rota legada',
+    });
+
+    const malformed = legacyTwoPointProject();
+    const malformedNet = (malformed['nets'] as Record<string, unknown>[])[0];
+    malformedNet['routingMode'] = 'manual';
+    malformedNet['points'] = [
+      { x: 0, y: 0 },
+      { x: 10, y: 10 },
+    ];
+    const safelyMigrated = parseCanonicalProject(malformed);
+    expect(safelyMigrated.layout.conductors[0].conductorId).toBe('wire-a');
+    expect(safelyMigrated.layout.conductors[0].routingMode).toBeUndefined();
+    expect(safelyMigrated.layout.conductors[0].points).toBeUndefined();
   });
 
   it('rejects an invalid pin direction', () => {

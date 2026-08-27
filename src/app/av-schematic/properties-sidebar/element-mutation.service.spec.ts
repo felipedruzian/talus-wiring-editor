@@ -3,8 +3,10 @@ import { NgDiagramModelService, NgDiagramService, type Edge, type Node } from 'n
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CANONICAL_FORMAT_VERSION,
+  fromCanonicalProject,
   type CanonicalProjectV2,
 } from '../diagram/model/canonical-project';
+import { parseCanonicalProject } from '../diagram/model/canonical-project-parse';
 import { electricallyEquivalent } from '../diagram/model/electrical-equivalence';
 import { isWireEdge } from '../diagram/model/guards';
 import { type WireEdgeData } from '../diagram/model/interfaces';
@@ -19,6 +21,10 @@ import { buildImportedProject } from '../wireviz-import/wireviz-exchange.service
 import { type WireVizImportOptions } from '../wireviz-import/wireviz-to-diagram';
 import { stringifyYamlSubset } from '../wireviz-import/wireviz-yaml-emit';
 import { ElementMutationService } from './element-mutation.service';
+import {
+  CUSTOM_COLOR_CHOICE,
+  wireDataToFormData,
+} from './components/wire-form/wire-form.mappers';
 
 class ModelStub {
   nodes: Node[] = [];
@@ -131,7 +137,7 @@ describe('ElementMutationService wire identity edits', () => {
     await mutation.handleWireFieldChange({
       edgeId: harnessEdge.id,
       fields: ['wireId'],
-      formData: { wireId: 'RENAMED', wireType: '' },
+      formData: { ...wireDataToFormData(harnessEdge.data), wireId: 'RENAMED' },
     });
 
     const snapshot = storage.snapshotProject();
@@ -181,7 +187,7 @@ describe('ElementMutationService wire identity edits', () => {
     await mutation.handleWireFieldChange({
       edgeId: directLink.id,
       fields: ['wireId'],
-      formData: { wireId: 'W9', wireType: '' },
+      formData: { ...wireDataToFormData(directLink.data), wireId: 'W9' },
     });
 
     const edited = model.edges.find(
@@ -200,5 +206,110 @@ describe('ElementMutationService wire identity edits', () => {
     expect(exported.yaml).toContain('W9:');
     expect(exported.yaml).not.toContain('-->');
     expect(electricallyEquivalent(snapshot.electrical, reimported.electrical)).toBe(true);
+  });
+
+  it('edits color and metadata on one conductor without flattening its multi-drop net', async () => {
+    const model = new ModelStub();
+    TestBed.configureTestingModule({
+      providers: [
+        ElementMutationService,
+        ProjectStorageService,
+        { provide: NgDiagramModelService, useValue: model },
+        { provide: NgDiagramService, useValue: diagramStub },
+      ],
+    });
+    const storage = TestBed.inject(ProjectStorageService);
+    const mutation = TestBed.inject(ElementMutationService);
+    const imported = importWireViz(MULTIDROP_RAIL_WIREVIZ_YAML, {
+      placement: MULTIDROP_RAIL_PLACEMENT,
+    });
+    await storage.replaceProject(buildImportedProject(imported.electrical, emptyProject()));
+    const harnessEdges = model.edges.filter(
+      (edge): edge is Edge<WireEdgeData> => isWireEdge(edge) && edge.data.wireId === 'HARNESS',
+    );
+    const selected = harnessEdges[1];
+    if (!selected) throw new Error('fixture has fewer than two HARNESS conductors');
+    const untouchedColors = new Map(
+      harnessEdges.filter((edge) => edge.id !== selected.id).map((edge) => [edge.id, edge.data.color]),
+    );
+
+    await mutation.handleWireFieldChange({
+      edgeId: selected.id,
+      fields: ['colorChoice', 'customColor', 'gauge', 'length', 'note'],
+      formData: {
+        ...wireDataToFormData(selected.data),
+        colorChoice: CUSTOM_COLOR_CHOICE,
+        customColor: 'rebeccapurple',
+        gauge: '22 AWG',
+        length: '180 mm',
+        note: 'Desvio junto ao painel',
+      },
+    });
+
+    for (const edge of harnessEdges.filter((candidate) => candidate.id !== selected.id)) {
+      const live = model.edges.find((candidate) => candidate.id === edge.id);
+      expect(isWireEdge(live) ? live.data.color : undefined).toBe(untouchedColors.get(edge.id));
+    }
+
+    const selectedIndex = model.edges.findIndex((edge) => edge.id === selected.id);
+    if (selectedIndex < 0) throw new Error('selected conductor disappeared');
+    model.edges[selectedIndex] = {
+      ...model.edges[selectedIndex],
+      routingMode: 'manual',
+      points: [
+        { x: 0, y: 0 },
+        { x: 40, y: 0 },
+        { x: 40, y: 80 },
+      ],
+    };
+
+    const snapshot = storage.snapshotProject();
+    const net = snapshot.electrical.nets.find((candidate) =>
+      candidate.conductors.some((conductor) => conductor.id === selected.id),
+    );
+    expect(net?.conductors).toHaveLength(3);
+    expect(net?.conductors.find((conductor) => conductor.id === selected.id)).toMatchObject({
+      color: 'rebeccapurple',
+      gauge: '22 AWG',
+      length: '180 mm',
+      notes: 'Desvio junto ao painel',
+    });
+    expect(
+      snapshot.layout.conductors.find((layout) => layout.conductorId === selected.id),
+    ).toMatchObject({
+      conductorId: selected.id,
+      routingMode: 'manual',
+      points: [
+        { x: 0, y: 0 },
+        { x: 40, y: 0 },
+        { x: 40, y: 80 },
+      ],
+    });
+
+    const restored = fromCanonicalProject(parseCanonicalProject(structuredClone(snapshot)));
+    const restoredSelected = restored.edges.find((edge) => edge.id === selected.id);
+    expect(restoredSelected?.data).toMatchObject({
+      color: 'rebeccapurple',
+      gauge: '22 AWG',
+      length: '180 mm',
+      notes: 'Desvio junto ao painel',
+    });
+    expect(restoredSelected?.data.colorCode).toBeUndefined();
+    expect(
+      restoredSelected ? wireDataToFormData(restoredSelected.data).colorChoice : undefined,
+    ).toBe(CUSTOM_COLOR_CHOICE);
+    expect(restoredSelected).toMatchObject({
+      routingMode: 'manual',
+      points: [
+        { x: 0, y: 0 },
+        { x: 40, y: 0 },
+        { x: 40, y: 80 },
+      ],
+    });
+    const exported = exportWireViz(snapshot.electrical);
+    expect(exported.report.entries.some((entry) => entry.code === 'color-not-representable')).toBe(
+      true,
+    );
+    expect(exported.yaml).not.toContain('rebeccapurple');
   });
 });

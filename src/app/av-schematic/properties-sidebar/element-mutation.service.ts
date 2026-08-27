@@ -14,6 +14,7 @@ import {
 } from '../diagram/model/interfaces';
 import { isWireEdge } from '../diagram/model/guards';
 import { junctionTapIndex, junctionTapPortId } from '../diagram/model/canonical-project';
+import { canonicalColorValue } from '../diagram/model/wire-colors';
 import { ProjectStorageService } from '../project-storage/project-storage.service';
 import { formDataToDeviceData, type DeviceFieldChange } from '../device-form/device-form.mappers';
 import { formDataToWireData, type WireFieldChange } from './components/wire-form/wire-form.mappers';
@@ -176,14 +177,20 @@ export class ElementMutationService {
     const updatedData = formDataToWireData(change.formData, edge.data);
     const previousName = edge.data.wireId;
     const nextName = updatedData.wireId;
+    const colorChanged = change.fields.some(
+      (field) => field === 'colorChoice' || field === 'customColor',
+    );
+    const identityChanged =
+      change.fields.includes('wireId') && previousName !== nextName && !!previousName;
+    const wireEdges = this.modelService.getModel().getEdges().filter(isWireEdge);
 
-    if (!change.fields.includes('wireId') || previousName === nextName || !previousName) {
+    if (!identityChanged && (!colorChanged || !nextName)) {
       await this.modelService.updateEdgeData(change.edgeId, updatedData);
       return;
     }
 
-    const wireEdges = this.modelService.getModel().getEdges().filter(isWireEdge);
     if (
+      identityChanged &&
       nextName &&
       wireEdges.some(
         (candidate) => candidate.data.wireId === nextName && candidate.data.wireId !== previousName,
@@ -193,11 +200,40 @@ export class ElementMutationService {
     }
 
     await this.diagramService.transaction(() => {
-      this.storage.renameCableIdentity(previousName, nextName);
+      if (identityChanged) this.storage.renameCableIdentity(previousName, nextName);
+      const selectedIndex = updatedData.wireIndex ?? 1;
+      const serializedColor = canonicalColorValue({
+        color: updatedData.color,
+        colorCode: updatedData.colorCode,
+      });
       for (const candidate of wireEdges) {
-        if (candidate.data.wireId !== previousName) continue;
-        const data =
-          candidate.id === change.edgeId ? updatedData : { ...candidate.data, wireId: nextName };
+        const belongsToCable = candidate.data.wireId === (identityChanged ? previousName : nextName);
+        if (
+          candidate.id !== change.edgeId &&
+          (!belongsToCable || (!identityChanged && !colorChanged))
+        ) {
+          continue;
+        }
+
+        let data =
+          candidate.id === change.edgeId
+            ? updatedData
+            : identityChanged
+              ? { ...candidate.data, wireId: nextName }
+              : candidate.data;
+
+        if (colorChanged && belongsToCable) {
+          const cableColors = [...(data.cableColors ?? [])];
+          while (cableColors.length < selectedIndex) cableColors.push('');
+          cableColors[selectedIndex - 1] = serializedColor ?? '';
+          data = {
+            ...data,
+            cableColors,
+            ...((data.wireIndex ?? 1) === selectedIndex
+              ? { color: updatedData.color, colorCode: updatedData.colorCode }
+              : {}),
+          };
+        }
         void this.modelService.updateEdgeData(candidate.id, data);
       }
     });

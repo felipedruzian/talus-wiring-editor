@@ -7,6 +7,7 @@
 // same small runtime module as the client; parity tests exercise both sides.
 
 import { OPERATIONAL_LIMITS } from '../src/app/av-schematic/diagram/model/operational-limits.mjs';
+import { normalizeOrthogonalPersistedRoute } from '../src/app/av-schematic/diagram/model/persisted-wire-route.mjs';
 
 export class CanonicalProjectValidationError extends Error {
   constructor(message) {
@@ -20,6 +21,29 @@ const ALLOWED_PORT_DIRECTIONS = ['input', 'output'];
 const ALLOWED_JUNCTION_KINDS = ['junction', 'rail'];
 const ALLOWED_ENDPOINT_KINDS = ['pin', 'junction'];
 const ALLOWED_WIREVIZ_LINKS = ['--', '<--', '<-->', '-->'];
+const WIREVIZ_COLOR_CODES = {
+  BK: '#1a1a1a',
+  WH: '#f5f5f5',
+  GY: '#8c8c8c',
+  PK: '#f4a6c6',
+  RD: '#e2231a',
+  OG: '#f2820d',
+  YE: '#f7d417',
+  OL: '#7d7f00',
+  GN: '#2fa93c',
+  TQ: '#2fb5a0',
+  LB: '#8fc7ff',
+  BU: '#1e6fd9',
+  VT: '#8e3fc9',
+  BN: '#7a4a1e',
+  BG: '#d9c7a3',
+  IV: '#fffff0',
+  SL: '#708090',
+  CU: '#b87333',
+  SN: '#c0c0c0',
+  SR: '#c9c9c9',
+  GD: '#d4af37',
+};
 const DANGEROUS_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const WIREVIZ_CONNECTOR_CANONICAL_KEYS = new Set([
   'type',
@@ -469,6 +493,9 @@ function parseV2Endpoint(raw, label) {
 
 function parseV2Conductor(raw, label) {
   const obj = expectRecord(raw, label);
+  const color = expectOptionalString(obj['color'], `${label}.color`);
+  const colorCode = expectOptionalString(obj['colorCode'], `${label}.colorCode`);
+  validateWireColorPair(color, colorCode, label);
   let cable;
   if (obj['cable'] !== undefined) {
     const cableRaw = expectRecord(obj['cable'], `${label}.cable`);
@@ -483,6 +510,11 @@ function parseV2Conductor(raw, label) {
     to: parseV2Endpoint(obj['to'], `${label}.to`),
     cable,
     wireType: expectOptionalString(obj['wireType'], `${label}.wireType`),
+    color,
+    colorCode,
+    gauge: expectOptionalString(obj['gauge'], `${label}.gauge`),
+    length: expectOptionalString(obj['length'], `${label}.length`),
+    notes: expectOptionalString(obj['notes'], `${label}.notes`),
     wirevizLink:
       obj['wirevizLink'] === undefined
         ? undefined
@@ -532,18 +564,21 @@ function parseV2JunctionLayout(raw, label) {
 
 function parseV2ConductorLayout(raw, label) {
   const obj = expectRecord(raw, label);
+  const routingMode =
+    obj['routingMode'] === undefined
+      ? undefined
+      : expectOneOf(obj['routingMode'], ALLOWED_ROUTING_MODES, `${label}.routingMode`);
+  const parsedPoints =
+    obj['points'] === undefined
+      ? undefined
+      : expectArray(obj['points'], `${label}.points`).map((value, index) =>
+          expectPoint(value, `${label}.points[${index}]`),
+        );
+  const points = validateManualRoute(routingMode, parsedPoints, label);
   return {
     conductorId: expectNonEmptyString(obj['conductorId'], `${label}.conductorId`),
-    routingMode:
-      obj['routingMode'] === undefined
-        ? undefined
-        : expectOneOf(obj['routingMode'], ALLOWED_ROUTING_MODES, `${label}.routingMode`),
-    points:
-      obj['points'] === undefined
-        ? undefined
-        : expectArray(obj['points'], `${label}.points`).map((value, index) =>
-            expectPoint(value, `${label}.points[${index}]`),
-          ),
+    routingMode,
+    points,
     fromTap:
       obj['fromTap'] === undefined
         ? undefined
@@ -553,6 +588,27 @@ function parseV2ConductorLayout(raw, label) {
         ? undefined
         : expectNonNegativeInteger(obj['toTap'], `${label}.toTap`),
   };
+}
+
+function validateManualRoute(routingMode, points, label) {
+  if (routingMode === undefined) {
+    if (points !== undefined) {
+      throw new CanonicalProjectValidationError(
+        `${label}.points: points require routingMode "manual"`,
+      );
+    }
+    return undefined;
+  }
+  if (!points || points.length < 2) {
+    throw new CanonicalProjectValidationError(
+      `${label}: manual routing requires at least 2 points`,
+    );
+  }
+  const normalized = normalizeOrthogonalPersistedRoute(points);
+  if (!normalized || normalized.length < 2) {
+    throw new CanonicalProjectValidationError(`${label}.points: route is not orthogonal`);
+  }
+  return normalized;
 }
 
 function validateV2Project(project) {
@@ -956,26 +1012,61 @@ function parseLegacyPin(raw, label) {
 
 function parseLegacyNet(raw, label) {
   const obj = expectRecord(raw, label);
+  const color = expectOptionalString(obj['color'], `${label}.color`);
+  const colorCode = expectOptionalString(obj['colorCode'], `${label}.colorCode`);
+  validateWireColorPair(color, colorCode, label);
+  if (obj['routingMode'] !== undefined) {
+    expectOneOf(obj['routingMode'], ALLOWED_ROUTING_MODES, `${label}.routingMode`);
+  }
+  const parsedPoints =
+    obj['points'] === undefined
+      ? undefined
+      : expectArray(obj['points'], `${label}.points`).map((p, i) =>
+          expectPoint(p, `${label}.points[${i}]`),
+        );
+  // Early v1 snapshots could persist rendered points without routingMode.
+  // Recover only a valid route; malformed legacy geometry falls back to auto.
+  const normalized = parsedPoints ? normalizeOrthogonalPersistedRoute(parsedPoints) : null;
+  const points = normalized && normalized.length >= 2 ? normalized : undefined;
   return {
     id: expectNonEmptyString(obj['id'], `${label}.id`),
     wireId: expectString(obj['wireId'], `${label}.wireId`),
     wireType: expectOptionalString(obj['wireType'], `${label}.wireType`),
     netId: expectOptionalString(obj['netId'], `${label}.netId`),
-    color: expectOptionalString(obj['color'], `${label}.color`),
-    colorCode: expectOptionalString(obj['colorCode'], `${label}.colorCode`),
+    color,
+    colorCode,
+    gauge: expectOptionalString(obj['gauge'], `${label}.gauge`),
+    length: expectOptionalString(obj['length'], `${label}.length`),
+    note: expectOptionalString(obj['note'], `${label}.note`),
     source: expectEndpoint(obj['source'], `${label}.source`),
     target: expectEndpoint(obj['target'], `${label}.target`),
-    routingMode:
-      obj['routingMode'] === undefined
-        ? undefined
-        : expectOneOf(obj['routingMode'], ALLOWED_ROUTING_MODES, `${label}.routingMode`),
-    points:
-      obj['points'] === undefined
-        ? undefined
-        : expectArray(obj['points'], `${label}.points`).map((p, i) =>
-            expectPoint(p, `${label}.points[${i}]`),
-          ),
+    routingMode: points ? 'manual' : undefined,
+    points,
   };
+}
+
+function validateWireColorPair(color, colorCode, label) {
+  if (!colorCode) return;
+  const normalizedCode = colorCode.trim().toUpperCase();
+  const expectedColor = WIREVIZ_COLOR_CODES[normalizedCode] ?? normalizeHexColor(normalizedCode);
+  // Missing render color is recoverable; opaque WireViz tokens have no single
+  // CSS equivalent. Only a deterministic conflict is invalid.
+  if (color === undefined || expectedColor === undefined) return;
+  if (normalizeCssColor(color) === normalizeCssColor(expectedColor)) return;
+  throw new CanonicalProjectValidationError(`${label}: color does not match colorCode`);
+}
+
+function normalizeHexColor(color) {
+  const trimmed = color.trim().toUpperCase();
+  if (/^#[0-9A-F]{6}$/.test(trimmed)) return trimmed;
+  if (/^#[0-9A-F]{3}$/.test(trimmed)) {
+    return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`;
+  }
+  return undefined;
+}
+
+function normalizeCssColor(color) {
+  return normalizeHexColor(color)?.toLowerCase() ?? color.trim().toLowerCase();
 }
 
 function expectEndpoint(raw, label) {

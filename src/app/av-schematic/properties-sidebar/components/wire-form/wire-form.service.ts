@@ -4,9 +4,20 @@ import { DebouncedFormController } from '../../../shared/forms/debounced-form-co
 import { EMPTY_WIRE_FORM, ON_WIRE_FIELD_CHANGE, type WireFormData } from './wire-form.mappers';
 
 const TRACKED_FIELDS = Object.keys(EMPTY_WIRE_FORM) as (keyof WireFormData)[];
-const DEBOUNCED_FIELDS: readonly (keyof WireFormData)[] = ['wireId'];
+// Free-text fields debounce so every keystroke isn't a model write; the two
+// pickers (wire type, color choice) commit immediately.
+const DEBOUNCED_FIELDS: readonly (keyof WireFormData)[] = [
+  'wireId',
+  'customColor',
+  'gauge',
+  'length',
+  'note',
+];
 
-/** Form controller for the wire properties sidebar; debounces `wireId` while emitting all other field changes immediately. */
+/**
+ * Form controller for the wire properties sidebar; debounces the free-text
+ * fields while emitting picker changes immediately.
+ */
 @Injectable()
 export class WireFormService {
   private readonly onFieldChange = inject(ON_WIRE_FIELD_CHANGE);
@@ -18,6 +29,7 @@ export class WireFormService {
     trackedFields: TRACKED_FIELDS,
     schema: (path) => {
       disabled(path.wireId, () => this.wireIdDisabled());
+      disabled(path.netId, () => true);
     },
     onChange: (entityId, fields, formData) => {
       this.onFieldChange({ edgeId: entityId, fields, formData });

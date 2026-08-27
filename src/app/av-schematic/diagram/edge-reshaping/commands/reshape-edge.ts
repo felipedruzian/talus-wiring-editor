@@ -20,7 +20,7 @@ export const setEdgeRoute = (model: NgDiagramModelService, command: SetEdgeRoute
 
 // Apply one live segment move: slide the segment, snap endpoints to the live
 // ports, realign their stubs, orthogonalize any diagonal, and commit. No merge
-// here — that is deferred to `finishReshape` so the drop matches the preview.
+// here -- that is deferred to `finishReshape` so the drop matches the preview.
 export const applyReshapeMove = (
   model: NgDiagramModelService,
   command: ReshapeMoveCommand,
@@ -60,8 +60,9 @@ export const finishReshape = (
   void model.updateEdge(command.edgeId, { points: collapsed, routingMode: 'manual' });
 };
 
-// Replace the end vertex with the live port world position.
-const anchorEndpointToPort = (
+// Replace the end vertex with the live port world position. Shared with
+// `bend-edge.ts`, which re-anchors after a bend edit the same way.
+export const anchorEndpointToPort = (
   model: NgDiagramModelService,
   points: { x: number; y: number }[],
   edgeId: string,

@@ -18,8 +18,8 @@ export type WireVizLinkStyle = '--' | '<--' | '<-->' | '-->';
 /**
  * A JSON-safe value preserved verbatim from an imported document.
  *
- * An alias of the shared `JsonValue` — the same underlying type the YAML
- * subset parser uses — so a field read from a document and a field stored in
+ * An alias of the shared `JsonValue` -- the same underlying type the YAML
+ * subset parser uses -- so a field read from a document and a field stored in
  * the model stay assignable to each other. The alias exists to name the
  * *role*: "carried without being interpreted", which is not a YAML concern.
  */
@@ -30,7 +30,7 @@ export type PreservedFields = Readonly<Record<string, PreservedValue>>;
 
 /**
  * A hole address on a physical board's grid (0-indexed, row then column).
- * Optional on `DevicePort` — only ports that are meant to align with a
+ * Optional on `DevicePort` -- only ports that are meant to align with a
  * physical board's hole grid (e.g. a header pin plugged into board A) carry
  * one. Purely descriptive addressing metadata in this slice: the device-node
  * template still lays ports out in the baseline two-column card, it does not
@@ -80,7 +80,7 @@ export interface DeviceNodeData extends WireVizConnectorMetadata {
   /**
    * The physical board this device's holes are addressed against (a
    * `BoardNodeData.boardId`). Required for validation whenever any of this
-   * device's `ports` carries a `hole` — a hole address is only meaningful
+   * device's `ports` carries a `hole` -- a hole address is only meaningful
    * relative to one specific board's grid. Devices with no holed ports may
    * omit it.
    */
@@ -92,7 +92,7 @@ export interface DeviceNodeData extends WireVizConnectorMetadata {
 /**
  * A physical board with an addressable rows x cols hole grid (e.g. "placa A",
  * 6 x 11). Rendered as its own node so it shares the single ng-diagram
- * canvas/coordinate plane with devices and wires — not a second canvas, not a
+ * canvas/coordinate plane with devices and wires -- not a second canvas, not a
  * background image. Not editable via the properties sidebar in this slice
  * (no sidebar form is wired up for `board` nodes yet).
  */
@@ -109,7 +109,7 @@ export interface BoardNodeData {
 /**
  * `junction` is a splice/ferrule: one electrical point where several
  * conductors of the same net meet. `rail` is the same thing drawn as a bus
- * bar with several physical tap positions — still a *single* electrical
+ * bar with several physical tap positions -- still a *single* electrical
  * point. The distinction is deliberately visual, because that is the only
  * honest way to round-trip it: the editor rail has no distinct named pin per
  * visual tap, so WireViz's one-pin `style: simple` connector is its lossless
@@ -125,7 +125,7 @@ export type JunctionKind = 'junction' | 'rail';
  * Fan-out is not a node type: it is what a junction (or any pin) does when
  * more than one conductor of the same net lands on it. `netId`/`netName`
  * below are a denormalized label of the net the junction currently belongs
- * to, refreshed whenever the project is (de)serialized — the authoritative
+ * to, refreshed whenever the project is (de)serialized -- the authoritative
  * net membership always comes from the conductor graph
  * (`model/net-grouping.ts`).
  */
@@ -149,14 +149,13 @@ export interface JunctionNodeData extends WireVizConnectorMetadata {
 }
 
 /**
- * One conductor, denormalized for rendering and sidebar editing.
+ * One physical conductor, used by the canvas and the properties sidebar.
  *
- * WireViz keeps `gauge`/`length`/`notes`/`colors` on the *cable*, and so does
- * the canonical project format (`electrical.cables`). An ng-diagram edge has
- * nowhere to point at a shared record, so these fields are copied onto every
- * conductor of a cable when the model is built, and re-normalized back into
- * one cable entry when the project is serialized. `wireId` is the cable name;
- * `wireIndex` is the 1-based conductor within it.
+ * Identity, inspection metadata and the effective render color are local to
+ * this edge. The canonical v2 serializer writes them onto the matching
+ * `CanonicalConductor`, writes routing onto its `CanonicalConductorLayout`,
+ * and reconciles the color with the referenced cable slot for WireViz. Cable
+ * attributes remain an export/import representation without flattening a net.
  */
 export interface WireEdgeData {
   type: 'wire';
@@ -181,11 +180,11 @@ export interface WireEdgeData {
   color?: string;
   /** WireViz color abbreviation (e.g. "YE") when the color has one. */
   colorCode?: string;
-  /** Cross-section / gauge as written in WireViz, e.g. "0.25 mm2" or "24 AWG". */
+  /** Cross-section / gauge inspected for this conductor. */
   gauge?: string;
-  /** Conductor length as written in WireViz, e.g. "0.2 m". */
+  /** Physical length inspected for this conductor. */
   length?: string;
-  /** Free-form observation carried by the cable. */
+  /** Free-form observation for this conductor. */
   notes?: string;
   /** WireViz `cables.<name>.type`. */
   cableType?: string;

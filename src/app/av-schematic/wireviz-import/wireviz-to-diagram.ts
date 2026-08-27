@@ -12,6 +12,7 @@ import {
 } from '../diagram/model/canonical-project';
 import { conductorDegreeByEndpoint } from '../diagram/model/net-grouping';
 import { type PortDirection } from '../diagram/model/interfaces';
+import { resolveWireColor } from '../diagram/model/wire-colors';
 import {
   WireVizReportBuilder,
   type WireVizCompatibilityReport,
@@ -22,7 +23,7 @@ import { type WireVizConnector, type WireVizDocument, type WireVizPinRef } from 
 /**
  * Maps a WireViz connector name to the id of the project element that
  * represents it. Without an entry, the connector is materialized as a new
- * element whose id is derived from its name — the importer never guesses an
+ * element whose id is derived from its name -- the importer never guesses an
  * existing node from a similar-looking name.
  */
 export type WireVizPlacement = Readonly<Record<string, string>>;
@@ -38,7 +39,7 @@ export interface WireVizImportOptions {
   placement?: WireVizPlacement;
   /**
    * Components already in the project. A connector placed onto one of these
-   * keeps that component's own pin ids, labels, directions and metadata —
+   * keeps that component's own pin ids, labels, directions and metadata --
    * importing a net must not rewrite the device it lands on.
    */
   components?: readonly CanonicalComponent[];
@@ -62,8 +63,8 @@ export interface WireVizImportResult {
  * net. That is why the same pin appearing twice is a fan-out here and not a
  * port collision.
  *
- * Only the electrical half is produced. Geometry — where these nodes sit,
- * which board hole a pin occupies, how a wire is routed — is the caller's to
+ * Only the electrical half is produced. Geometry -- where these nodes sit,
+ * which board hole a pin occupies, how a wire is routed -- is the caller's to
  * supply, because WireViz has no vocabulary for it.
  */
 export function wirevizToElectrical(
@@ -109,11 +110,14 @@ export function wirevizToElectrical(
     colorCode: cable.colorCode,
     wirevizExtras: Object.keys(cable.extras).length > 0 ? cable.extras : undefined,
   }));
+  const cablesByName = new Map(cables.map((cable) => [cable.name, cable]));
 
   const componentsById = new Map(components.map((c) => [c.id, c]));
   const conductors = doc.conductors.map((conductor) => {
     const from = toEndpoint(conductor.from, targets, componentsById);
     const to = toEndpoint(conductor.to, targets, componentsById);
+    const cable = conductor.wire ? cablesByName.get(conductor.wire.cable) : undefined;
+    const color = resolveWireColor(cable?.colors[(conductor.wire?.wireIndex ?? 1) - 1]);
     return {
       id: conductorId(from, to, conductor.wire, conductor.link, conductor.kind === 'loop'),
       from,
@@ -121,6 +125,11 @@ export function wirevizToElectrical(
       cable: conductor.wire
         ? { name: conductor.wire.cable, wireIndex: conductor.wire.wireIndex }
         : undefined,
+      color: color.color,
+      colorCode: color.colorCode,
+      gauge: cable?.gauge,
+      length: cable?.length,
+      notes: cable?.notes,
       wirevizLink: conductor.link,
       wirevizLoop: conductor.kind === 'loop' ? true : undefined,
     } satisfies CanonicalConductor;
@@ -245,7 +254,7 @@ function buildJunction(
 
 /**
  * Synthesized pins default to `output` because a WireViz document says
- * nothing about signal direction — it is a wiring description, not a
+ * nothing about signal direction -- it is a wiring description, not a
  * schematic. A connector placed onto an existing component keeps that
  * component's directions untouched.
  */
@@ -435,7 +444,7 @@ function toEndpoint(
 /**
  * Deterministic, order-independent conductor id: the two endpoint keys
  * sorted, plus the wire or direct-link style it uses. Re-importing the same
- * document — or a re-exported copy with connection sets in another order —
+ * document -- or a re-exported copy with connection sets in another order --
  * therefore produces the same ids, which is what lets stored geometry keyed
  * by conductor id survive a reimport.
  */
@@ -471,7 +480,7 @@ function assertUniqueConductorIds(conductors: readonly CanonicalConductor[]): vo
 
 /**
  * Records what the resulting topology looks like. Multi-drop and fan-out are
- * reported as information, never as problems — recognizing them as legitimate
+ * reported as information, never as problems -- recognizing them as legitimate
  * is the entire point of this slice.
  */
 function reportTopology(
