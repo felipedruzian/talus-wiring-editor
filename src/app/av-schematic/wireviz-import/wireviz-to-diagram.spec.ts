@@ -61,8 +61,10 @@ function importMultidrop() {
 
 /**
  * Supplies only local identity needed to preserve editor ids and placement.
- * No connector/cable metadata is copied from the first import: every WireViz
- * field in the result must therefore have survived the emitted YAML.
+ * No connector/cable metadata is copied from the first import to fill the
+ * result: every WireViz field there must have survived the emitted YAML.
+ * `wirevizLabel` is only a provenance hint that distinguishes an explicit
+ * source label from a redundant positional label generated during export.
  */
 function identitySkeleton(electrical: CanonicalElectrical): WireVizImportOptions {
   const placement: Record<string, string> = {};
@@ -88,6 +90,7 @@ function identitySkeleton(electrical: CanonicalElectrical): WireVizImportOptions
         direction: pin.direction,
         connectorType: pin.connectorType,
         wirevizDesignator: pin.wirevizDesignator,
+        wirevizLabel: pin.wirevizLabel,
       })),
     })),
     junctions: electrical.junctions.map((junction) => ({
@@ -523,5 +526,43 @@ describe('WireViz electrical round-trip', () => {
 
     expect(first.nets[0].conductors[0].wirevizLink).toBe('-->');
     expect(electricallyEquivalent(first, second)).toBe(true);
+  });
+
+  it('preserves a newly connected pin with an empty label through export and reimport', () => {
+    const first = importWireViz(
+      stringifyYamlSubset({
+        connectors: { A: { pins: ['P'] }, B: { pins: ['P'] } },
+        connections: [[{ A: ['P'] }, '--', { B: ['P'] }]],
+      }),
+    ).electrical;
+    const target = first.components.find((component) => component.wirevizName === 'B');
+    if (!target) throw new Error('fixture has no B connector');
+    const newPin = { id: 'new-empty-pin', label: '', direction: 'input' as const };
+    target.pins.push(newPin);
+
+    const net = first.nets[0];
+    const endpoint = { kind: 'pin' as const, componentId: target.id, pinId: newPin.id };
+    net.endpoints.push(endpoint);
+    net.conductors.push({
+      id: 'new-empty-pin-link',
+      from: net.conductors[0].from,
+      to: endpoint,
+    });
+    const pinIdsBefore = target.pins.map((pin) => pin.id).sort();
+
+    const exported = exportWireViz(first);
+    const second = reimportWithIdentity(first, exported.yaml);
+    const reimportedTarget = second.components.find((component) => component.id === target.id);
+    if (!reimportedTarget) throw new Error('reimport lost B connector');
+
+    expect(exported.yaml).toContain(newPin.id);
+    expect(reimportedTarget.pins.map((pin) => pin.id).sort()).toEqual(pinIdsBefore);
+    expect(reimportedTarget.pins.filter((pin) => pin.id === newPin.id)).toHaveLength(1);
+    expect(
+      second.nets
+        .flatMap((candidate) => candidate.conductors)
+        .flatMap((conductor) => [conductor.from, conductor.to]),
+    ).toContainEqual(endpoint);
+    expect(diffSnapshots(toElectricalSnapshot(first), toElectricalSnapshot(second))).toEqual([]);
   });
 });

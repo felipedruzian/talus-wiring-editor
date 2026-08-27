@@ -279,10 +279,18 @@ function buildComponent(
       }
       claimed.set(matched.id, designator);
       const matchedIndex = pins.indexOf(matched);
+      const generatedLocalAlias =
+        matched.wirevizDesignator === undefined &&
+        (designator === matched.id || designator === matched.label) &&
+        (pinLabel === undefined || pinLabel === matched.label);
+      const generatedRedundantLabel =
+        matched.wirevizDesignator === designator &&
+        matched.wirevizLabel === undefined &&
+        pinLabel === matched.label;
       pins[matchedIndex] = {
         ...matched,
-        wirevizDesignator: designator,
-        wirevizLabel: pinLabel,
+        wirevizDesignator: generatedLocalAlias ? undefined : designator,
+        wirevizLabel: generatedLocalAlias || generatedRedundantLabel ? undefined : pinLabel,
       };
       return;
     }
@@ -383,12 +391,7 @@ function findImportedPin(
   designator: string,
   label: string,
 ): CanonicalPin | undefined {
-  return uniqueAliasMatch(
-    pins,
-    (pin) => pin.wirevizDesignator === designator,
-    designator,
-    `${label} WireViz designator`,
-  );
+  return findPlacedPin(pins, designator, undefined, label);
 }
 
 function uniquePinId(base: string, taken: ReadonlySet<string>): string {

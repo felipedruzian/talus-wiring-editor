@@ -17,6 +17,7 @@ import {
 import { importWireViz } from '../wireviz-import/import-wireviz';
 import { buildImportedProject } from '../wireviz-import/wireviz-exchange.service';
 import { type WireVizImportOptions } from '../wireviz-import/wireviz-to-diagram';
+import { stringifyYamlSubset } from '../wireviz-import/wireviz-yaml-emit';
 import { ElementMutationService } from './element-mutation.service';
 
 class ModelStub {
@@ -92,6 +93,7 @@ function identityOptions(project: CanonicalProjectV2): WireVizImportOptions {
         direction: pin.direction,
         connectorType: pin.connectorType,
         wirevizDesignator: pin.wirevizDesignator,
+        wirevizLabel: pin.wirevizLabel,
       })),
     })),
     junctions: project.electrical.junctions.map((junction) => ({
@@ -149,6 +151,54 @@ describe('ElementMutationService wire identity edits', () => {
     const reimported = importWireViz(exported.yaml, identityOptions(snapshot));
     expect(exported.yaml).toContain('RENAMED:');
     expect(exported.yaml).not.toContain('HARNESS:');
+    expect(electricallyEquivalent(snapshot.electrical, reimported.electrical)).toBe(true);
+  });
+
+  it('removes direct-link metadata when an imported link receives a cable identity', async () => {
+    const model = new ModelStub();
+    TestBed.configureTestingModule({
+      providers: [
+        ElementMutationService,
+        ProjectStorageService,
+        { provide: NgDiagramModelService, useValue: model },
+        { provide: NgDiagramService, useValue: diagramStub },
+      ],
+    });
+    const storage = TestBed.inject(ProjectStorageService);
+    const mutation = TestBed.inject(ElementMutationService);
+    const imported = importWireViz(
+      stringifyYamlSubset({
+        connectors: { A: { pins: ['P'] }, B: { pins: ['P'] } },
+        connections: [[{ A: ['P'] }, '-->', { B: ['P'] }]],
+      }),
+    );
+    await storage.replaceProject(buildImportedProject(imported.electrical, emptyProject()));
+    const directLink = model.edges.find(
+      (edge): edge is Edge<WireEdgeData> => isWireEdge(edge) && edge.data.wirevizLink === '-->',
+    );
+    if (!directLink) throw new Error('fixture has no direct WireViz link');
+
+    await mutation.handleWireFieldChange({
+      edgeId: directLink.id,
+      fields: ['wireId'],
+      formData: { wireId: 'W9', wireType: '' },
+    });
+
+    const edited = model.edges.find(
+      (edge): edge is Edge<WireEdgeData> => isWireEdge(edge) && edge.id === directLink.id,
+    );
+    expect(edited?.data).toMatchObject({ wireId: 'W9' });
+    expect(edited?.data.wirevizLink).toBeUndefined();
+
+    const snapshot = storage.snapshotProject();
+    const conductor = snapshot.electrical.nets[0].conductors[0];
+    expect(conductor.cable).toEqual({ name: 'W9', wireIndex: 1 });
+    expect(conductor.wirevizLink).toBeUndefined();
+
+    const exported = exportWireViz(snapshot.electrical);
+    const reimported = importWireViz(exported.yaml, identityOptions(snapshot));
+    expect(exported.yaml).toContain('W9:');
+    expect(exported.yaml).not.toContain('-->');
     expect(electricallyEquivalent(snapshot.electrical, reimported.electrical)).toBe(true);
   });
 });

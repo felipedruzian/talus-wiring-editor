@@ -205,8 +205,8 @@ function emitComponent(
     report.warn(
       'pin-designators-remapped',
       `connectors.${name}.pins`,
-      'Os designadores WireViz originais estavam incompletos; foram ' +
-        'remapeados sem perder os rótulos em "pinlabels".',
+      'Os designadores WireViz originais estavam incompletos; os ausentes foram ' +
+        'preenchidos com IDs locais sem perder os rótulos em "pinlabels".',
     );
   }
 
@@ -337,19 +337,7 @@ function aliasesAreUnambiguous(designators: readonly string[], labels: readonly 
 }
 
 function fallbackDesignators(pins: readonly CanonicalPin[]): string[] {
-  const labels = new Set(
-    pins.map((pin) => pin.wirevizLabel ?? pin.label).filter((label) => label.length > 0),
-  );
-  const used = new Set<string>();
-  return pins.map((_pin, index) => {
-    const base = `P${index + 1}`;
-    let candidate = base;
-    for (let suffix = 2; labels.has(candidate) || used.has(candidate); suffix++) {
-      candidate = `${base}_${suffix}`;
-    }
-    used.add(candidate);
-    return candidate;
-  });
+  return pins.map((pin) => pin.wirevizDesignator ?? pin.id);
 }
 
 /**

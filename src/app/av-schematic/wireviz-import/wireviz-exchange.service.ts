@@ -118,7 +118,10 @@ export class WireVizExchangeService {
 /**
  * Reuses only the identity/placement skeleton of the live project. WireViz
  * metadata always comes from the new import, so a previous snapshot cannot
- * conceal a lossy export by filling fields back in.
+ * conceal a lossy export by filling fields back in. `wirevizLabel` is carried
+ * only as provenance: the importer still clears it when the incoming YAML
+ * omits the positional label, but can avoid promoting a generated redundant
+ * label to explicit metadata.
  */
 function inferImportOptions(project: CanonicalProjectV2): WireVizImportOptions {
   const placement: Record<string, string> = {};
@@ -146,6 +149,7 @@ function inferImportOptions(project: CanonicalProjectV2): WireVizImportOptions {
         direction: pin.direction,
         connectorType: pin.connectorType,
         wirevizDesignator: pin.wirevizDesignator,
+        wirevizLabel: pin.wirevizLabel,
       })),
     })),
     junctions: project.electrical.junctions.map((junction) => ({

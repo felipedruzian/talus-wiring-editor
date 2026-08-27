@@ -45,10 +45,12 @@ export function formDataToWireData(
   formData: WireFormData,
   existingData: WireEdgeData,
 ): WireEdgeData {
+  const wireId = existingData.wirevizLoop ? '' : formData.wireId;
   return {
     ...existingData,
-    wireId: existingData.wirevizLoop ? '' : formData.wireId,
+    wireId,
     wireType: formData.wireType || undefined,
+    wirevizLink: wireId ? undefined : existingData.wirevizLink,
   };
 }
 
