@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type JunctionNodeData } from '../../../diagram/model/interfaces';
+import { OPERATIONAL_LIMITS } from '../../../diagram/model/operational-limits.mjs';
 import { formDataToJunctionData, junctionDataToFormData } from './junction-form.mappers';
 
 const RAIL: JunctionNodeData = {
@@ -52,5 +53,18 @@ describe('junction form mappers', () => {
         RAIL,
       ).taps,
     ).toBe(1);
+  });
+
+  it.each([
+    ['below', OPERATIONAL_LIMITS.maxJunctionTaps - 1, OPERATIONAL_LIMITS.maxJunctionTaps - 1],
+    ['at', OPERATIONAL_LIMITS.maxJunctionTaps, OPERATIONAL_LIMITS.maxJunctionTaps],
+    ['above', OPERATIONAL_LIMITS.maxJunctionTaps + 1, OPERATIONAL_LIMITS.maxJunctionTaps],
+  ] as const)('keeps edited taps within the limit %s the boundary', (_label, taps, expected) => {
+    expect(
+      formDataToJunctionData(
+        { label: RAIL.label, kind: RAIL.kind, taps, notes: RAIL.notes ?? '' },
+        RAIL,
+      ).taps,
+    ).toBe(expected);
   });
 });

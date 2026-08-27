@@ -1,5 +1,6 @@
 import { InjectionToken } from '@angular/core';
 import { type JunctionKind, type JunctionNodeData } from '../../../diagram/model/interfaces';
+import { OPERATIONAL_LIMITS } from '../../../diagram/model/operational-limits.mjs';
 
 export interface JunctionFormData {
   label: string;
@@ -38,7 +39,9 @@ export function formDataToJunctionData(
   formData: JunctionFormData,
   existing: JunctionNodeData,
 ): JunctionNodeData {
-  const taps = Number.isFinite(formData.taps) ? Math.max(1, Math.trunc(formData.taps)) : 1;
+  const taps = Number.isFinite(formData.taps)
+    ? Math.min(OPERATIONAL_LIMITS.maxJunctionTaps, Math.max(1, Math.trunc(formData.taps)))
+    : 1;
   return {
     ...existing,
     label: formData.label,

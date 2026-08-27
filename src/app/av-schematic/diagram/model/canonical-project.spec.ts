@@ -222,6 +222,24 @@ describe('parseCanonicalProject', () => {
   });
 
   it.each([
+    ['below', OPERATIONAL_LIMITS.maxJunctionTaps - 1, true],
+    ['at', OPERATIONAL_LIMITS.maxJunctionTaps, true],
+    ['above', OPERATIONAL_LIMITS.maxJunctionTaps + 1, false],
+  ] as const)('enforces the junction-tap limit %s the boundary', (_label, taps, accepted) => {
+    const project = emptyV2();
+    project.electrical.junctions.push({ id: 'j1', label: 'J1', kind: 'rail' });
+    project.layout.junctions.push({
+      junctionId: 'j1',
+      position: { x: 0, y: 0 },
+      taps,
+    });
+
+    const parse = () => parseCanonicalProject(project);
+    if (accepted) expect(parse).not.toThrow();
+    else expect(parse).toThrow(/junction tap count.*operational limit/);
+  });
+
+  it.each([
     ['below', OPERATIONAL_LIMITS.maxTotalEntities - 1, true],
     ['at', OPERATIONAL_LIMITS.maxTotalEntities, true],
     ['above', OPERATIONAL_LIMITS.maxTotalEntities + 1, false],

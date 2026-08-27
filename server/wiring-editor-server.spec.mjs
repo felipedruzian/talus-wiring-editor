@@ -340,10 +340,13 @@ describe('wiring-editor-server', () => {
       expect(res.status).toBe(404);
     });
 
-    it.each(['.hidden', 'a/b', 'has space', 'x'.repeat(200)])('rejects %j with 400', async (rawId) => {
-      const res = await fetch(`${server.baseUrl}/api/projects/${encodeURIComponent(rawId)}`);
-      expect(res.status).toBe(400);
-    });
+    it.each(['.hidden', 'a/b', 'has space', 'x'.repeat(200)])(
+      'rejects %j with 400',
+      async (rawId) => {
+        const res = await fetch(`${server.baseUrl}/api/projects/${encodeURIComponent(rawId)}`);
+        expect(res.status).toBe(400);
+      },
+    );
   });
 
   describe('extra route segments', () => {
@@ -442,6 +445,26 @@ describe('wiring-editor-server', () => {
       const project = emptyV2Payload();
       project.electrical.cables.push({ name: 'C', wireCount, colors: [] });
       const res = await fetch(`${server.baseUrl}/api/projects/wire-limit-${wireCount}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(res.status).toBe(status);
+    });
+
+    it.each([
+      ['below', OPERATIONAL_LIMITS.maxJunctionTaps - 1, 200],
+      ['at', OPERATIONAL_LIMITS.maxJunctionTaps, 200],
+      ['above', OPERATIONAL_LIMITS.maxJunctionTaps + 1, 400],
+    ])('enforces the junction-tap limit %s the boundary', async (_label, taps, status) => {
+      const project = emptyV2Payload();
+      project.electrical.junctions.push({ id: 'j1', label: 'J1', kind: 'rail' });
+      project.layout.junctions.push({
+        junctionId: 'j1',
+        position: { x: 0, y: 0 },
+        taps,
+      });
+      const res = await fetch(`${server.baseUrl}/api/projects/junction-tap-limit-${taps}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(project),
@@ -575,9 +598,7 @@ describe('wiring-editor-server', () => {
       expect(reservedRes.status).toBe(400);
 
       const dangerous = validProjectPayload();
-      dangerous.electrical.cables[0].wirevizExtras = JSON.parse(
-        '{"x":{"__proto__":"bad"}}',
-      );
+      dangerous.electrical.cables[0].wirevizExtras = JSON.parse('{"x":{"__proto__":"bad"}}');
       const dangerousRes = await fetch(`${server.baseUrl}/api/projects/dangerous-extra`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

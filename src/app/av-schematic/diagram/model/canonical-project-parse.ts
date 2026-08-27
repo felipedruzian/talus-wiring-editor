@@ -204,6 +204,17 @@ function preflightV2(
     }
   });
 
+  junctionLayouts.forEach((raw, index) => {
+    const label = `project.layout.junctions[${index}].taps`;
+    const layout = expectRecord(raw, `project.layout.junctions[${index}]`);
+    expectBoundedPositiveInteger(
+      layout['taps'],
+      label,
+      OPERATIONAL_LIMITS.maxJunctionTaps,
+      'junction tap count',
+    );
+  });
+
   conductorLayouts.forEach((raw, index) => {
     const label = `project.layout.conductors[${index}].points`;
     const layout = expectRecord(raw, `project.layout.conductors[${index}]`);
@@ -772,7 +783,12 @@ function parseJunctionLayout(raw: unknown, label: string): CanonicalJunctionLayo
   return {
     junctionId: expectNonEmptyString(obj['junctionId'], `${label}.junctionId`),
     position: expectPoint(obj['position'], `${label}.position`),
-    taps: expectPositiveInteger(obj['taps'], `${label}.taps`),
+    taps: expectBoundedPositiveInteger(
+      obj['taps'],
+      `${label}.taps`,
+      OPERATIONAL_LIMITS.maxJunctionTaps,
+      'junction tap count',
+    ),
     boardId: expectOptionalString(obj['boardId'], `${label}.boardId`),
     hole: obj['hole'] === undefined ? undefined : expectHole(obj['hole'], `${label}.hole`),
   };

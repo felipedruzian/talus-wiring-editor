@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 import { NgDiagramPortComponent, type NgDiagramNodeTemplate, type Node } from 'ng-diagram';
 import { junctionTapPortId } from '../model/canonical-project';
 import { type JunctionNodeData } from '../model/interfaces';
+import { OPERATIONAL_LIMITS } from '../model/operational-limits.mjs';
 
 interface TapView {
   id: string;
@@ -13,6 +14,16 @@ export const JUNCTION_TAP_SPACING = 20;
 
 /** Padding above the first tap and below the last one. */
 export const JUNCTION_PADDING = 10;
+
+export function materializeJunctionTaps(rawCount: number) {
+  const count = Number.isFinite(rawCount)
+    ? Math.min(OPERATIONAL_LIMITS.maxJunctionTaps, Math.max(1, Math.trunc(rawCount)))
+    : 1;
+  return Array.from({ length: count }, (_, index) => ({
+    id: junctionTapPortId(index),
+    index,
+  }));
+}
 
 /**
  * Renders a junction or rail: the explicit fan-out point of a net, sharing
@@ -44,13 +55,7 @@ export class JunctionNodeComponent implements NgDiagramNodeTemplate<JunctionNode
 
   protected readonly data = computed(() => this.node().data);
 
-  protected readonly taps = computed<TapView[]>(() => {
-    const count = Math.max(1, this.data().taps);
-    return Array.from({ length: count }, (_, index) => ({
-      id: junctionTapPortId(index),
-      index,
-    }));
-  });
+  protected readonly taps = computed<TapView[]>(() => materializeJunctionTaps(this.data().taps));
 
   protected readonly height = computed(
     () => JUNCTION_PADDING * 2 + (this.taps().length - 1) * JUNCTION_TAP_SPACING,

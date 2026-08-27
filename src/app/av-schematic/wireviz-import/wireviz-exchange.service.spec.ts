@@ -2,17 +2,56 @@ import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CANONICAL_FORMAT_VERSION,
+  type CanonicalComponent,
+  type CanonicalConductor,
+  type CanonicalElectrical,
+  type CanonicalNetEndpoint,
   type CanonicalProjectV2,
 } from '../diagram/model/canonical-project';
 import { electricallyEquivalent } from '../diagram/model/electrical-equivalence';
+import { OPERATIONAL_LIMITS } from '../diagram/model/operational-limits.mjs';
 import { ProjectStorageService } from '../project-storage/project-storage.service';
-import { WIREVIZ_YAML_DOWNLOAD, WireVizExchangeService } from './wireviz-exchange.service';
+import {
+  buildImportedProject,
+  WIREVIZ_YAML_DOWNLOAD,
+  WireVizExchangeService,
+} from './wireviz-exchange.service';
 
 function emptyProject(): CanonicalProjectV2 {
   return {
     formatVersion: CANONICAL_FORMAT_VERSION,
     electrical: { components: [], junctions: [], cables: [], nets: [] },
     layout: { boards: [], components: [], junctions: [], conductors: [] },
+  };
+}
+
+function junctionFanout(degree: number): CanonicalElectrical {
+  const components: CanonicalComponent[] = Array.from({ length: degree }, (_, index) => ({
+    id: `load-${index}`,
+    deviceId: `LOAD-${index}`,
+    manufacturer: '',
+    model: '',
+    pins: [{ id: 'in', label: 'IN', direction: 'input' }],
+  }));
+  const junction: CanonicalNetEndpoint = { kind: 'junction', junctionId: 'rail' };
+  const conductors: CanonicalConductor[] = components.map((component, index) => ({
+    id: `branch-${index}`,
+    from: junction,
+    to: { kind: 'pin', componentId: component.id, pinId: 'in' },
+  }));
+
+  return {
+    components,
+    junctions: [{ id: 'rail', label: 'Rail', kind: 'rail' }],
+    cables: [],
+    nets: [
+      {
+        id: 'net-rail',
+        name: '',
+        endpoints: [junction, ...conductors.map((conductor) => conductor.to)],
+        conductors,
+      },
+    ],
   };
 }
 
@@ -106,5 +145,17 @@ describe('WireVizExchangeService', () => {
     expect(storage.snapshotImportSkeleton).toHaveBeenCalledOnce();
     expect(storage.snapshotProject).not.toHaveBeenCalled();
     expect(storage.replaceProject).toHaveBeenCalledOnce();
+  });
+});
+
+describe('buildImportedProject junction taps', () => {
+  it.each([
+    ['below', OPERATIONAL_LIMITS.maxJunctionTaps - 1, true],
+    ['at', OPERATIONAL_LIMITS.maxJunctionTaps, true],
+    ['above', OPERATIONAL_LIMITS.maxJunctionTaps + 1, false],
+  ] as const)('enforces derived taps %s the boundary', (_label, degree, accepted) => {
+    const build = () => buildImportedProject(junctionFanout(degree), emptyProject());
+    if (accepted) expect(build().layout.junctions[0].taps).toBe(degree);
+    else expect(build).toThrow(/junction tap count.*operational limit/);
   });
 });

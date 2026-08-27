@@ -1,5 +1,6 @@
 import { inject, Injectable, Injector } from '@angular/core';
-import { min } from '@angular/forms/signals';
+import { max, min } from '@angular/forms/signals';
+import { OPERATIONAL_LIMITS } from '../../../diagram/model/operational-limits.mjs';
 import { DebouncedFormController } from '../../../shared/forms/debounced-form-controller';
 import {
   EMPTY_JUNCTION_FORM,
@@ -19,6 +20,7 @@ export class JunctionFormService {
     trackedFields: TRACKED_FIELDS,
     schema: (path) => {
       min(path.taps, 1);
+      max(path.taps, OPERATIONAL_LIMITS.maxJunctionTaps);
     },
     onChange: (nodeId, fields, formData) => {
       this.onFieldChange({ nodeId, fields, formData });

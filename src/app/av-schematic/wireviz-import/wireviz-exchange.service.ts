@@ -6,6 +6,7 @@ import {
   type CanonicalJunctionLayout,
   type CanonicalProjectV2,
 } from '../diagram/model/canonical-project';
+import { OPERATIONAL_LIMITS } from '../diagram/model/operational-limits.mjs';
 import { ProjectStorageService } from '../project-storage/project-storage.service';
 import { exportWireViz, type WireVizExportResult } from './export-wireviz';
 import {
@@ -15,7 +16,7 @@ import {
 } from './fixtures/multidrop-rail.fixture';
 import { importWireViz } from './import-wireviz';
 import { type WireVizCompatibilityReport, type WireVizReportEntry } from './wireviz-report';
-import { type WireVizImportOptions } from './wireviz-to-diagram';
+import { WireVizImportError, type WireVizImportOptions } from './wireviz-to-diagram';
 
 export type WireVizExchangeStatus = 'idle' | 'loading' | 'success' | 'error';
 
@@ -182,7 +183,10 @@ export function buildImportedProject(
 
   const junctions: CanonicalJunctionLayout[] = electrical.junctions.map((junction, index) => {
     const existing = previousJunctions.get(junction.id);
-    const taps = Math.max(existing?.taps ?? 1, junctionDegree.get(junction.id) ?? 1);
+    const taps = expectJunctionTapCount(
+      junction.id,
+      Math.max(existing?.taps ?? 1, junctionDegree.get(junction.id) ?? 1),
+    );
     return existing
       ? { ...existing, taps }
       : {
@@ -225,17 +229,31 @@ export function buildImportedProject(
 
 function junctionDegrees(electrical: CanonicalElectrical): Map<string, number> {
   const degree = new Map<string, number>();
+  const increment = (junctionId: string): void => {
+    const taps = expectJunctionTapCount(junctionId, (degree.get(junctionId) ?? 0) + 1);
+    degree.set(junctionId, taps);
+  };
   for (const net of electrical.nets) {
     for (const conductor of net.conductors) {
       if (conductor.from.kind === 'junction') {
-        degree.set(conductor.from.junctionId, (degree.get(conductor.from.junctionId) ?? 0) + 1);
+        increment(conductor.from.junctionId);
       }
       if (conductor.to.kind === 'junction') {
-        degree.set(conductor.to.junctionId, (degree.get(conductor.to.junctionId) ?? 0) + 1);
+        increment(conductor.to.junctionId);
       }
     }
   }
   return degree;
+}
+
+function expectJunctionTapCount(junctionId: string, taps: number): number {
+  if (!Number.isSafeInteger(taps) || taps < 1 || taps > OPERATIONAL_LIMITS.maxJunctionTaps) {
+    throw new WireVizImportError(
+      `junction "${junctionId}": junction tap count ${taps} exceeds operational limit of ` +
+        `${OPERATIONAL_LIMITS.maxJunctionTaps}`,
+    );
+  }
+  return taps;
 }
 
 function nextTap(

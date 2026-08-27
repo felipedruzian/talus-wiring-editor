@@ -86,7 +86,9 @@ function parseV1(root) {
   const componentsById = new Map();
   for (const component of components) {
     if (nodeIds.has(component.id)) {
-      throw new CanonicalProjectValidationError(`project.components: duplicate id "${component.id}"`);
+      throw new CanonicalProjectValidationError(
+        `project.components: duplicate id "${component.id}"`,
+      );
     }
     nodeIds.add(component.id);
     componentsById.set(component.id, component);
@@ -99,7 +101,12 @@ function parseV1(root) {
 
     for (const pin of component.pins) {
       if (pin.hole) {
-        validateHoleBounds(pin.hole, component, boardsById, `component "${component.id}" pin "${pin.id}"`);
+        validateHoleBounds(
+          pin.hole,
+          component,
+          boardsById,
+          `component "${component.id}" pin "${pin.id}"`,
+        );
       }
     }
   }
@@ -149,8 +156,8 @@ function parseV2(root) {
     junctions: expectArray(electricalRaw['junctions'], 'project.electrical.junctions').map(
       (value, index) => parseV2Junction(value, `project.electrical.junctions[${index}]`),
     ),
-    cables: expectArray(electricalRaw['cables'], 'project.electrical.cables').map(
-      (value, index) => parseV2Cable(value, `project.electrical.cables[${index}]`),
+    cables: expectArray(electricalRaw['cables'], 'project.electrical.cables').map((value, index) =>
+      parseV2Cable(value, `project.electrical.cables[${index}]`),
     ),
     nets: expectArray(electricalRaw['nets'], 'project.electrical.nets').map((value, index) =>
       parseV2Net(value, `project.electrical.nets[${index}]`),
@@ -164,8 +171,8 @@ function parseV2(root) {
     components: expectArray(layoutRaw['components'], 'project.layout.components').map(
       (value, index) => parseV2ComponentLayout(value, `project.layout.components[${index}]`),
     ),
-    junctions: expectArray(layoutRaw['junctions'], 'project.layout.junctions').map(
-      (value, index) => parseV2JunctionLayout(value, `project.layout.junctions[${index}]`),
+    junctions: expectArray(layoutRaw['junctions'], 'project.layout.junctions').map((value, index) =>
+      parseV2JunctionLayout(value, `project.layout.junctions[${index}]`),
     ),
     conductors: expectArray(layoutRaw['conductors'], 'project.layout.conductors').map(
       (value, index) => parseV2ConductorLayout(value, `project.layout.conductors[${index}]`),
@@ -193,12 +200,7 @@ function preflightV1(root) {
   components.forEach((raw, index) => {
     const label = `project.components[${index}].pins`;
     const pins = expectArray(expectRecord(raw, `project.components[${index}]`)['pins'], label);
-    assertCollectionLimit(
-      pins.length,
-      OPERATIONAL_LIMITS.maxPinsPerComponent,
-      label,
-      'pin count',
-    );
+    assertCollectionLimit(pins.length, OPERATIONAL_LIMITS.maxPinsPerComponent, label, 'pin count');
     budget.add(pins.length, label);
     let placedPins = 0;
     pins.forEach((pin, pinIndex) => {
@@ -242,13 +244,11 @@ function preflightV2(electricalRaw, layoutRaw) {
 
   components.forEach((raw, index) => {
     const label = `project.electrical.components[${index}].pins`;
-    const pins = expectArray(expectRecord(raw, `project.electrical.components[${index}]`)['pins'], label);
-    assertCollectionLimit(
-      pins.length,
-      OPERATIONAL_LIMITS.maxPinsPerComponent,
+    const pins = expectArray(
+      expectRecord(raw, `project.electrical.components[${index}]`)['pins'],
       label,
-      'pin count',
     );
+    assertCollectionLimit(pins.length, OPERATIONAL_LIMITS.maxPinsPerComponent, label, 'pin count');
     budget.add(pins.length, label);
   });
 
@@ -296,6 +296,17 @@ function preflightV2(electricalRaw, layoutRaw) {
     if (layout['pinHoles'] !== undefined) {
       budget.add(expectArray(layout['pinHoles'], label).length, label);
     }
+  });
+
+  junctionLayouts.forEach((raw, index) => {
+    const label = `project.layout.junctions[${index}].taps`;
+    const layout = expectRecord(raw, `project.layout.junctions[${index}]`);
+    expectBoundedPositiveInteger(
+      layout['taps'],
+      label,
+      OPERATIONAL_LIMITS.maxJunctionTaps,
+      'junction tap count',
+    );
   });
 
   conductorLayouts.forEach((raw, index) => {
@@ -348,10 +359,7 @@ function parseV2Pin(raw, label) {
     label: expectString(obj['label'], `${label}.label`),
     direction: expectOneOf(obj['direction'], ALLOWED_PORT_DIRECTIONS, `${label}.direction`),
     connectorType: expectOptionalString(obj['connectorType'], `${label}.connectorType`),
-    wirevizDesignator: expectOptionalString(
-      obj['wirevizDesignator'],
-      `${label}.wirevizDesignator`,
-    ),
+    wirevizDesignator: expectOptionalString(obj['wirevizDesignator'], `${label}.wirevizDesignator`),
     wirevizLabel: expectOptionalString(obj['wirevizLabel'], `${label}.wirevizLabel`),
   };
 }
@@ -511,7 +519,12 @@ function parseV2JunctionLayout(raw, label) {
   return {
     junctionId: expectNonEmptyString(obj['junctionId'], `${label}.junctionId`),
     position: expectPoint(obj['position'], `${label}.position`),
-    taps: expectPositiveInteger(obj['taps'], `${label}.taps`),
+    taps: expectBoundedPositiveInteger(
+      obj['taps'],
+      `${label}.taps`,
+      OPERATIONAL_LIMITS.maxJunctionTaps,
+      'junction tap count',
+    ),
     boardId: expectOptionalString(obj['boardId'], `${label}.boardId`),
     hole: obj['hole'] === undefined ? undefined : expectHole(obj['hole'], `${label}.hole`),
   };
@@ -611,7 +624,9 @@ function validateV2Project(project) {
     for (const endpoint of net.endpoints) {
       const key = v2EndpointKey(endpoint);
       if (declared.has(key)) {
-        throw new CanonicalProjectValidationError(`${label}.endpoints: duplicate endpoint "${key}"`);
+        throw new CanonicalProjectValidationError(
+          `${label}.endpoints: duplicate endpoint "${key}"`,
+        );
       }
       declared.add(key);
       resolveV2Endpoint(endpoint, componentsById, junctionsById, `${label}.endpoints`);
@@ -731,7 +746,9 @@ function validateV2Layout(
     seenComponents.add(layout.componentId);
     const component = componentsById.get(layout.componentId);
     if (!component) {
-      throw new CanonicalProjectValidationError(`${label}: no such component in project.electrical`);
+      throw new CanonicalProjectValidationError(
+        `${label}: no such component in project.electrical`,
+      );
     }
     if (layout.boardId !== undefined && !boardsById.has(layout.boardId)) {
       throw new CanonicalProjectValidationError(
@@ -747,9 +764,7 @@ function validateV2Layout(
       }
       seenPins.add(placement.pinId);
       if (!component.pins.some((pin) => pin.id === placement.pinId)) {
-        throw new CanonicalProjectValidationError(
-          `${label}.pinHoles: no pin "${placement.pinId}"`,
-        );
+        throw new CanonicalProjectValidationError(`${label}.pinHoles: no pin "${placement.pinId}"`);
       }
       validateV2Hole(placement.hole, layout.boardId, boardsById, `${label}.pinHoles`);
     }
@@ -783,7 +798,9 @@ function validateV2Layout(
     }
     seenConductors.add(layout.conductorId);
     if (!conductorIds.has(layout.conductorId)) {
-      throw new CanonicalProjectValidationError(`${label}: no such conductor in project.electrical`);
+      throw new CanonicalProjectValidationError(
+        `${label}: no such conductor in project.electrical`,
+      );
     }
     const conductor = conductorsById.get(layout.conductorId);
     validateV2Tap(layout.fromTap, conductor?.from, tapsByJunction, `${label}.fromTap`);
@@ -1084,7 +1101,9 @@ function expectPositiveFiniteNumber(raw, label) {
 function expectPositiveInteger(raw, label) {
   const value = expectFiniteNumber(raw, label);
   if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new CanonicalProjectValidationError(`${label}: expected a safe positive integer, got ${value}`);
+    throw new CanonicalProjectValidationError(
+      `${label}: expected a safe positive integer, got ${value}`,
+    );
   }
   return value;
 }
@@ -1092,7 +1111,9 @@ function expectPositiveInteger(raw, label) {
 function expectNonNegativeInteger(raw, label) {
   const value = expectFiniteNumber(raw, label);
   if (!Number.isSafeInteger(value) || value < 0) {
-    throw new CanonicalProjectValidationError(`${label}: expected a safe non-negative integer, got ${value}`);
+    throw new CanonicalProjectValidationError(
+      `${label}: expected a safe non-negative integer, got ${value}`,
+    );
   }
   return value;
 }
