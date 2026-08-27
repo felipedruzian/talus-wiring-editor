@@ -15,11 +15,7 @@ import { type WireEndpointInfo } from '../../../diagram/model/wire-endpoints';
 import { FormFieldComponent } from '../../../shared/ui/form-field/form-field.component';
 import { describeWireColorEmission } from '../../../wireviz-import/wireviz-color-report';
 import { WIREVIZ_COLOR_OPTIONS } from '../../../wireviz-import/wireviz-colors';
-import {
-  CUSTOM_COLOR_CHOICE,
-  wireDataToFormData,
-  WIRE_TYPE_OPTIONS,
-} from './wire-form.mappers';
+import { CUSTOM_COLOR_CHOICE, wireDataToFormData, WIRE_TYPE_OPTIONS } from './wire-form.mappers';
 import { WireFormService } from './wire-form.service';
 
 @Component({
@@ -69,9 +65,7 @@ export class WireFormComponent {
 
   protected readonly previewColor = computed(() => {
     const emission = describeWireColorEmission(this.edgeData());
-    return 'color' in emission && emission.color
-      ? emission.color
-      : 'var(--av-color-wire-stroke)';
+    return 'color' in emission && emission.color ? emission.color : 'var(--av-color-wire-stroke)';
   });
 
   protected readonly customColorWarning = computed(() => {

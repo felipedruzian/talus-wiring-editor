@@ -459,9 +459,7 @@ function toConductorDraft(
   const from = toEndpoint(edge.id, 'source', edge.source, edge.sourcePort, nodeKinds);
   const to = toEndpoint(edge.id, 'target', edge.target, edge.targetPort, nodeKinds);
   if (!isWireColorPairCoherent(edge.data.color, edge.data.colorCode)) {
-    throw new CanonicalProjectError(
-      `edge "${edge.id}": color does not match colorCode`,
-    );
+    throw new CanonicalProjectError(`edge "${edge.id}": color does not match colorCode`);
   }
 
   const conductor: CanonicalConductor = {
@@ -671,7 +669,21 @@ function reconcileSharedInspectionField(
   if (edges.every((edge) => edge.data[key] === value)) {
     cable[key] = value;
   } else {
-    delete cable[key];
+    clearInspectionField(cable, key);
+  }
+}
+
+function clearInspectionField(cable: CanonicalCable, key: InspectionField): void {
+  switch (key) {
+    case 'gauge':
+      delete cable.gauge;
+      break;
+    case 'length':
+      delete cable.length;
+      break;
+    case 'notes':
+      delete cable.notes;
+      break;
   }
 }
 
@@ -1041,9 +1053,7 @@ function fromCanonicalConductor(
   cables: ReadonlyMap<string, CanonicalCable>,
 ): Edge<WireEdgeData> {
   const cable = conductor.cable ? cables.get(conductor.cable.name) : undefined;
-  const cableColor = resolveWireColor(
-    cable?.colors[(conductor.cable?.wireIndex ?? 1) - 1],
-  );
+  const cableColor = resolveWireColor(cable?.colors[(conductor.cable?.wireIndex ?? 1) - 1]);
   const conductorColor = resolveWireColor(conductor.colorCode);
   const hasConductorColor = conductor.color !== undefined || conductor.colorCode !== undefined;
   const color = conductor.color ?? conductorColor.color ?? cableColor.color;
@@ -1052,8 +1062,7 @@ function fromCanonicalConductor(
     layout?.routingMode === 'manual' && layout.points
       ? normalizeOrthogonalPersistedRoute(layout.points)
       : null;
-  const manualPoints =
-    normalizedRoute && normalizedRoute.length >= 2 ? normalizedRoute : undefined;
+  const manualPoints = normalizedRoute && normalizedRoute.length >= 2 ? normalizedRoute : undefined;
 
   return {
     id: conductor.id,

@@ -87,8 +87,7 @@ export class PropertiesSidebarService {
 
   private countNetMembers(netId: string | undefined): number {
     if (!netId) return 0;
-    return this.modelService
-      .edges()
-      .filter((edge) => isWireEdge(edge) && edge.data.netId === netId).length;
+    return this.modelService.edges().filter((edge) => isWireEdge(edge) && edge.data.netId === netId)
+      .length;
   }
 }

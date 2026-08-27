@@ -168,7 +168,6 @@ describe('ProjectStorageService save/open', () => {
       data: {
         type: 'wire',
         wireId: 'W1',
-        netId: expect.any(String),
         color: '#123456',
         colorCode: '#123456',
         gauge: '22 AWG',
@@ -176,6 +175,8 @@ describe('ProjectStorageService save/open', () => {
         notes: 'Passar pela borda da placa',
       },
     });
+    const restoredWireData = restoredEdges[0]?.data as WireEdgeData | undefined;
+    expect(typeof restoredWireData?.netId).toBe('string');
     expect(storage.status()).toBe('success');
     expect(storage.message()).toContain('carregado com sucesso');
   });

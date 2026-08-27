@@ -21,10 +21,7 @@ import { buildImportedProject } from '../wireviz-import/wireviz-exchange.service
 import { type WireVizImportOptions } from '../wireviz-import/wireviz-to-diagram';
 import { stringifyYamlSubset } from '../wireviz-import/wireviz-yaml-emit';
 import { ElementMutationService } from './element-mutation.service';
-import {
-  CUSTOM_COLOR_CHOICE,
-  wireDataToFormData,
-} from './components/wire-form/wire-form.mappers';
+import { CUSTOM_COLOR_CHOICE, wireDataToFormData } from './components/wire-form/wire-form.mappers';
 
 class ModelStub {
   nodes: Node[] = [];
@@ -230,7 +227,9 @@ describe('ElementMutationService wire identity edits', () => {
     const selected = harnessEdges[1];
     if (!selected) throw new Error('fixture has fewer than two HARNESS conductors');
     const untouchedColors = new Map(
-      harnessEdges.filter((edge) => edge.id !== selected.id).map((edge) => [edge.id, edge.data.color]),
+      harnessEdges
+        .filter((edge) => edge.id !== selected.id)
+        .map((edge) => [edge.id, edge.data.color]),
     );
 
     await mutation.handleWireFieldChange({

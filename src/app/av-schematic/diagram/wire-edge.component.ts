@@ -132,7 +132,7 @@ export class WireEdgeComponent implements NgDiagramEdgeTemplate<WireEdgeData> {
   protected readonly inspectionFacts = computed<InspectionFact[]>(() => {
     const data = this.edge().data;
     const facts: InspectionFact[] = [];
-    const netLabel = data.netName || data.netId;
+    const netLabel = data.netName ?? data.netId;
     if (netLabel) facts.push({ label: 'Net', value: netLabel });
     if (data.wireType) facts.push({ label: 'Tipo', value: data.wireType });
     if (data.gauge) facts.push({ label: 'Bitola', value: data.gauge });

@@ -6,11 +6,7 @@
 // project-wide export report is produced by `export-wireviz.ts`, at the real
 // YAML boundary, so it cannot drift from what was actually emitted.
 import { type WireEdgeData } from '../diagram/model/interfaces';
-import {
-  isKnownWireVizCode,
-  normalizeWireVizHexColor,
-  paletteWireColor,
-} from './wireviz-colors';
+import { isKnownWireVizCode, normalizeWireVizHexColor, paletteWireColor } from './wireviz-colors';
 
 export type WireColorEmission =
   /** No color set -- WireViz emits the cable without a color for this wire. */

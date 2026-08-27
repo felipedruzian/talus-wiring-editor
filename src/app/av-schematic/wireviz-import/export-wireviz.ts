@@ -181,7 +181,7 @@ function effectiveCableForExport(
       continue;
     }
 
-    delete effective[field];
+    clearInspectionField(effective, field);
     report.warn(
       'field-not-representable',
       `cables.${cable.name}.${field}`,
@@ -191,6 +191,20 @@ function effectiveCableForExport(
   }
 
   return effective;
+}
+
+function clearInspectionField(cable: CanonicalCable, field: ConductorInspectionField): void {
+  switch (field) {
+    case 'gauge':
+      delete cable.gauge;
+      break;
+    case 'length':
+      delete cable.length;
+      break;
+    case 'notes':
+      delete cable.notes;
+      break;
+  }
 }
 
 function reconcileConductorColors(

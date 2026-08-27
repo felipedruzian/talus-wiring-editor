@@ -207,7 +207,8 @@ export class ElementMutationService {
         colorCode: updatedData.colorCode,
       });
       for (const candidate of wireEdges) {
-        const belongsToCable = candidate.data.wireId === (identityChanged ? previousName : nextName);
+        const belongsToCable =
+          candidate.data.wireId === (identityChanged ? previousName : nextName);
         if (
           candidate.id !== change.edgeId &&
           (!belongsToCable || (!identityChanged && !colorChanged))

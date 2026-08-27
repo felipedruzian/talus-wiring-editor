@@ -5,8 +5,10 @@ import { describeWireEndpoint, describeWireEndpoints, formatWireEndpoint } from 
 
 describe('wire endpoint inspection', () => {
   it('resolves the source and target from the same wire edge used by the canvas', () => {
-    const edge = diagramModel.edges[0];
-    if (!edge) throw new Error('fixture has no wire edge');
+    const edge = diagramModel.edges.find(
+      (candidate) => candidate.data.type === 'wire' && candidate.data.wireId === 'W1',
+    );
+    if (!edge) throw new Error('fixture has no W1 wire edge');
 
     expect(describeWireEndpoints(diagramModel.nodes, edge)).toEqual({
       source: { deviceId: 'NANO-1', portLabel: 'D9' },
