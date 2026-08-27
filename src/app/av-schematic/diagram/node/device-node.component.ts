@@ -10,6 +10,22 @@ import { PortFocusService } from '../port-focus.service';
 import { RelinkTargetHighlightService } from '../edge-relinking/relink-target-highlight.service';
 import { type DeviceNodeData, type DevicePort } from '../model/interfaces';
 
+/**
+ * Bounded, seed-only physical illustration variants (issue #1 tracer
+ * bullet). Purely a visual reskin of the same generic device-node
+ * card/ports — not a persisted field, not the general footprint system from
+ * issue #3. Resolved from `manufacturer`/`model` so any other device
+ * (including every existing AV seed/library entry) keeps rendering as the
+ * plain generic card, unchanged.
+ */
+export type DeviceIllustration = 'arduino-nano' | 'tb6612fng' | null;
+
+function resolveIllustration(data: DeviceNodeData): DeviceIllustration {
+  if (data.manufacturer === 'Arduino' && data.model === 'Nano') return 'arduino-nano';
+  if (data.model === 'TB6612FNG') return 'tb6612fng';
+  return null;
+}
+
 @Component({
   selector: 'app-device-node',
   imports: [NgDiagramPortComponent],
@@ -32,6 +48,10 @@ export class DeviceNodeComponent implements NgDiagramNodeTemplate<DeviceNodeData
   node = input.required<Node<DeviceNodeData>>();
 
   protected readonly data = computed(() => this.node().data);
+
+  protected readonly illustration = computed<DeviceIllustration>(() =>
+    resolveIllustration(this.data()),
+  );
 
   protected readonly inputPorts = computed(() => this.portsByDirection('input'));
   protected readonly outputPorts = computed(() => this.portsByDirection('output'));

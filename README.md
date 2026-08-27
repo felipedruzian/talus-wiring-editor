@@ -6,6 +6,8 @@ _Live demo: [https://www.ngdiagram.dev/templates/av/](https://www.ngdiagram.dev/
 
 Interactive AV (audio/video) schematic diagram built with Angular 21 and [ng-diagram](https://www.npmjs.com/package/ng-diagram). Use this project as a starting point for AV system design — building your own schematic, signal-flow, or device-wiring diagram. Minimal dependencies: only Angular and ng-diagram, with no opinionated third-party UI libraries.
 
+> **Este fork (`talus-wiring-editor`)** está evoluindo este template para um editor de fiação física. O diagrama exibido ao carregar é agora o [tracer bullet da issue #1](https://github.com/felipedruzian/talus-wiring-editor/issues/1) — uma placa física, um Arduino Nano e um TB6612FNG, fiados a partir de uma importação WireViz — não mais o exemplo de rack AV original. Ver [`docs/wiring-tracer-bullet.md`](docs/wiring-tracer-bullet.md) para a decisão de integração e [`docs/license-matrix.md`](docs/license-matrix.md) para o status de licenciamento de cada peça reaproveitada.
+
 Features:
 
 - Custom `DeviceNode` template with header (deviceId / manufacturer / model) and per-side input/output port columns
@@ -58,6 +60,10 @@ Deep-dive documentation lives in [`docs/`](docs/):
 - [`docs/architecture.md`](docs/architecture.md) — service hierarchy, key patterns, project structure
 - [`docs/edge-reshaping.md`](docs/edge-reshaping.md) — manual edge routing: gesture/command/logic layers and the ng-diagram porting target
 - [`docs/export.md`](docs/export.md) — PNG and DXF export pipelines
+- [`docs/wiring-tracer-bullet.md`](docs/wiring-tracer-bullet.md) — issue #1: representação de placa/componente/net física, formato canônico de projeto, o que está pendente ou fora de escopo
+- [`docs/wireviz-import-limits.md`](docs/wireviz-import-limits.md) — o subconjunto de YAML WireViz que o parser desta fatia aceita
+- [`docs/license-matrix.md`](docs/license-matrix.md) — origem, revisão, licença e estratégia de reuso para cada base avaliada para este fork
+- [`docs/local-service.md`](docs/local-service.md) — o serviço local estático+API (`server/`) e o contrato de implantação no Talus
 
 ## ng-diagram APIs Demonstrated
 

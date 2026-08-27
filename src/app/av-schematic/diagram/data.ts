@@ -1,202 +1,185 @@
 import { type Edge, type Node } from 'ng-diagram';
 import {
-  EdgeTemplateType,
+  MINIMAL_TWO_NETS_PLACEMENT,
+  MINIMAL_TWO_NETS_WIREVIZ_YAML,
+} from '../wireviz-import/fixtures/minimal-two-nets.fixture';
+import { importWireViz } from '../wireviz-import/import-wireviz';
+import { wirevizConnectionsToEdges } from '../wireviz-import/wireviz-to-diagram';
+import {
   NodeTemplateType,
   type AvSchematicEdgeData,
   type AvSchematicNodeData,
+  type BoardNodeData,
+  type DeviceNodeData,
 } from './model/interfaces';
+
+/**
+ * Tracer bullet seed (issue #1 / talus-wiring-editor): board A (6 x 11
+ * holes), an Arduino Nano and a TB6612FNG breakout, and the two nets
+ * produced by actually importing the minimal WireViz fixture below — this
+ * is the real import pipeline running at load time, not hand-authored
+ * edges that happen to match it.
+ *
+ * See docs/wiring-tracer-bullet.md for the integration decision this seed
+ * exercises, and docs/wireviz-import-limits.md for the parser's supported
+ * subset.
+ */
+
+const boardA: Node<BoardNodeData> = {
+  id: 'board-a',
+  type: NodeTemplateType.BoardNode,
+  position: { x: 60, y: 60 },
+  data: {
+    type: 'board',
+    boardId: 'board-a',
+    label: 'Placa A (6x11)',
+    rows: 6,
+    cols: 11,
+    pitch: 20,
+  },
+};
+
+// Nano and TB6612FNG are positioned so their illustrated cards overlap board
+// A's own footprint (x: 60..292, y: 60..192 for rows=6/cols=11/pitch=20 — see
+// board-geometry.ts::boardSize) in the visual plane. `nodes` below keeps the
+// board first so it renders behind both components (see NgDiagramConfig's
+// `zIndex.elevateOnSelection: false` in diagram.component.ts — nodes stack
+// in array order). Still just one ng-diagram canvas: the board is an
+// ordinary node, not a background layer.
+const nano: Node<DeviceNodeData> = {
+  id: 'nano-1',
+  type: NodeTemplateType.DeviceNode,
+  position: { x: 70, y: 66 },
+  data: {
+    type: 'device',
+    deviceId: 'NANO-1',
+    manufacturer: 'Arduino',
+    model: 'Nano',
+    category: 'microcontroller',
+    location: 'Board A',
+    boardId: 'board-a',
+    ports: [
+      {
+        id: 'vin',
+        label: 'VIN',
+        direction: 'input',
+        connectorType: 'Power',
+        hole: { row: 1, col: 4 },
+      },
+      {
+        id: 'd9',
+        label: 'D9',
+        direction: 'output',
+        connectorType: 'PWM',
+        hole: { row: 1, col: 1 },
+      },
+      {
+        id: 'd8',
+        label: 'D8',
+        direction: 'output',
+        connectorType: 'GPIO',
+        hole: { row: 1, col: 2 },
+      },
+      {
+        id: 'gnd',
+        label: 'GND',
+        direction: 'output',
+        connectorType: 'Power',
+        hole: { row: 1, col: 3 },
+      },
+      {
+        id: '5v',
+        label: '5V',
+        direction: 'output',
+        connectorType: 'Power',
+        hole: { row: 1, col: 5 },
+      },
+    ],
+  },
+};
+
+const tb6612: Node<DeviceNodeData> = {
+  id: 'tb6612-1',
+  type: NodeTemplateType.DeviceNode,
+  position: { x: 185, y: 66 },
+  data: {
+    type: 'device',
+    deviceId: 'DRV-1',
+    manufacturer: 'Toshiba',
+    model: 'TB6612FNG',
+    category: 'motor-driver',
+    location: 'Board A',
+    boardId: 'board-a',
+    ports: [
+      {
+        id: 'pwma',
+        label: 'PWMA',
+        direction: 'input',
+        connectorType: 'PWM',
+        hole: { row: 4, col: 1 },
+      },
+      {
+        id: 'ain1',
+        label: 'AIN1',
+        direction: 'input',
+        connectorType: 'GPIO',
+        hole: { row: 4, col: 2 },
+      },
+      {
+        id: 'stby',
+        label: 'STBY',
+        direction: 'input',
+        connectorType: 'GPIO',
+        hole: { row: 4, col: 3 },
+      },
+      {
+        id: 'vcc',
+        label: 'VCC',
+        direction: 'input',
+        connectorType: 'Power',
+        hole: { row: 4, col: 4 },
+      },
+      {
+        id: 'gnd',
+        label: 'GND',
+        direction: 'input',
+        connectorType: 'Power',
+        hole: { row: 4, col: 5 },
+      },
+      { id: 'ao1', label: 'AO1', direction: 'output', connectorType: 'Motor' },
+      { id: 'ao2', label: 'AO2', direction: 'output', connectorType: 'Motor' },
+    ],
+  },
+};
+
+const nodes: Node<AvSchematicNodeData>[] = [boardA, nano, tb6612];
+
+const nodesById = new Map(
+  nodes.filter((n): n is Node<DeviceNodeData> => n.data.type === 'device').map((n) => [n.id, n]),
+);
+
+const wirevizDoc = importWireViz(MINIMAL_TWO_NETS_WIREVIZ_YAML);
+const importedEdges = wirevizConnectionsToEdges(wirevizDoc, MINIMAL_TWO_NETS_PLACEMENT, nodesById);
+
+// Give the direction-line net (W2) a manual bend, demonstrating that manually
+// routed points survive being produced by the WireViz import (they're just
+// ordinary edge points from here on — edge-reshaping owns editing them).
+const edges: Edge<AvSchematicEdgeData>[] = importedEdges.map((edge) =>
+  edge.data.wireId === 'W2'
+    ? ({
+        ...edge,
+        routingMode: 'manual',
+        points: [
+          { x: 178, y: 100 },
+          { x: 200, y: 100 },
+          { x: 200, y: 150 },
+          { x: 185, y: 150 },
+        ],
+      } satisfies Edge<AvSchematicEdgeData>)
+    : edge,
+);
 
 export const diagramModel: {
   nodes: Node<AvSchematicNodeData>[];
   edges: Edge<AvSchematicEdgeData>[];
-} = {
-  nodes: [
-    {
-      id: 'mic-1',
-      type: NodeTemplateType.DeviceNode,
-      position: { x: 60, y: 80 },
-      data: {
-        type: 'device',
-        deviceId: 'MIC-1',
-        manufacturer: 'Shure',
-        model: 'SM58',
-        category: 'microphone',
-        location: 'Stage Center',
-        ports: [{ id: 'out', label: 'OUT', direction: 'output', connectorType: 'XLR' }],
-      },
-    },
-    {
-      id: 'media-1',
-      type: NodeTemplateType.DeviceNode,
-      position: { x: 60, y: 380 },
-      data: {
-        type: 'device',
-        deviceId: 'MEDIA-1',
-        manufacturer: 'BrightSign',
-        model: 'HD224',
-        category: 'media-player',
-        location: 'Rack 2U-1',
-        ports: [
-          { id: 'hdmi-out', label: 'HDMI', direction: 'output', connectorType: 'HDMI' },
-          { id: 'audio-out', label: 'AUDIO', direction: 'output', connectorType: '3.5mm' },
-        ],
-      },
-    },
-    {
-      id: 'mixer-1',
-      type: NodeTemplateType.DeviceNode,
-      position: { x: 580, y: 60 },
-      data: {
-        type: 'device',
-        deviceId: 'MIXER-1',
-        manufacturer: 'Yamaha',
-        model: 'MG10XU',
-        category: 'mixer',
-        location: 'FOH Booth',
-        ports: [
-          { id: 'mic-1', label: 'MIC 1', direction: 'input', connectorType: 'XLR' },
-          { id: 'mic-2', label: 'MIC 2', direction: 'input', connectorType: 'XLR' },
-          { id: 'mic-3', label: 'MIC 3', direction: 'input', connectorType: 'XLR' },
-          { id: 'mic-4', label: 'MIC 4', direction: 'input', connectorType: 'XLR' },
-          { id: 'line-1', label: 'LINE 1', direction: 'input', connectorType: 'TRS' },
-          { id: 'line-2', label: 'LINE 2', direction: 'input', connectorType: 'TRS' },
-          { id: 'out-1', label: 'OUT 1', direction: 'output', connectorType: 'XLR' },
-          { id: 'out-2', label: 'OUT 2', direction: 'output', connectorType: 'XLR' },
-        ],
-      },
-    },
-    {
-      id: 'amp-1',
-      type: NodeTemplateType.DeviceNode,
-      position: { x: 1100, y: 60 },
-      data: {
-        type: 'device',
-        deviceId: 'AMP-1',
-        manufacturer: 'Crown',
-        model: 'XLi 1500',
-        category: 'amplifier',
-        location: 'Rack 1U-3',
-        ports: [
-          { id: 'in-a', label: 'IN A', direction: 'input', connectorType: 'XLR' },
-          { id: 'in-b', label: 'IN B', direction: 'input', connectorType: 'XLR' },
-          { id: 'out-a', label: 'OUT A', direction: 'output', connectorType: 'Speakon' },
-          { id: 'out-b', label: 'OUT B', direction: 'output', connectorType: 'Speakon' },
-        ],
-      },
-    },
-    {
-      id: 'spk-1',
-      type: NodeTemplateType.DeviceNode,
-      position: { x: 1620, y: 40 },
-      data: {
-        type: 'device',
-        deviceId: 'SPK-1',
-        manufacturer: 'JBL',
-        model: 'EON615',
-        category: 'loudspeaker',
-        location: 'Stage Left',
-        ports: [{ id: 'in', label: 'IN', direction: 'input', connectorType: 'Speakon' }],
-      },
-    },
-    {
-      id: 'spk-2',
-      type: NodeTemplateType.DeviceNode,
-      position: { x: 1620, y: 280 },
-      data: {
-        type: 'device',
-        deviceId: 'SPK-2',
-        manufacturer: 'JBL',
-        model: 'EON615',
-        category: 'loudspeaker',
-        location: 'Stage Right',
-        ports: [{ id: 'in', label: 'IN', direction: 'input', connectorType: 'Speakon' }],
-      },
-    },
-    {
-      id: 'display-1',
-      type: NodeTemplateType.DeviceNode,
-      position: { x: 580, y: 540 },
-      data: {
-        type: 'device',
-        deviceId: 'DISPLAY-1',
-        manufacturer: 'NEC',
-        model: 'E325',
-        category: 'display',
-        location: 'Lobby',
-        ports: [{ id: 'hdmi-in', label: 'HDMI', direction: 'input', connectorType: 'HDMI' }],
-      },
-    },
-  ],
-  edges: [
-    {
-      id: 'wire-1',
-      type: EdgeTemplateType.WireEdge,
-      source: 'mic-1',
-      sourcePort: 'out',
-      target: 'mixer-1',
-      targetPort: 'mic-1',
-      data: { type: 'wire', wireId: 'W-001', wireType: 'audio' },
-    },
-    {
-      id: 'wire-2',
-      type: EdgeTemplateType.WireEdge,
-      source: 'media-1',
-      sourcePort: 'audio-out',
-      target: 'mixer-1',
-      targetPort: 'line-1',
-      data: { type: 'wire', wireId: 'W-002', wireType: 'audio' },
-    },
-    {
-      id: 'wire-3',
-      type: EdgeTemplateType.WireEdge,
-      source: 'media-1',
-      sourcePort: 'hdmi-out',
-      target: 'display-1',
-      targetPort: 'hdmi-in',
-      routingMode: 'manual',
-      points: [
-        { x: 307, y: 480 },
-        { x: 510, y: 480 },
-        { x: 510, y: 640 },
-        { x: 573, y: 640 },
-      ],
-      data: { type: 'wire', wireId: 'W-003', wireType: 'video' },
-    },
-    {
-      id: 'wire-4',
-      type: EdgeTemplateType.WireEdge,
-      source: 'mixer-1',
-      sourcePort: 'out-1',
-      target: 'amp-1',
-      targetPort: 'in-a',
-      data: { type: 'wire', wireId: 'W-004', wireType: 'audio' },
-    },
-    {
-      id: 'wire-5',
-      type: EdgeTemplateType.WireEdge,
-      source: 'mixer-1',
-      sourcePort: 'out-2',
-      target: 'amp-1',
-      targetPort: 'in-b',
-      data: { type: 'wire', wireId: 'W-005', wireType: 'audio' },
-    },
-    {
-      id: 'wire-6',
-      type: EdgeTemplateType.WireEdge,
-      source: 'amp-1',
-      sourcePort: 'out-a',
-      target: 'spk-1',
-      targetPort: 'in',
-      data: { type: 'wire', wireId: 'W-006', wireType: 'speaker' },
-    },
-    {
-      id: 'wire-7',
-      type: EdgeTemplateType.WireEdge,
-      source: 'amp-1',
-      sourcePort: 'out-b',
-      target: 'spk-2',
-      targetPort: 'in',
-      data: { type: 'wire', wireId: 'W-007', wireType: 'speaker' },
-    },
-  ],
-};
+} = { nodes, edges };

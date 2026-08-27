@@ -33,6 +33,7 @@ import {
   type WireEdgeData,
 } from './model/interfaces';
 import { NodeVisibilityConfigService } from './node-visibility/node-visibility-config.service';
+import { BoardNodeComponent } from './node/board-node.component';
 import { DeviceNodeComponent } from './node/device-node.component';
 import { applyEdgeStretchOnSelectionMoved } from './edge-reshaping/middleware/edge-stretch-on-move';
 import { EdgeReshapeOverlayComponent } from './edge-reshaping/edge-reshape-overlay.component';
@@ -116,6 +117,7 @@ export class DiagramComponent {
 
   nodeTemplateMap = new NgDiagramNodeTemplateMap([
     [NodeTemplateType.DeviceNode, DeviceNodeComponent],
+    [NodeTemplateType.BoardNode, BoardNodeComponent],
   ]);
 
   edgeTemplateMap = new NgDiagramEdgeTemplateMap([[EdgeTemplateType.WireEdge, WireEdgeComponent]]);

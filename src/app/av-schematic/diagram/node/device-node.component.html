@@ -1,8 +1,31 @@
-<div class="device-node">
+<div
+  class="device-node"
+  [class.device-node--illustrated]="illustration() !== null"
+  [class.device-node--arduino-nano]="illustration() === 'arduino-nano'"
+  [class.device-node--tb6612fng]="illustration() === 'tb6612fng'"
+>
   <div class="device-node__header">
-    <span class="device-node__id">{{ data().deviceId }}</span>
-    <span class="device-node__info">{{ data().manufacturer }}</span>
-    <span class="device-node__info">{{ data().model }}</span>
+    @if (illustration() === 'arduino-nano') {
+      <svg class="device-node__glyph" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3" y="1.5" width="18" height="21" rx="2" />
+        <rect x="9" y="0" width="6" height="3" rx="1" class="device-node__glyph-accent" />
+        <circle cx="6.5" cy="5" r="1" class="device-node__glyph-accent" />
+        <circle cx="17.5" cy="19" r="1" class="device-node__glyph-accent" />
+      </svg>
+    } @else if (illustration() === 'tb6612fng') {
+      <svg class="device-node__glyph" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="2" y="2" width="20" height="20" rx="3" />
+        <rect x="7" y="7" width="10" height="10" rx="1" class="device-node__glyph-accent" />
+        <circle cx="5" cy="5" r="1.1" class="device-node__glyph-accent" />
+      </svg>
+    }
+    <div class="device-node__header-text">
+      <span class="device-node__id">{{ data().deviceId }}</span>
+      @if (!illustration()) {
+        <span class="device-node__info">{{ data().manufacturer }}</span>
+      }
+      <span class="device-node__info">{{ data().model }}</span>
+    </div>
   </div>
   <div class="device-node__separator"></div>
   <div class="device-node__ports">

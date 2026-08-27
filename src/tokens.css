@@ -863,8 +863,12 @@ html[data-theme='dark'] {
   --av-color-selection-border: #7938d3;
   --av-color-selection-halo: #482674;
   --av-list-item-bg: var(--ngd-ui-bg-tertiary-default);
+  --av-color-board-surface: #c9a06a;
+  --av-color-board-hole: #2b2118;
 }
 
 html[data-theme='dark'] {
   --av-list-item-bg: var(--ngd-colors-gray-750);
+  --av-color-board-surface: #8a6a42;
+  --av-color-board-hole: #16110b;
 }

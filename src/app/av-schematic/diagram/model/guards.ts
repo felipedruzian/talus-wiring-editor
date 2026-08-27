@@ -1,5 +1,5 @@
 import { type Edge, type Node } from 'ng-diagram';
-import { type DeviceNodeData, type WireEdgeData } from './interfaces';
+import { type BoardNodeData, type DeviceNodeData, type WireEdgeData } from './interfaces';
 
 export function isDeviceNodeData(data: unknown): data is DeviceNodeData {
   return typeof data === 'object' && data !== null && 'type' in data && data.type === 'device';
@@ -7,6 +7,14 @@ export function isDeviceNodeData(data: unknown): data is DeviceNodeData {
 
 export function isDeviceNode(node: Node | null | undefined): node is Node<DeviceNodeData> {
   return !!node && isDeviceNodeData(node.data);
+}
+
+export function isBoardNodeData(data: unknown): data is BoardNodeData {
+  return typeof data === 'object' && data !== null && 'type' in data && data.type === 'board';
+}
+
+export function isBoardNode(node: Node | null | undefined): node is Node<BoardNodeData> {
+  return !!node && isBoardNodeData(node.data);
 }
 
 export function isWireEdgeData(data: unknown): data is WireEdgeData {

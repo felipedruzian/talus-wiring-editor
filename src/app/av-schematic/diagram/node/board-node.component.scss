@@ -1,0 +1,42 @@
+:host {
+  display: block;
+  position: relative;
+  cursor: grab;
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+.board-node {
+  position: relative;
+  background: var(--av-color-board-surface, #c9a06a);
+  border: 1px solid var(--ngd-ui-stroke-primary-default);
+  border-radius: var(--ngd-token-radius-element-12);
+  box-shadow: none;
+
+  :host(.selected) & {
+    border-color: var(--av-color-selection-border);
+    box-shadow: 0 0 0 3px var(--av-color-selection-halo);
+  }
+}
+
+.board-node__label {
+  position: absolute;
+  top: -20px;
+  left: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ngd-txt-secondary-default);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.board-node__grid {
+  display: block;
+}
+
+.board-node__hole {
+  fill: var(--av-color-board-hole, #2b2118);
+  opacity: 0.8;
+}
