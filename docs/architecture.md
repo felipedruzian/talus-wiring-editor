@@ -12,19 +12,13 @@ AvSchematicPageComponent (providers)
   ├── Visibility: NodeVisibilityConfigService
   ├── Navigation: PortFocusService → ViewportAnimationService
   ├── Export: DiagramExportService
-  ├── Edge reshaping:
-  │     ├── EdgeReshapeLifecycleEmitter   (subscribe for toolbar / telemetry hooks)
-  │     ├── EdgeReshapeCommandDispatcher  (routes commands to executors)
-  │     ├── EdgeReshapeEventHandler       (gesture → command translation)
-  │     └── EdgeEndpointSyncService       (reflows endpoints on node moves)
+  ├── Edge reshaping: EdgeReshapeHandler (gesture → command) → EdgeCommandDispatcher (reshaping's only model writes)
+  ├── Edge relinking: RelinkEndpointHandler, RelinkTargetHighlightService
+  ├── Dangling wires: DanglingEdgeService, TempEdgePointsService
   └── DiagramComponent
 ```
 
-The page constructor calls `bootstrapEdgeEndpointSync()` to eagerly instantiate `EdgeEndpointSyncService` — its constructor sets up the `effect()`s that watch the model, so the service has to be alive even though nothing reads it directly. The bootstrap helper is exported from the service file to keep the wiring next to the code that needs it.
-
-The page component subscribes to `EdgeReshapeLifecycleEmitter` and `console.log`s
-`edgeReshapeStarted` / `edgeReshapeEnded` as a wiring example — replace the
-log with a toolbar status, telemetry call, or undo-stack push as needed.
+Node moves re-anchor manual wires without a dedicated service: `DiagramComponent` handles the `<ng-diagram>` outputs `selectionMoved` (live drag, no merge) and `nodeDragEnded` (drop, fold collinear bends) and calls `applyEdgeStretchOnSelectionMoved` from `edge-reshaping/middleware/edge-stretch-on-move.ts`. See `docs/edge-reshaping.md` for the three edge features and how they split.
 
 ## Key Patterns
 
@@ -34,7 +28,7 @@ log with a toolbar status, telemetry call, or undo-stack push as needed.
 - **Form reuse via injection-token override** — `DeviceFormComponent` is decoupled from the diagram model: it only depends on the `ON_DEVICE_FIELD_CHANGE` token. The properties sidebar provides a handler that calls `ElementMutationService` (live diagram update); the library detail provides a handler that writes to a `LibraryDraftService` instead. Same form, two destinations.
 - **Library save-or-discard buffer** — `LibraryDraftService` is provided per `LibraryDetailComponent` instance and holds the in-progress edit. Clicking **Save** commits via `LibraryService.commitDraft` (append for create, replace for edit). Clicking **Back** just closes the detail; the component (and its draft) is destroyed. No live writes to the library while editing.
 - **Palette → diagram via `paletteItemDropped`** — `<ng-diagram>` auto-instantiates the dropped node from the palette item's `data`. The diagram listens to the event only to fill in a missing `deviceId` based on the dropped category and the IDs already in use.
-- **Diagram-as-model** — there is no separate device/wire domain layer; the ng-diagram `Node<DeviceNodeData>` and `Edge<WireEdgeData>` are the source of truth.
+- **Diagram-as-model** — there is no separate device/wire domain layer; the ngDiagram `Node<DeviceNodeData>` and `Edge<WireEdgeData>` are the source of truth.
 - **Viewport overlays** — `appViewportBounds` / `appViewportOverlay` directives register UI elements that obscure the diagram so visibility / zoom-to-fit calculations account for them.
 - **Per-row port positioning** — each `.port-row` is `position: relative`, so each `<ng-diagram-port>`'s absolute positioning anchors to its own row, not the whole node. Side-specific transforms push the port shape entirely outside the card edge.
 
@@ -58,9 +52,11 @@ src/app/av-schematic/
 │   ├── edge-reshaping/                   # Manual edge routing — three layers, designed to port into ng-diagram
 │   │   ├── directives/                   # UI / gesture detection (per-handle pointer state machine)
 │   │   ├── handlers/                     # Gesture → command translation (holds in-flight drag state)
-│   │   ├── commands/                     # reshapeEdge data + lifecycle signals + dispatcher
-│   │   ├── middleware/                   # Endpoint-sync (node-move reflow) + lifecycle event emitters
+│   │   ├── commands/                     # reshapeEdge command, types, and EdgeCommandDispatcher
+│   │   ├── middleware/                   # Node-move reflow of manual wires (edge-stretch-on-move)
 │   │   └── logic/                        # Pure orthogonal-path math (segment orientation, simplify, snap, etc.)
+│   ├── edge-relinking/                   # Drag an endpoint grip to reconnect a wire or leave it dangling
+│   ├── dangling-edge-creation/           # Port-to-nowhere draw → one-ended manual wire
 │   ├── node/                             # DeviceNode template
 │   └── node-visibility/                  # Viewport-aware overlay registration
 ├── properties-sidebar/                   # Right panel: edit selected device/wire (live updates)

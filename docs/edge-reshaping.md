@@ -2,7 +2,7 @@
 
 Wires in the AV schematic are orthogonal edges the user can reshape, draw out to
 nothing (dangling), and reconnect to other ports. These are **three separate
-features**. Reshaping is the one structured as ng-diagram's pipeline
+features**. Reshaping is the one structured as ngDiagram's pipeline
 (interaction → command → middleware → model) so it can move into core; relinking
 and dangling-edge creation are self-contained features that share only the pure
 geometry.
@@ -36,7 +36,7 @@ dangling creation do their **own** writes directly (they are not on the command
 pipeline); they depend on reshaping only for `logic/`.
 
 Manual-routed edges (`routingMode: 'manual'`, explicit `points`) own their path;
-auto edges are routed by ng-diagram. All three features pin edges to `manual`.
+auto edges are routed by ngDiagram. All three features pin edges to `manual`.
 
 ## Reshaping
 
@@ -94,7 +94,7 @@ Relinking is intentionally independent of reshaping.
 
 ## Dangling-edge creation
 
-ng-diagram discards a port-to-empty draw. `DanglingEdgeService` (on
+ngDiagram discards a port-to-empty draw. `DanglingEdgeService` (on
 `edgeDrawEnded` with no target) turns that into a one-ended manual edge.
 `TempEdgePointsService` captures the live preview's rendered points each frame so
 the created edge keeps the exact bends the user saw; otherwise a simple
@@ -104,7 +104,7 @@ a `WireEdge` with a `wireId`.
 ## Grid
 
 Reshaping, relinking and linking all resolve their grid through the same
-`resolveEdgeGrid`, which mirrors ng-diagram's node-drag snap config: an edge
+`resolveEdgeGrid`, which mirrors ngDiagram's node-drag snap config: an edge
 snaps exactly when its reference node would snap on drag, and not at all when
 snapping is off (`null`). The step itself comes from
 `AV_SCHEMATIC_CONFIG.snapping.gridSize` (default 20) via that config. Device node
@@ -116,22 +116,22 @@ lines.
 `logic/*.spec.ts` cover the pure layer (segment reshaping, simplify
 passes, orthogonalize, stretch, snap, axis classification). Run with `npm test`.
 
-## Porting to ng-diagram core — known seams
+## Porting to ngDiagram core — known seams
 
 The pure layer (`logic/`) imports only `ng-diagram` types and is the
 intended unit to lift into core. Three places knowingly depend on app context
 and would change on the way in:
 
 - **Edge snap borrows node-drag snap.** `resolveEdgeGrid` keys off
-  `shouldSnapDragForNode` because ng-diagram has no dedicated edge-snap config.
+  `shouldSnapDragForNode` because ngDiagram has no dedicated edge-snap config.
   Core should give edge snapping its own switch rather than piggybacking on the
   node one (also flagged in `edge-grid.ts`).
 - **`portFlowPosition` assumes left/right ports.** It reads
   `measuredPorts[].side` directly (refreshed on port recreation since
-  ng-diagram 1.3) but only anchors to the left or right port edge. The general,
+  ngDiagram 1.3) but only anchors to the left or right port edge. The general,
   side-based version (all four sides) belongs in core.
 - **The command pipeline is emulated.** `commands/` + its dispatcher mirror
-  ng-diagram's command flow, but ng-diagram exposes no public command-registration
+  ngDiagram's command flow, but ngDiagram exposes no public command-registration
   API, so the dispatcher ultimately calls `NgDiagramModelService` directly. In
   core these become first-class registered commands (and `middleware/` real
   middleware), with `directives/handlers/logic/` mapping across largely unchanged.
