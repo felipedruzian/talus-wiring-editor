@@ -3,9 +3,11 @@ import { NgDiagramModelService, type Edge, type Node } from 'ng-diagram';
 import {
   CanonicalProjectError,
   fromCanonicalProject,
-  parseCanonicalProject,
   toCanonicalProject,
+  type CanonicalCable,
+  type CanonicalProjectV2,
 } from '../diagram/model/canonical-project';
+import { parseCanonicalProject } from '../diagram/model/canonical-project-parse';
 
 /**
  * Same-origin project persistence client for the local wiring-editor service
@@ -32,6 +34,11 @@ export class ProjectStorageService {
   private readonly _status = signal<ProjectStorageStatus>('idle');
   private readonly _operation = signal<ProjectStorageOperation | null>(null);
   private readonly _message = signal<string | null>(null);
+  /**
+   * Project-level cable inventory. Edges carry connected cable data, but a
+   * completely disconnected cable has no diagram element of its own.
+   */
+  private cableInventory: CanonicalCable[] = [];
 
   readonly status = this._status.asReadonly();
   readonly operation = this._operation.asReadonly();
@@ -59,8 +66,7 @@ export class ProjectStorageService {
       // persist exactly what's actually in the model right now, not a
       // possibly-stale reactive snapshot (see diagram.component.ts's
       // onPaletteItemDropped for the same committed-vs-signal distinction).
-      const committedModel = this.modelService.getModel();
-      const project = toCanonicalProject(committedModel.getNodes(), committedModel.getEdges());
+      const project = this.snapshotProject();
       const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -96,13 +102,63 @@ export class ProjectStorageService {
 
       const raw: unknown = await response.json();
       const project = parseCanonicalProject(raw);
-      const { nodes, edges } = fromCanonicalProject(project);
-      await this.replaceModel(nodes, edges);
+      await this.replaceProject(project);
 
       this.setSuccess('open', `Projeto "${projectId}" carregado com sucesso.`);
     } catch (err) {
       this.setError('open', `Falha ao abrir o projeto: ${this.describeError(err)}`);
     }
+  }
+
+  /** Captures the complete v2 project, including cables with zero connected conductors. */
+  snapshotProject(): CanonicalProjectV2 {
+    const committedModel = this.modelService.getModel();
+    const project = toCanonicalProject(
+      committedModel.getNodes(),
+      committedModel.getEdges(),
+      this.cableInventory,
+    );
+    this.cableInventory = project.electrical.cables.map(cloneCable);
+    return project;
+  }
+
+  /**
+   * Captures only reusable node identity and layout for replacement imports.
+   * Existing edges and cable inventory are deliberately discarded, so a
+   * dangling draft edge cannot prevent a valid replacement from loading.
+   */
+  snapshotImportSkeleton(): CanonicalProjectV2 {
+    const committedModel = this.modelService.getModel();
+    return toCanonicalProject(committedModel.getNodes(), [], []);
+  }
+
+  /** Keeps the non-visual cable inventory aligned with a live wire-id rename. */
+  renameCableIdentity(previousName: string, nextName: string): void {
+    if (!previousName || previousName === nextName) return;
+    const source = this.cableInventory.find((cable) => cable.name === previousName);
+    const target = nextName
+      ? this.cableInventory.find((cable) => cable.name === nextName)
+      : undefined;
+    if (source && target && source !== target) {
+      throw new CanonicalProjectError(
+        `cannot rename cable "${previousName}" to existing cable "${nextName}"`,
+      );
+    }
+    if (!source) return;
+
+    this.cableInventory = nextName
+      ? this.cableInventory.map((cable) =>
+          cable === source ? cloneCable({ ...source, name: nextName }) : cable,
+        )
+      : this.cableInventory.filter((cable) => cable !== source);
+  }
+
+  /** Replaces the live canvas and its non-visual cable inventory atomically from one project. */
+  async replaceProject(project: CanonicalProjectV2): Promise<void> {
+    const parsed = parseCanonicalProject(project);
+    const { nodes, edges } = fromCanonicalProject(parsed);
+    await this.replaceModel(nodes, edges);
+    this.cableInventory = parsed.electrical.cables.map(cloneCable);
   }
 
   /**
@@ -166,4 +222,13 @@ export class ProjectStorageService {
     if (err instanceof Error) return err.message;
     return 'erro desconhecido';
   }
+}
+
+function cloneCable(cable: CanonicalCable): CanonicalCable {
+  return {
+    ...cable,
+    colors: [...cable.colors],
+    wireLabels: cable.wireLabels ? [...cable.wireLabels] : undefined,
+    wirevizExtras: cable.wirevizExtras ? { ...cable.wirevizExtras } : undefined,
+  };
 }

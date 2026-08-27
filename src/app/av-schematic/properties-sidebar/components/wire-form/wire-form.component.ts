@@ -46,7 +46,11 @@ export class WireFormComponent {
       const edgeData = this.edgeData();
 
       untracked(() => {
-        this.formService.loadFormData(edgeId, wireDataToFormData(edgeData));
+        this.formService.loadFormData(
+          edgeId,
+          wireDataToFormData(edgeData),
+          edgeData.wirevizLoop === true,
+        );
       });
     });
   }

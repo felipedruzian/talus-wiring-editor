@@ -17,6 +17,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { OPERATIONAL_LIMITS } from '../src/app/av-schematic/diagram/model/operational-limits.mjs';
 import { createWiringEditorServer } from './wiring-editor-server.mjs';
 
 const HOST = '127.0.0.1';
@@ -82,13 +83,155 @@ async function startServer(cfg) {
 
 function validProjectPayload() {
   return {
-    formatVersion: 1,
-    boards: [
-      { id: 'board-a', label: 'Board A', rows: 4, cols: 4, pitch: 20, position: { x: 0, y: 0 } },
-    ],
-    components: [],
-    nets: [],
+    formatVersion: 2,
+    electrical: {
+      components: [
+        {
+          id: 'source',
+          deviceId: 'SOURCE',
+          manufacturer: '',
+          model: '',
+          pins: [{ id: 'out', label: 'OUT', direction: 'output' }],
+        },
+        {
+          id: 'load-a',
+          deviceId: 'LOAD-A',
+          manufacturer: '',
+          model: '',
+          pins: [{ id: 'in', label: 'IN', direction: 'input' }],
+        },
+        {
+          id: 'load-b',
+          deviceId: 'LOAD-B',
+          manufacturer: '',
+          model: '',
+          pins: [{ id: 'in', label: 'IN', direction: 'input' }],
+        },
+      ],
+      junctions: [{ id: 'rail', label: '5 V rail', kind: 'rail' }],
+      cables: [
+        {
+          name: 'HARNESS',
+          wireCount: 3,
+          colors: ['RD', 'YE', 'BU'],
+          wireLabels: ['feed', 'sensor', 'motor'],
+          gauge: '0.50 mm2',
+        },
+        {
+          name: 'SPARE',
+          wireCount: 2,
+          colors: ['#a1b2c3', 'GY'],
+          wireLabels: ['unused-a', 'unused-b'],
+          notes: 'Disconnected spare cable',
+        },
+      ],
+      nets: [
+        {
+          id: 'net-5v',
+          name: '5V',
+          endpoints: [
+            { kind: 'pin', componentId: 'source', pinId: 'out' },
+            { kind: 'junction', junctionId: 'rail' },
+            { kind: 'pin', componentId: 'load-a', pinId: 'in' },
+            { kind: 'pin', componentId: 'load-b', pinId: 'in' },
+          ],
+          conductors: [
+            {
+              id: 'feed',
+              from: { kind: 'pin', componentId: 'source', pinId: 'out' },
+              to: { kind: 'junction', junctionId: 'rail' },
+              cable: { name: 'HARNESS', wireIndex: 1 },
+            },
+            {
+              id: 'branch-a',
+              from: { kind: 'junction', junctionId: 'rail' },
+              to: { kind: 'pin', componentId: 'load-a', pinId: 'in' },
+              cable: { name: 'HARNESS', wireIndex: 2 },
+            },
+            {
+              id: 'branch-b',
+              from: { kind: 'junction', junctionId: 'rail' },
+              to: { kind: 'pin', componentId: 'load-b', pinId: 'in' },
+              cable: { name: 'HARNESS', wireIndex: 3 },
+            },
+          ],
+        },
+      ],
+    },
+    layout: {
+      boards: [],
+      components: [
+        { componentId: 'source', position: { x: 0, y: 0 } },
+        { componentId: 'load-a', position: { x: 200, y: 0 } },
+        { componentId: 'load-b', position: { x: 200, y: 100 } },
+      ],
+      junctions: [{ junctionId: 'rail', position: { x: 100, y: 50 }, taps: 3 }],
+      conductors: [
+        { conductorId: 'feed', toTap: 0 },
+        { conductorId: 'branch-a', fromTap: 1 },
+        { conductorId: 'branch-b', fromTap: 2 },
+      ],
+    },
   };
+}
+
+function legacyProjectPayload() {
+  return { formatVersion: 1, boards: [], components: [], nets: [] };
+}
+
+function legacyConnectedProjectPayload() {
+  return {
+    formatVersion: 1,
+    boards: [],
+    components: [
+      {
+        id: 'source',
+        deviceId: 'SOURCE',
+        manufacturer: '',
+        model: '',
+        position: { x: 0, y: 0 },
+        pins: [{ id: 'out', label: 'OUT', direction: 'output' }],
+      },
+      {
+        id: 'load',
+        deviceId: 'LOAD',
+        manufacturer: '',
+        model: '',
+        position: { x: 100, y: 0 },
+        pins: [{ id: 'in', label: 'IN', direction: 'input' }],
+      },
+    ],
+    nets: [
+      {
+        id: 'wire-a',
+        wireId: 'W1',
+        colorCode: 'RD',
+        source: { componentId: 'source', pinId: 'out' },
+        target: { componentId: 'load', pinId: 'in' },
+      },
+    ],
+  };
+}
+
+function emptyV2Payload() {
+  return {
+    formatVersion: 2,
+    electrical: { components: [], junctions: [], cables: [], nets: [] },
+    layout: { boards: [], components: [], junctions: [], conductors: [] },
+  };
+}
+
+function canonicalCableBudgetPayload(total) {
+  const project = emptyV2Payload();
+  let remaining = total;
+  let index = 0;
+  while (remaining >= 2) {
+    const wireCount = Math.min(OPERATIONAL_LIMITS.maxWiresPerCable, remaining - 1);
+    project.electrical.cables.push({ name: `C${index++}`, wireCount, colors: [] });
+    remaining -= wireCount + 1;
+  }
+  if (remaining !== 0) throw new Error(`cannot represent entity budget ${total}`);
+  return project;
 }
 
 describe('wiring-editor-server', () => {
@@ -137,6 +280,31 @@ describe('wiring-editor-server', () => {
       expect(JSON.parse(onDisk)).toEqual(project);
     });
 
+    it('serves the same current project version to two independent clients', async () => {
+      const project = validProjectPayload();
+      await fetch(`${server.baseUrl}/api/projects/shared`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+
+      const [clientA, clientB] = await Promise.all([
+        fetch(`${server.baseUrl}/api/projects/shared`),
+        fetch(`${server.baseUrl}/api/projects/shared`),
+      ]);
+      expect(await clientA.json()).toEqual(project);
+      expect(await clientB.json()).toEqual(project);
+    });
+
+    it('continues accepting legacy v1 snapshots for older clients', async () => {
+      const res = await fetch(`${server.baseUrl}/api/projects/legacy`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(legacyProjectPayload()),
+      });
+      expect(res.status).toBe(200);
+    });
+
     it('returns 404 for GET of a project id that was never saved', async () => {
       const res = await fetch(`${server.baseUrl}/api/projects/does-not-exist`);
       expect(res.status).toBe(404);
@@ -172,10 +340,13 @@ describe('wiring-editor-server', () => {
       expect(res.status).toBe(404);
     });
 
-    it.each(['.hidden', 'a/b', 'has space', 'x'.repeat(200)])('rejects %j with 400', async (rawId) => {
-      const res = await fetch(`${server.baseUrl}/api/projects/${encodeURIComponent(rawId)}`);
-      expect(res.status).toBe(400);
-    });
+    it.each(['.hidden', 'a/b', 'has space', 'x'.repeat(200)])(
+      'rejects %j with 400',
+      async (rawId) => {
+        const res = await fetch(`${server.baseUrl}/api/projects/${encodeURIComponent(rawId)}`);
+        expect(res.status).toBe(400);
+      },
+    );
   });
 
   describe('extra route segments', () => {
@@ -215,11 +386,15 @@ describe('wiring-editor-server', () => {
       expect(res.status).toBe(400);
     });
 
-    it('returns 400 for a structurally invalid CanonicalProjectV1', async () => {
+    it('returns 400 for a structurally invalid CanonicalProjectV2', async () => {
       const res = await fetch(`${server.baseUrl}/api/projects/broken`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formatVersion: 2, boards: [], components: [], nets: [] }),
+        body: JSON.stringify({
+          formatVersion: 2,
+          electrical: { components: [], junctions: [], cables: [], nets: [] },
+          layout: { boards: [], components: [], junctions: [] },
+        }),
       });
       expect(res.status).toBe(400);
     });
@@ -231,6 +406,205 @@ describe('wiring-editor-server', () => {
         body: JSON.stringify(validProjectPayload()),
       });
       expect(res.status).toBe(415);
+    });
+  });
+
+  describe('canonical v1/v2 validation parity', () => {
+    it.each([
+      ['below', OPERATIONAL_LIMITS.maxPinsPerComponent - 1, 200],
+      ['at', OPERATIONAL_LIMITS.maxPinsPerComponent, 200],
+      ['above', OPERATIONAL_LIMITS.maxPinsPerComponent + 1, 400],
+    ])('enforces the pin-count limit %s the boundary', async (_label, pinCount, status) => {
+      const project = emptyV2Payload();
+      project.electrical.components.push({
+        id: 'x1',
+        deviceId: 'X1',
+        manufacturer: '',
+        model: '',
+        pins: Array.from({ length: pinCount }, (_, index) => ({
+          id: `p${index}`,
+          label: `P${index}`,
+          direction: 'output',
+        })),
+      });
+      project.layout.components.push({ componentId: 'x1', position: { x: 0, y: 0 } });
+
+      const res = await fetch(`${server.baseUrl}/api/projects/pin-limit-${pinCount}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(res.status).toBe(status);
+    });
+
+    it.each([
+      ['below', OPERATIONAL_LIMITS.maxWiresPerCable - 1, 200],
+      ['at', OPERATIONAL_LIMITS.maxWiresPerCable, 200],
+      ['above', OPERATIONAL_LIMITS.maxWiresPerCable + 1, 400],
+    ])('enforces the wire-count limit %s the boundary', async (_label, wireCount, status) => {
+      const project = emptyV2Payload();
+      project.electrical.cables.push({ name: 'C', wireCount, colors: [] });
+      const res = await fetch(`${server.baseUrl}/api/projects/wire-limit-${wireCount}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(res.status).toBe(status);
+    });
+
+    it.each([
+      ['below', OPERATIONAL_LIMITS.maxJunctionTaps - 1, 200],
+      ['at', OPERATIONAL_LIMITS.maxJunctionTaps, 200],
+      ['above', OPERATIONAL_LIMITS.maxJunctionTaps + 1, 400],
+    ])('enforces the junction-tap limit %s the boundary', async (_label, taps, status) => {
+      const project = emptyV2Payload();
+      project.electrical.junctions.push({ id: 'j1', label: 'J1', kind: 'rail' });
+      project.layout.junctions.push({
+        junctionId: 'j1',
+        position: { x: 0, y: 0 },
+        taps,
+      });
+      const res = await fetch(`${server.baseUrl}/api/projects/junction-tap-limit-${taps}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(res.status).toBe(status);
+    });
+
+    it.each([
+      ['below', OPERATIONAL_LIMITS.maxTotalEntities - 1, 200],
+      ['at', OPERATIONAL_LIMITS.maxTotalEntities, 200],
+      ['above', OPERATIONAL_LIMITS.maxTotalEntities + 1, 400],
+    ])('enforces the total-entity limit %s the boundary', async (_label, total, status) => {
+      const project = canonicalCableBudgetPayload(total);
+      const res = await fetch(`${server.baseUrl}/api/projects/entity-limit-${total}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(res.status).toBe(status);
+    });
+
+    it('rejects unsafe integer capacities', async () => {
+      const project = emptyV2Payload();
+      project.electrical.cables.push({
+        name: 'C',
+        wireCount: Number.MAX_SAFE_INTEGER + 1,
+        colors: [],
+      });
+      const res = await fetch(`${server.baseUrl}/api/projects/unsafe-integer`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('normalizes unused cable color and wirelabel slots before storage', async () => {
+      const project = validProjectPayload();
+      const spare = project.electrical.cables.find((cable) => cable.name === 'SPARE');
+      spare.colors = ['#a1b2c3'];
+      spare.wireLabels = ['unused-a'];
+
+      const putRes = await fetch(`${server.baseUrl}/api/projects/normalized`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(putRes.status).toBe(200);
+
+      const getRes = await fetch(`${server.baseUrl}/api/projects/normalized`);
+      const stored = await getRes.json();
+      expect(stored.electrical.cables.find((cable) => cable.name === 'SPARE')).toMatchObject({
+        colors: ['#a1b2c3', ''],
+        wireLabels: ['unused-a', ''],
+      });
+    });
+
+    it('rejects a legacy wire whose two ends are the same endpoint', async () => {
+      const project = legacyConnectedProjectPayload();
+      project.nets[0].target = { componentId: 'source', pinId: 'out' };
+
+      const res = await fetch(`${server.baseUrl}/api/projects/legacy-self-loop`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects conflicting effective colors for a reused legacy wire id', async () => {
+      const project = legacyConnectedProjectPayload();
+      project.nets.push({ ...structuredClone(project.nets[0]), id: 'wire-b', colorCode: 'BU' });
+
+      const res = await fetch(`${server.baseUrl}/api/projects/legacy-color-conflict`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('accepts an internal loop and rejects the same loop when backed by a cable', async () => {
+      const project = validProjectPayload();
+      const source = project.electrical.components.find((component) => component.id === 'source');
+      source.pins.push(
+        { id: 'loop-a', label: 'LOOP-A', direction: 'output' },
+        { id: 'loop-b', label: 'LOOP-B', direction: 'output' },
+      );
+      project.electrical.nets.push({
+        id: 'internal-loop-net',
+        name: '',
+        endpoints: [
+          { kind: 'pin', componentId: 'source', pinId: 'loop-a' },
+          { kind: 'pin', componentId: 'source', pinId: 'loop-b' },
+        ],
+        conductors: [
+          {
+            id: 'internal-loop',
+            from: { kind: 'pin', componentId: 'source', pinId: 'loop-a' },
+            to: { kind: 'pin', componentId: 'source', pinId: 'loop-b' },
+            wirevizLoop: true,
+          },
+        ],
+      });
+      project.layout.conductors.push({ conductorId: 'internal-loop' });
+
+      const accepted = await fetch(`${server.baseUrl}/api/projects/internal-loop`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(accepted.status).toBe(200);
+
+      project.electrical.nets.at(-1).conductors[0].cable = { name: 'HARNESS', wireIndex: 1 };
+      const rejected = await fetch(`${server.baseUrl}/api/projects/cable-loop`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(rejected.status).toBe(400);
+    });
+
+    it('rejects canonical and dangerous keys inside preserved extras', async () => {
+      const reserved = validProjectPayload();
+      reserved.electrical.components[0].wirevizExtras = { type: 'override' };
+      const reservedRes = await fetch(`${server.baseUrl}/api/projects/reserved-extra`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reserved),
+      });
+      expect(reservedRes.status).toBe(400);
+
+      const dangerous = validProjectPayload();
+      dangerous.electrical.cables[0].wirevizExtras = JSON.parse('{"x":{"__proto__":"bad"}}');
+      const dangerousRes = await fetch(`${server.baseUrl}/api/projects/dangerous-extra`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dangerous),
+      });
+      expect(dangerousRes.status).toBe(400);
     });
   });
 

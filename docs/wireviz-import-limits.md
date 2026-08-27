@@ -1,146 +1,139 @@
 # Importação WireViz: subconjunto suportado e limites
 
-`src/app/av-schematic/wireviz-import/` é uma implementação **clean-room**
-escrita para esta fatia — nenhum código, estrutura ou texto foi copiado ou
-adaptado do `Garth-42/WireForm` (GPL-3.0) nem do projeto Python real
-`wireviz`. Não é um parser compatível com o WireViz; ele aceita um
-subconjunto estreito da forma YAML `connectors` / `cables` / `connections`
-do WireViz, exatamente o suficiente para o fixture da issue #1. Ver
-[`docs/license-matrix.md`](license-matrix.md) para o porquê de ter sido
-escrito do zero em vez de extrair o importador do `WireForm`.
+`src/app/av-schematic/wireviz-import/` é uma implementação clean-room.
+Nenhum código, teste ou asset do `Garth-42/WireForm` ou do WireViz foi
+incorporado; somente a sintaxe pública do formato foi consultada. A matriz de
+origens e licenças está em [`license-matrix.md`](license-matrix.md).
 
-## Duas camadas
+O importador não pretende implementar todo o YAML nem todo o WireViz. Ele
+cobre o contrato necessário às issues #1 e #2 e rejeita estruturas fora desse
+contrato, em vez de montar silenciosamente um circuito parcial.
 
-1. **`wireviz-yaml.ts`** — um parser de valor genérico, mínimo, de um
-   subconjunto de YAML (mapeamentos, sequências, sequências de fluxo
-   inline, escalares entre aspas/soltos, comentários). Não sabe nada sobre
-   WireViz.
-2. **`wireviz-model.ts`** — valida um valor já analisado contra o
-   subconjunto WireViz abaixo e produz um `WireVizDocument` tipado.
+## Pipeline
 
-## Subconjunto de YAML (`wireviz-yaml.ts`)
+1. `wireviz-yaml.ts` transforma texto em valores JSON seguros.
+2. `wireviz-model.ts` valida conectores, cabos e conjuntos de conexão e gera
+   condutores tipados.
+3. `wireviz-to-diagram.ts` converte os condutores na seção elétrica do projeto
+   canônico e agrupa nets por conectividade.
+4. `export-wireviz.ts` faz o caminho inverso e entrega YAML mais relatório de
+   compatibilidade.
 
-Suportado:
+## YAML aceito
 
-- Mapeamentos aninhados (`chave: valor`, `chave:` + bloco recuado)
-- Sequências aninhadas (`- item`), incluindo as linhas de múltiplos traços
-  compactados do WireViz (`- - NANO: [D9]`, ou seja, uma sequência de
-  sequências em uma única linha)
-- Sequências de fluxo inline (`[a, b, c]`)
-- Escalares entre aspas simples e duplas; escalares soltos de
-  palavra/inteiro/decimal; `true`/`false`/`null`/`~`
-- Comentários `#` (fora de aspas) e linhas em branco
-- Qualquer recuo consistente baseado em espaços (não fixo em 2
-  espaços) **para blocos de mapeamento e sequência normais**. Há uma
-  exceção pontual: quando um item de sequência abre um mapeamento inline
-  na mesma linha do traço (`- NANO: [D9]`) e esse mapeamento continua em
-  uma linha seguinte com uma segunda chave, o parser espera que essa linha
-  de continuação tenha recuo de exatamente 2 espaços a mais que o traço
-  — não o passo de recuo que o restante do documento usa (ver
-  `parseMappingFromInline()` em `wireviz-yaml.ts`, que soma um `+ 2` fixo
-  em vez de derivar o passo do próprio documento). O fixture desta issue
-  não usa essa forma de continuação, então o caso não aparece na prática,
-  mas um documento WireViz que combine recuo de 4 espaços com esse
-  tipo de continuação de mapeamento inline **não** seria aceito.
+- Mapeamentos e sequências em bloco.
+- Sequências de escalares em fluxo, como `[1, 2, 3]`.
+- Escalares soltos ou entre aspas, números, valores lógicos e `null`.
+- O mapeamento vazio `{}`.
+- Comentários fora de aspas e linhas em branco.
+- A forma compacta de conjuntos de conexão, como `- - X1: [1]`.
 
-Não suportado (rejeitado com `WireVizYamlError`, ou simplesmente não pode
-ser expresso):
+Não são aceitos tabs no recuo, âncoras/aliases, streams com vários documentos,
+escalares de bloco (`|` e `>`), nem mapeamentos de fluxo não vazios. O emissor
+produz somente construções que esse mesmo parser consegue reler.
 
-- Tabs no recuo
-- Âncoras/aliases (`&foo`, `*foo`)
-- Streams multi-documento (`---`)
-- Escalares de bloco (`|`, `>`)
-- Mapeamentos de fluxo (`{a: 1, b: 2}`)
-- Um item de sequência cujo mapeamento continue além de um bloco extra de
-  continuação recuada (itens inline com múltiplas chaves profundamente
-  aninhados)
+## Documento WireViz aceito
 
-## Subconjunto de documento WireViz (`wireviz-model.ts`)
+Conectores:
 
-Suportado:
+- `pins`, `pincount` e `pinlabels`; designadores numéricos são inferidos
+  quando só `pincount` ou `pinlabels` está presente;
+- `type`, `subtype`, `notes`, `color`, `manufacturer`, `mpn`, `style` e
+  `show_name`;
+- `loops`, como pares de pinos do mesmo conector. Cada par vira um condutor
+  interno explícito e volta a ser emitido como `loops`;
+- um conector de um pino com `style: simple` vira uma junção explícita;
+- um `style: simple` com vários pinos continua sendo componente, evitando
+  curto-circuitar pinos eletricamente distintos.
 
-- `connectors.<nome>.pins`: uma lista simples de nomes de pino (strings)
-- `connectors.<nome>.type`: texto livre, apenas informativo
-- `cables.<nome>.colors`: uma lista simples de códigos de cor de 2 letras
-  do WireViz, um por fio (indexado a partir de 1 — `colors[0]` é o fio 1)
-- `connections`: uma lista de conjuntos de conexão, cada um com
-  **exatamente** 3 entradas: uma referência de conector, uma referência de
-  cabo, mais uma referência de conector (em qualquer ordem) — ou seja,
-  exatamente uma net ponto a ponto por conjunto de conexão, usando
-  exatamente um fio de um cabo
+Cabos:
 
-Rejeitado (lança `WireVizModelError`, nunca descartado ou adivinhado
-silenciosamente):
+- `wirecount`, `colors`, `wirelabels`, `gauge`, `length`, `notes`,
+  `color_code`, `type`, `manufacturer` e `mpn`;
+- listas de cores menores ou maiores que `wirecount` são repetidas ou
+  truncadas para reproduzir a semântica efetiva do WireViz;
+- `wirelabels` precisa ter exatamente uma entrada por condutor;
+- índices de condutor são baseados em 1 e validados contra `wirecount`.
+- uma cor RGB WireViz com seis dígitos, como `"#a1b2c3"`, é preservada e
+  reemitida exatamente, sem aproximação. Outros formatos CSS hexadecimais
+  permanecem no projeto e geram `color-not-representable` na exportação.
 
-- Um conjunto de conexão que não seja exatamente
-  `[conector, cabo, conector]` — cobre as conexões de shield/junção do
-  WireViz e qualquer referência a bundle
-- Mais de um pino por referência de conector (net **multi-drop** — o mesmo
-  net físico tocando 3+ pinos)
-- Mais de um índice de fio por referência de cabo (referências
-  multi-fio/bundle)
-- Um nome de pino não declarado na lista `pins` daquele conector
-- Um índice de fio fora do intervalo `1..colors.length` do seu cabo
-- Qualquer entrada de `connectors`/`cables` sem seu campo de lista
-  obrigatório
+Conexões:
 
-## Por que isso é mais estreito do que uma importação real precisaria ser
+- um ou mais itens por conjunto, com referências paralelas de mesma largura;
+- intervalos ascendentes e descendentes, como `1-4` e `9-7`;
+- caminhos alternados conector/cabo/conector, inclusive caminhos mais longos;
+- links diretos por setas de pino `--`, `<--`, `<-->` e `-->`;
+- o mesmo pino em vários conjuntos de conexão. Esse reuso é um fan-out
+  legítimo: todos os condutores conectados entram na mesma net multi-drop;
+- uma referência isolada a elemento não conectado.
+- pinos podem ser referidos pelo designador ou por `pinlabel`; condutores de
+  cabo podem ser referidos pelo número, por `wirelabel` ou por uma cor que
+  identifique uma única posição. Colisões e referências ambíguas são erros,
+  nunca resolvidas escolhendo a primeira ocorrência.
 
-O fixture desta fatia
-(`wireviz-import/fixtures/minimal-two-nets.fixture.ts`) foi escrito
-deliberadamente simples: exatamente duas nets, cada uma um único fio entre
-dois pinos nomeados em dois conectores, sem pino reaproveitado, sem
-subtypes, sem bundles — o mínimo que o critério de aceite da issue #1
-exige. Ele não tenta cobrir a forma completa de um projeto WireViz real.
+## Preservação e relatório
 
-Como referência do tamanho do salto entre este fixture mínimo e um projeto
-WireViz real do ecossistema Talus, o repositório público
-[`felipedruzian/talus-droid`](https://github.com/felipedruzian/talus-droid)
-tem, em `hardware/wireviz/talus-power.yml`, um documento WireViz de verdade
-com múltiplas ocorrências de `subtype` e de reuso de pino/porta — construções
-que este parser rejeita deliberadamente (ver listas acima). Esta fatia
-**não** rodou o parser desta issue nem o do `WireForm` contra esse arquivo
-para produzir uma contagem exata de construções não suportadas; uma nota de
-planejamento interna anterior a este documento citava "21 construções não
-suportadas (6 usos de `subtype`, 15 casos de reuso de porta/multi-drop)", mas
-essa contagem não foi reproduzida nesta revisão e deve ser tratada como
-**não verificada** até alguém rodar a análise de fato. Estender este parser
-para cobrir a forma completa de `talus-power.yml` (multi-drop, junções
-explícitas, subtypes) é trabalho futuro, fora do critério de aceite da
-issue #1.
+Campos desconhecidos de conectores e cabos são guardados como valores JSON,
+aparecem no relatório e são reemitidos sem interpretação. Campos reconhecidos
+cuja semântica visual não é modelada, como `shield` e `category`, também geram
+aviso e permanecem no registro do cabo.
 
-## Net -> mapeamento de diagrama (`wireviz-to-diagram.ts`)
+Um campo preservado não pode usar uma chave canônica do mesmo conector ou
+cabo e, portanto, não consegue sobrescrever `pins`, `colors`, `wirelabels` ou
+outro valor interpretado na exportação. As chaves perigosas `__proto__`,
+`constructor` e `prototype` são rejeitadas em qualquer profundidade.
 
-- Um `Edge<WireEdgeData>` por conjunto de conexão. `wireId` é o nome do
-  cabo (`W1` -> `wireId: 'W1'`). O `id` da edge do ng-diagram e o `netId`
-  são derivados do nome do cabo **e** do índice do fio (`W1` fio 1 ->
-  `id: 'wire-W1-1'`, `netId: 'net-W1-1'`), então um cabo multicolor
-  referenciado por várias conexões (uma por condutor) ainda recebe um id de
-  edge e de net únicos por fio, em vez de colidir apenas pelo nome do cabo.
-- Um pino é casado com uma porta do diagrama por igualdade exata (sensível
-  a maiúsculas/minúsculas) da string `DevicePort.label`, no node em que o
-  conector foi posicionado via o mapa `WireVizPlacement` fornecido pelo
-  chamador. Sem correspondência aproximada, sem criação automática de
-  portas.
-- O código de cor do fio do cabo é resolvido por
-  `wireviz-colors.ts::resolveWireColor()` — um subconjunto pequeno e
-  mantido explicitamente da tabela de abreviações WireViz/DIN 47100, não a
-  tabela completa. Um código não reconhecido ainda grava `colorCode`, mas
-  deixa `color` (o valor CSS) `undefined`, então o fio cai de volta ao
-  token de traço padrão em vez de renderizar silenciosamente a cor errada.
-- Qualquer falha de posicionamento/busca (`WireVizImportError`) lança um
-  erro em vez de pular a conexão, então um fixture quebrado nunca produz
-  silenciosamente menos nets do que as declaradas.
+Campos desconhecidos no nível do documento (`metadata`, `options`, `tweak` e
+outros) aparecem no relatório, mas não são incorporados ao projeto. O canvas
+pode combinar várias importações e não existe um dono inequívoco para esses
+campos globais. Essa limitação é explícita; eles não desaparecem sem aviso.
 
-## Fontes consultadas
+Erros estruturais — pino inexistente, índice fora do cabo, larguras paralelas
+divergentes, referências adjacentes que não alternam e tipos inválidos —
+interrompem a importação com um caminho para o campo problemático.
 
-- [`felipedruzian/talus-droid`](https://github.com/felipedruzian/talus-droid),
-  arquivo `hardware/wireviz/talus-power.yml` — repositório público,
-  existência do arquivo confirmada via
-  `gh api repos/felipedruzian/talus-droid/contents/hardware/wireviz/talus-power.yml`
-  em 2026-08-27. Usado apenas como referência de escala/complexidade; seu
-  conteúdo não foi copiado neste repositório.
-- Código-fonte de `src/app/av-schematic/wireviz-import/` desta fatia,
-  incluindo `wireviz-yaml.spec.ts`, `wireviz-model.spec.ts` e
-  `wireviz-to-diagram.spec.ts` — lido diretamente para confirmar o
-  comportamento descrito acima, em vez de descrito de memória.
+## Limites operacionais
+
+A fonte auditável dos limites é
+[`operational-limits.mjs`](../src/app/av-schematic/diagram/model/operational-limits.mjs).
+O importador WireViz e os validadores canônicos do cliente e do serviço usam
+os mesmos valores:
+
+| Recurso | Limite |
+|---|---:|
+| Pinos por componente | 256 |
+| Condutores por cabo | 256 |
+| Largura paralela ou entradas produzidas por uma expansão de intervalo | 256 |
+| Entradas de entidades e coleções materializadas por documento | 10.000 |
+
+Contagens, índices e extremos de intervalos precisam ser inteiros seguros do
+JavaScript. O limite é conferido antes de `pincount`, `wirecount`, intervalos,
+listas normalizadas ou registros canônicos gerarem novos arrays.
+
+O orçamento total inclui entidades elétricas, posições de cabo, referências
+de conexão e saídas possíveis do agrupamento em nets no importador. No formato
+canônico, inclui também endpoints, registros de layout, posições de pinos e
+pontos de rota. Os limites de pinos e posições de cabo descrevem capacidades
+físicas e ficam no módulo compartilhado para reutilização pela integração
+física sem criar uma segunda política.
+
+## Limites deliberados
+
+- Autogeração de conectores/cabos e templates não é implementada.
+- Setas de acoplamento de conector inteiro (`==` e variantes) não são
+  implementadas.
+- Shields podem ser preservados como campo, mas a referência especial ao
+  condutor `s` não vira uma conexão elétrica.
+- Pinout avançado além de `pins`/`pinlabels`/`loops`, imagens, itens de BOM e
+  componentes adicionais não são interpretados.
+- Códigos de cor desconhecidos são mantidos, porém podem não ter uma cor CSS
+  para renderização.
+
+## Fonte de interoperabilidade
+
+O comportamento de listas paralelas, intervalos, conectores simples, setas e
+normalização de cores foi conferido na
+[documentação oficial de sintaxe do WireViz](https://github.com/wireviz/WireViz/blob/master/docs/syntax.md).
+Essa consulta orientou o contrato; nenhum trecho da implementação GPL foi
+copiado ou adaptado.

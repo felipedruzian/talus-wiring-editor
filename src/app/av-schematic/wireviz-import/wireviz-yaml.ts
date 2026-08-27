@@ -1,3 +1,5 @@
+import { type JsonValue } from '../shared/utils/json-value';
+
 /**
  * Minimal, hand-rolled YAML-subset parser.
  *
@@ -18,7 +20,7 @@
  *
  * Not supported (throws or silently cannot represent): tabs for indentation,
  * anchors/aliases, multi-document streams, block scalars (`|`, `>`), flow
- * mappings (`{a: 1}`), multi-key inline sequence items beyond one extra
+ * mappings other than the empty `{}`, multi-key inline sequence items beyond one extra
  * indented continuation.
  *
  * Rejected as invalid input rather than silently accepted (same documented
@@ -29,13 +31,12 @@
  * over after the top-level value has been fully parsed.
  */
 
-export type YamlValue =
-  | string
-  | number
-  | boolean
-  | null
-  | YamlValue[]
-  | { [key: string]: YamlValue };
+/**
+ * An alias of the shared `JsonValue`: a parsed document is plain JSON-safe
+ * data. Sharing the declaration keeps it assignable to the diagram model's
+ * `PreservedValue` without a cast at every hand-off.
+ */
+export type YamlValue = JsonValue;
 
 interface RawLine {
   indent: number;
@@ -221,7 +222,7 @@ function isSequenceLine(content: string): boolean {
   return content === '-' || content.startsWith('- ');
 }
 
-const MAP_KEY_PATTERN = /^("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^:#]+?):(\s+(.*)|)$/;
+const MAP_KEY_PATTERN = /^("(?:[^"\\]|\\.)*"|'(?:[^']|'')*'|[^:#]+?):(\s+(.*)|)$/;
 
 function isMapKeyLine(content: string): boolean {
   return MAP_KEY_PATTERN.test(content);
@@ -325,6 +326,7 @@ function parseMapLine(
 
 function parseScalar(raw: string): YamlValue {
   const trimmed = raw.trim();
+  if (trimmed === '{}') return {};
   if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
     return parseFlowSequence(trimmed.slice(1, -1));
   }

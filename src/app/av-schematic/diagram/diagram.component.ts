@@ -25,7 +25,7 @@ import { DiagramExportService } from '../export/diagram-export.service';
 import { PropertiesSidebarService } from '../properties-sidebar/properties-sidebar.service';
 import { randomShortId } from '../shared/utils/random-short-id';
 import { generateDeviceId } from './model/auto-device-id';
-import { isDeviceNode, isWireEdge } from './model/guards';
+import { isDeviceNode, isJunctionNode, isWireEdge } from './model/guards';
 import {
   EdgeTemplateType,
   NodeTemplateType,
@@ -35,6 +35,7 @@ import {
 import { NodeVisibilityConfigService } from './node-visibility/node-visibility-config.service';
 import { BoardNodeComponent } from './node/board-node.component';
 import { DeviceNodeComponent } from './node/device-node.component';
+import { JunctionNodeComponent } from './node/junction-node.component';
 import { applyEdgeStretchOnSelectionMoved } from './edge-reshaping/middleware/edge-stretch-on-move';
 import { EdgeReshapeOverlayComponent } from './edge-reshaping/edge-reshape-overlay.component';
 import { WireEdgeComponent } from './wire-edge.component';
@@ -118,6 +119,7 @@ export class DiagramComponent {
   nodeTemplateMap = new NgDiagramNodeTemplateMap([
     [NodeTemplateType.DeviceNode, DeviceNodeComponent],
     [NodeTemplateType.BoardNode, BoardNodeComponent],
+    [NodeTemplateType.JunctionNode, JunctionNodeComponent],
   ]);
 
   edgeTemplateMap = new NgDiagramEdgeTemplateMap([[EdgeTemplateType.WireEdge, WireEdgeComponent]]);
@@ -165,8 +167,9 @@ export class DiagramComponent {
 
   onSelectionGestureEnded(event: SelectionGestureEndedEvent): void {
     const hasDeviceNodes = event.nodes.some(isDeviceNode);
+    const hasJunctionNodes = event.nodes.some(isJunctionNode);
     const hasWireEdges = event.edges.some(isWireEdge);
-    if (hasDeviceNodes || hasWireEdges) {
+    if (hasDeviceNodes || hasJunctionNodes || hasWireEdges) {
       this.sidebarService.expandSidebar();
     }
   }

@@ -12,6 +12,12 @@ import {
 import { WireFormService } from './components/wire-form/wire-form.service';
 import { ElementMutationService } from './element-mutation.service';
 import { PropertiesSidebarService } from './properties-sidebar.service';
+import { JunctionFormComponent } from './components/junction-form/junction-form.component';
+import { JunctionFormService } from './components/junction-form/junction-form.service';
+import {
+  ON_JUNCTION_FIELD_CHANGE,
+  type JunctionFieldChange,
+} from './components/junction-form/junction-form.mappers';
 
 @Component({
   selector: 'app-properties-sidebar',
@@ -20,10 +26,12 @@ import { PropertiesSidebarService } from './properties-sidebar.service';
     SidebarPlaceholderComponent,
     DeviceFormComponent,
     WireFormComponent,
+    JunctionFormComponent,
   ],
   providers: [
     DeviceFormService,
     WireFormService,
+    JunctionFormService,
     {
       provide: ON_DEVICE_FIELD_CHANGE,
       useFactory: () => {
@@ -38,7 +46,16 @@ import { PropertiesSidebarService } from './properties-sidebar.service';
       useFactory: () => {
         const mutation = inject(ElementMutationService);
         return (change: WireFieldChange) => {
-          mutation.handleWireFieldChange(change);
+          void mutation.handleWireFieldChange(change);
+        };
+      },
+    },
+    {
+      provide: ON_JUNCTION_FIELD_CHANGE,
+      useFactory: () => {
+        const mutation = inject(ElementMutationService);
+        return (change: JunctionFieldChange) => {
+          mutation.handleJunctionFieldChange(change);
         };
       },
     },
@@ -55,11 +72,14 @@ export class PropertiesSidebarComponent {
   protected readonly isExpanded = this.sidebarService.isExpanded;
   protected readonly state = this.sidebarService.sidebarState;
   protected readonly selectedNode = this.sidebarService.selectedNode;
+  protected readonly selectedJunction = this.sidebarService.selectedJunction;
   protected readonly selectedWireDetails = this.sidebarService.selectedWireDetails;
 
-  protected readonly headerSubtitle = computed(() =>
-    this.state() === 'single-node' ? (this.selectedNode()?.data.deviceId ?? '') : '',
-  );
+  protected readonly headerSubtitle = computed(() => {
+    if (this.state() === 'single-node') return this.selectedNode()?.data.deviceId ?? '';
+    if (this.state() === 'single-junction') return this.selectedJunction()?.data.label ?? '';
+    return '';
+  });
 
   protected onHeaderToggle(): void {
     this.sidebarService.toggleSidebarVisibility();
@@ -67,6 +87,13 @@ export class PropertiesSidebarComponent {
 
   protected onRemoveNode(): void {
     const nodeId = this.sidebarService.selectedNode()?.id;
+    if (nodeId) {
+      void this.elementMutationService.removeNode(nodeId);
+    }
+  }
+
+  protected onRemoveJunction(): void {
+    const nodeId = this.sidebarService.selectedJunction()?.id;
     if (nodeId) {
       void this.elementMutationService.removeNode(nodeId);
     }

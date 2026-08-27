@@ -4,7 +4,7 @@ import {
   MINIMAL_TWO_NETS_WIREVIZ_YAML,
 } from '../wireviz-import/fixtures/minimal-two-nets.fixture';
 import { importWireViz } from '../wireviz-import/import-wireviz';
-import { wirevizConnectionsToEdges } from '../wireviz-import/wireviz-to-diagram';
+import { fromCanonicalProject, toCanonicalProject } from './model/canonical-project';
 import {
   NodeTemplateType,
   type AvSchematicEdgeData,
@@ -152,19 +152,22 @@ const tb6612: Node<DeviceNodeData> = {
   },
 };
 
-const nodes: Node<AvSchematicNodeData>[] = [boardA, nano, tb6612];
-
-const nodesById = new Map(
-  nodes.filter((n): n is Node<DeviceNodeData> => n.data.type === 'device').map((n) => [n.id, n]),
-);
-
-const wirevizDoc = importWireViz(MINIMAL_TWO_NETS_WIREVIZ_YAML);
-const importedEdges = wirevizConnectionsToEdges(wirevizDoc, MINIMAL_TWO_NETS_PLACEMENT, nodesById);
+const baseNodes: Node<AvSchematicNodeData>[] = [boardA, nano, tb6612];
+const baseProject = toCanonicalProject(baseNodes, []);
+const imported = importWireViz(MINIMAL_TWO_NETS_WIREVIZ_YAML, {
+  placement: MINIMAL_TWO_NETS_PLACEMENT,
+  components: baseProject.electrical.components,
+});
+const importedModel = fromCanonicalProject({
+  ...baseProject,
+  electrical: imported.electrical,
+});
+const nodes = importedModel.nodes;
 
 // Give the direction-line net (W2) a manual bend, demonstrating that manually
 // routed points survive being produced by the WireViz import (they're just
 // ordinary edge points from here on — edge-reshaping owns editing them).
-const edges: Edge<AvSchematicEdgeData>[] = importedEdges.map((edge) =>
+const edges: Edge<AvSchematicEdgeData>[] = importedModel.edges.map((edge) =>
   edge.data.wireId === 'W2'
     ? ({
         ...edge,

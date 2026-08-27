@@ -14,6 +14,8 @@
     <div class="sidebar-content sidebar-enter">
       @if (state() === 'single-node' && selectedNode(); as node) {
         <app-device-form [entityId]="node.id" [nodeData]="node.data" />
+      } @else if (state() === 'single-junction' && selectedJunction(); as junction) {
+        <app-junction-form [nodeId]="junction.id" [nodeData]="junction.data" />
       } @else if (state() === 'single-edge' && selectedWireDetails(); as wire) {
         <app-wire-form
           [edgeId]="wire.edge.id"
@@ -37,6 +39,12 @@
       <div class="sidebar-actions">
         <button class="remove-button p10" type="button" (click)="onRemoveNode()">
           Remove device
+        </button>
+      </div>
+    } @else if (state() === 'single-junction') {
+      <div class="sidebar-actions">
+        <button class="remove-button p10" type="button" (click)="onRemoveJunction()">
+          Remover junção
         </button>
       </div>
     } @else if (state() === 'single-edge' && selectedWireDetails(); as wire) {

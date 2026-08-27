@@ -1,9 +1,13 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { NgDiagramModelService, NgDiagramSelectionService, type Edge, type Node } from 'ng-diagram';
-import { isDeviceNode, isWireEdge } from '../diagram/model/guards';
-import { type DeviceNodeData, type WireEdgeData } from '../diagram/model/interfaces';
+import { isDeviceNode, isJunctionNode, isWireEdge } from '../diagram/model/guards';
+import {
+  type DeviceNodeData,
+  type JunctionNodeData,
+  type WireEdgeData,
+} from '../diagram/model/interfaces';
 
-export type SidebarState = 'empty' | 'single-node' | 'single-edge' | 'multi';
+export type SidebarState = 'empty' | 'single-node' | 'single-junction' | 'single-edge' | 'multi';
 
 export interface WireEndpointInfo {
   deviceId: string;
@@ -32,6 +36,10 @@ export class PropertiesSidebarService {
     this.selectionService.selection().edges.filter(isWireEdge),
   );
 
+  readonly selectedJunctionNodes = computed<Node<JunctionNodeData>[]>(() =>
+    this.selectionService.selection().nodes.filter(isJunctionNode),
+  );
+
   readonly selectedNode = computed<Node<DeviceNodeData> | undefined>(() =>
     this.selectedDeviceNodes().at(0),
   );
@@ -40,13 +48,20 @@ export class PropertiesSidebarService {
     this.selectedWireEdges().at(0),
   );
 
+  readonly selectedJunction = computed<Node<JunctionNodeData> | undefined>(() =>
+    this.selectedJunctionNodes().at(0),
+  );
+
   readonly sidebarState = computed<SidebarState>(() => {
     const nodeCount = this.selectedDeviceNodes().length;
+    const junctionCount = this.selectedJunctionNodes().length;
     const edgeCount = this.selectedWireEdges().length;
-    const total = nodeCount + edgeCount;
+    const total = nodeCount + junctionCount + edgeCount;
     if (total === 0) return 'empty';
     if (total > 1) return 'multi';
-    return nodeCount === 1 ? 'single-node' : 'single-edge';
+    if (nodeCount === 1) return 'single-node';
+    if (junctionCount === 1) return 'single-junction';
+    return 'single-edge';
   });
 
   readonly selectedWireDetails = computed<SelectedWireDetails | null>(() => {
@@ -75,8 +90,15 @@ export class PropertiesSidebarService {
   ): WireEndpointInfo | null {
     if (!nodeId) return null;
     const node = nodes.find((n) => n.id === nodeId);
-    if (!node || !isDeviceNode(node)) return null;
-    const port = portId ? node.data.ports.find((p) => p.id === portId) : undefined;
+    if (!node) return null;
+    if (isJunctionNode(node)) {
+      return {
+        deviceId: node.data.label,
+        portLabel: portId ?? 'junção',
+      };
+    }
+    if (!isDeviceNode(node)) return null;
+    const port = portId ? node.data.ports.find((candidate) => candidate.id === portId) : undefined;
     return {
       deviceId: node.data.deviceId,
       portLabel: port?.label ?? portId ?? '',

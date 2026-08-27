@@ -28,6 +28,10 @@
 <div class="form-section">
   <span class="h10 section-title">Connection</span>
 
+  @if (edgeData().wirevizLoop) {
+    <p class="p10 field-value">Loop interno WireViz entre dois pinos do mesmo conector.</p>
+  }
+
   <div class="endpoint-grid">
     <span class="p10 field-label">Source</span>
     <span class="p10 field-value">

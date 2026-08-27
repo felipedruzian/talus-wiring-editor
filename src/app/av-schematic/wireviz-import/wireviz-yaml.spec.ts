@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseYamlSubset, WireVizYamlError } from './wireviz-yaml';
+import { stringifyYamlSubset } from './wireviz-yaml-emit';
+import { parseYamlSubset, WireVizYamlError, type YamlValue } from './wireviz-yaml';
 
 describe('parseYamlSubset', () => {
   it('parses a flat mapping', () => {
@@ -97,5 +98,27 @@ describe('parseYamlSubset', () => {
   it('rejects a document that dedents below the first line before ending', () => {
     const yaml = ['  a: 1', 'b: 2'].join('\n');
     expect(() => parseYamlSubset(yaml)).toThrow(WireVizYamlError);
+  });
+});
+
+describe('stringifyYamlSubset', () => {
+  it('round-trips nested mappings and connection sets', () => {
+    const value: YamlValue = {
+      connectors: { A: { pins: ['1'], subtype: 'revision-a' } },
+      connections: [[{ A: ['1'] }, { B: ['P'] }]],
+    };
+    expect(parseYamlSubset(stringifyYamlSubset(value))).toEqual(value);
+  });
+
+  it('quotes numeric-looking strings so unknown fields keep their scalar type', () => {
+    const value: YamlValue = { custom: '1', negative: '-2', decimal: '0.50' };
+    const yaml = stringifyYamlSubset(value);
+    expect(yaml).toContain('custom: "1"');
+    expect(parseYamlSubset(yaml)).toEqual(value);
+  });
+
+  it('round-trips empty mappings and quoted keys with apostrophes', () => {
+    const value: YamlValue = { extras: { 'owner\'s "bag"': {} } };
+    expect(parseYamlSubset(stringifyYamlSubset(value))).toEqual(value);
   });
 });
