@@ -1,6 +1,9 @@
+import { type JsonValue } from '../../shared/utils/json-value';
+
 export enum NodeTemplateType {
   DeviceNode = 'deviceNode',
   BoardNode = 'boardNode',
+  JunctionNode = 'junctionNode',
 }
 
 export enum EdgeTemplateType {
@@ -8,6 +11,22 @@ export enum EdgeTemplateType {
 }
 
 export type PortDirection = 'input' | 'output';
+
+/** WireViz pin-level link used when two connector pins mate without a cable. */
+export type WireVizLinkStyle = '--' | '<--' | '<-->' | '-->';
+
+/**
+ * A JSON-safe value preserved verbatim from an imported document.
+ *
+ * An alias of the shared `JsonValue` — the same underlying type the YAML
+ * subset parser uses — so a field read from a document and a field stored in
+ * the model stay assignable to each other. The alias exists to name the
+ * *role*: "carried without being interpreted", which is not a YAML concern.
+ */
+export type PreservedValue = JsonValue;
+
+/** Uninterpreted fields kept so a round-trip can write them back unchanged. */
+export type PreservedFields = Readonly<Record<string, PreservedValue>>;
 
 /**
  * A hole address on a physical board's grid (0-indexed, row then column).
@@ -27,10 +46,31 @@ export interface DevicePort {
   label: string;
   direction: PortDirection;
   connectorType?: string;
+  /** Original WireViz pin designator, kept independently from the editor label/id. */
+  wirevizDesignator?: string;
+  /** Original positional `pinlabels` value, when the source document declared one. */
+  wirevizLabel?: string;
   hole?: BoardHole;
 }
 
-export interface DeviceNodeData {
+/** WireViz connector metadata that is orthogonal to the editor's own device fields. */
+export interface WireVizConnectorMetadata {
+  /** Name this element takes as a WireViz `connectors.<name>` entry. */
+  wirevizName?: string;
+  /** WireViz connector family. */
+  wirevizType?: string;
+  /** WireViz connector variant. */
+  wirevizSubtype?: string;
+  wirevizColor?: string;
+  wirevizManufacturer?: string;
+  wirevizMpn?: string;
+  wirevizStyle?: string;
+  wirevizShowName?: boolean;
+  /** WireViz connector keys this codebase does not interpret. */
+  wirevizExtras?: PreservedFields;
+}
+
+export interface DeviceNodeData extends WireVizConnectorMetadata {
   type: 'device';
   deviceId: string;
   manufacturer: string;
@@ -45,6 +85,7 @@ export interface DeviceNodeData {
    * omit it.
    */
   boardId?: string;
+  notes?: string;
   ports: DevicePort[];
 }
 
@@ -65,17 +106,96 @@ export interface BoardNodeData {
   pitch: number;
 }
 
+/**
+ * `junction` is a splice/ferrule: one electrical point where several
+ * conductors of the same net meet. `rail` is the same thing drawn as a bus
+ * bar with several physical tap positions — still a *single* electrical
+ * point. The distinction is deliberately visual, because that is the only
+ * honest way to round-trip it: the editor rail has no distinct named pin per
+ * visual tap, so WireViz's one-pin `style: simple` connector is its lossless
+ * form. WireViz `loops` are modeled separately when a real multi-pin connector
+ * declares internal connectivity. Keeping the rail electrically single-point
+ * means export -> import never splits it into separate nets.
+ */
+export type JunctionKind = 'junction' | 'rail';
+
+/**
+ * An explicit junction / rail / fan-out point on the canvas.
+ *
+ * Fan-out is not a node type: it is what a junction (or any pin) does when
+ * more than one conductor of the same net lands on it. `netId`/`netName`
+ * below are a denormalized label of the net the junction currently belongs
+ * to, refreshed whenever the project is (de)serialized — the authoritative
+ * net membership always comes from the conductor graph
+ * (`model/net-grouping.ts`).
+ */
+export interface JunctionNodeData extends WireVizConnectorMetadata {
+  type: 'junction';
+  junctionId: string;
+  label: string;
+  kind: JunctionKind;
+  /**
+   * Number of visual tap positions to render (>= 1). Purely geometric: every
+   * tap is the same electrical point. Conductors record which tap they land
+   * on in the project's layout section, never in its electrical section.
+   */
+  taps: number;
+  notes?: string;
+  /** Denormalized net label, for on-canvas inspection. Not authoritative. */
+  netId?: string;
+  netName?: string;
+  boardId?: string;
+  hole?: BoardHole;
+}
+
+/**
+ * One conductor, denormalized for rendering and sidebar editing.
+ *
+ * WireViz keeps `gauge`/`length`/`notes`/`colors` on the *cable*, and so does
+ * the canonical project format (`electrical.cables`). An ng-diagram edge has
+ * nowhere to point at a shared record, so these fields are copied onto every
+ * conductor of a cable when the model is built, and re-normalized back into
+ * one cable entry when the project is serialized. `wireId` is the cable name;
+ * `wireIndex` is the 1-based conductor within it.
+ */
 export interface WireEdgeData {
   type: 'wire';
   wireId: string;
+  /** 1-based wire index within `wireId`'s cable. Absent means wire 1. */
+  wireIndex?: number;
+  /** Full imported cable cardinality, including currently unused conductors. */
+  cableWireCount?: number;
+  /** Full imported color list, including colors of currently unused conductors. */
+  cableColors?: string[];
+  /** Full imported wire-label list, including currently unused conductors. */
+  cableWireLabels?: string[];
   wireType?: string;
-  /** Electrical net this wire belongs to (e.g. from a WireViz import). */
+  /** WireViz arrow used by a direct pin-to-pin link; absent defaults to `--`. */
+  wirevizLink?: WireVizLinkStyle;
+  /** True when this edge represents a WireViz connector `loops` pair. */
+  wirevizLoop?: boolean;
+  /** Electrical net this conductor belongs to. Derived from connectivity, not authored. */
   netId?: string;
-  /** Resolved CSS color for the wire stroke, e.g. from a WireViz color code. */
+  netName?: string;
+  /** Resolved CSS color for the wire stroke. Exact six-digit RGB is also valid WireViz. */
   color?: string;
-  /** Original WireViz 2-letter color code the wire was imported with (e.g. "YE"). */
+  /** WireViz color abbreviation (e.g. "YE") when the color has one. */
   colorCode?: string;
+  /** Cross-section / gauge as written in WireViz, e.g. "0.25 mm2" or "24 AWG". */
+  gauge?: string;
+  /** Conductor length as written in WireViz, e.g. "0.2 m". */
+  length?: string;
+  /** Free-form observation carried by the cable. */
+  notes?: string;
+  /** WireViz `cables.<name>.type`. */
+  cableType?: string;
+  manufacturer?: string;
+  mpn?: string;
+  /** WireViz `cables.<name>.color_code` (the color *standard*, e.g. "DIN"). */
+  cableColorCode?: string;
+  /** WireViz cable keys this codebase does not interpret; re-emitted unchanged on export. */
+  cableExtras?: PreservedFields;
 }
 
-export type AvSchematicNodeData = DeviceNodeData | BoardNodeData;
+export type AvSchematicNodeData = DeviceNodeData | BoardNodeData | JunctionNodeData;
 export type AvSchematicEdgeData = WireEdgeData;

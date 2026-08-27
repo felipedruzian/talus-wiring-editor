@@ -1,5 +1,5 @@
-// Structural validation for the CanonicalProjectV1 JSON format, mirrored from
-// src/app/av-schematic/diagram/model/canonical-project.ts's parseCanonicalProject.
+// Structural validation for CanonicalProject JSON, mirrored from
+// src/app/av-schematic/diagram/model/canonical-project-parse.ts.
 //
 // This server has no build step linking it to the Angular/TypeScript source
 // (see docs/local-service.md: plain Node core modules only, no bundler) so
@@ -18,25 +18,59 @@ export class CanonicalProjectValidationError extends Error {
 
 const ALLOWED_ROUTING_MODES = ['manual'];
 const ALLOWED_PORT_DIRECTIONS = ['input', 'output'];
+const ALLOWED_JUNCTION_KINDS = ['junction', 'rail'];
+const ALLOWED_ENDPOINT_KINDS = ['pin', 'junction'];
+const ALLOWED_WIREVIZ_LINKS = ['--', '<--', '<-->', '-->'];
+const DANGEROUS_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const WIREVIZ_CONNECTOR_CANONICAL_KEYS = new Set([
+  'type',
+  'subtype',
+  'pins',
+  'pinlabels',
+  'pincount',
+  'loops',
+  'notes',
+  'color',
+  'manufacturer',
+  'mpn',
+  'style',
+  'show_name',
+]);
+const WIREVIZ_CABLE_CANONICAL_KEYS = new Set([
+  'wirecount',
+  'colors',
+  'wirelabels',
+  'gauge',
+  'length',
+  'notes',
+  'color_code',
+  'type',
+  'manufacturer',
+  'mpn',
+]);
 
-/** Parses and validates an untrusted value as a CanonicalProjectV1. Throws CanonicalProjectValidationError on any mismatch. */
+/** Parses and validates an untrusted canonical project. */
 export function parseCanonicalProject(raw) {
   const root = expectRecord(raw, 'project');
+  const version = root['formatVersion'];
 
-  if (root['formatVersion'] !== 1) {
-    throw new CanonicalProjectValidationError(
-      `project.formatVersion: expected 1, got ${JSON.stringify(root['formatVersion'])}`,
-    );
-  }
+  if (version === 1) return parseV1(root);
+  if (version === 2) return parseV2(root);
 
+  throw new CanonicalProjectValidationError(
+    `project.formatVersion: expected 1 or 2, got ${JSON.stringify(version)}`,
+  );
+}
+
+function parseV1(root) {
   const boards = expectArray(root['boards'], 'project.boards').map((b, i) =>
     parseBoard(b, `project.boards[${i}]`),
   );
   const components = expectArray(root['components'], 'project.components').map((c, i) =>
-    parseComponent(c, `project.components[${i}]`),
+    parseLegacyComponent(c, `project.components[${i}]`),
   );
   const nets = expectArray(root['nets'], 'project.nets').map((n, i) =>
-    parseNet(n, `project.nets[${i}]`),
+    parseLegacyNet(n, `project.nets[${i}]`),
   );
 
   const nodeIds = new Set();
@@ -71,6 +105,7 @@ export function parseCanonicalProject(raw) {
   }
 
   const netIds = new Set();
+  const cableColors = new Map();
   for (const net of nets) {
     if (netIds.has(net.id)) {
       throw new CanonicalProjectValidationError(`project.nets: duplicate id "${net.id}"`);
@@ -78,9 +113,614 @@ export function parseCanonicalProject(raw) {
     netIds.add(net.id);
     validateEndpoint(net.source, componentsById, `project.nets "${net.id}".source`);
     validateEndpoint(net.target, componentsById, `project.nets "${net.id}".target`);
+    if (
+      net.source.componentId === net.target.componentId &&
+      net.source.pinId === net.target.pinId
+    ) {
+      throw new CanonicalProjectValidationError(
+        `project.nets "${net.id}": both ends are the same endpoint`,
+      );
+    }
+    if (net.wireId) {
+      const color = net.colorCode ?? net.color;
+      const current = cableColors.get(net.wireId);
+      if (current && color && current !== color) {
+        throw new CanonicalProjectValidationError(
+          `project.nets: legacy cable "${net.wireId}" has conflicting colors ` +
+            `("${current}" and "${color}")`,
+        );
+      }
+      if (!current && color) cableColors.set(net.wireId, color);
+    }
   }
 
   return { formatVersion: 1, boards, components, nets };
+}
+
+function parseV2(root) {
+  const electricalRaw = expectRecord(root['electrical'], 'project.electrical');
+  const layoutRaw = expectRecord(root['layout'], 'project.layout');
+
+  const electrical = {
+    components: expectArray(electricalRaw['components'], 'project.electrical.components').map(
+      (value, index) => parseV2Component(value, `project.electrical.components[${index}]`),
+    ),
+    junctions: expectArray(electricalRaw['junctions'], 'project.electrical.junctions').map(
+      (value, index) => parseV2Junction(value, `project.electrical.junctions[${index}]`),
+    ),
+    cables: expectArray(electricalRaw['cables'], 'project.electrical.cables').map(
+      (value, index) => parseV2Cable(value, `project.electrical.cables[${index}]`),
+    ),
+    nets: expectArray(electricalRaw['nets'], 'project.electrical.nets').map((value, index) =>
+      parseV2Net(value, `project.electrical.nets[${index}]`),
+    ),
+  };
+
+  const layout = {
+    boards: expectArray(layoutRaw['boards'], 'project.layout.boards').map((value, index) =>
+      parseBoard(value, `project.layout.boards[${index}]`),
+    ),
+    components: expectArray(layoutRaw['components'], 'project.layout.components').map(
+      (value, index) => parseV2ComponentLayout(value, `project.layout.components[${index}]`),
+    ),
+    junctions: expectArray(layoutRaw['junctions'], 'project.layout.junctions').map(
+      (value, index) => parseV2JunctionLayout(value, `project.layout.junctions[${index}]`),
+    ),
+    conductors: expectArray(layoutRaw['conductors'], 'project.layout.conductors').map(
+      (value, index) => parseV2ConductorLayout(value, `project.layout.conductors[${index}]`),
+    ),
+  };
+
+  const project = { formatVersion: 2, electrical, layout };
+  validateV2Project(project);
+  return project;
+}
+
+function parseV2Component(raw, label) {
+  const obj = expectRecord(raw, label);
+  const pins = expectArray(obj['pins'], `${label}.pins`).map((value, index) =>
+    parseV2Pin(value, `${label}.pins[${index}]`),
+  );
+
+  return {
+    id: expectNonEmptyString(obj['id'], `${label}.id`),
+    deviceId: expectString(obj['deviceId'], `${label}.deviceId`),
+    manufacturer: expectString(obj['manufacturer'], `${label}.manufacturer`),
+    model: expectString(obj['model'], `${label}.model`),
+    category: expectOptionalString(obj['category'], `${label}.category`),
+    location: expectOptionalString(obj['location'], `${label}.location`),
+    wirevizName: expectOptionalString(obj['wirevizName'], `${label}.wirevizName`),
+    wirevizType: expectOptionalString(obj['wirevizType'], `${label}.wirevizType`),
+    wirevizSubtype: expectOptionalString(obj['wirevizSubtype'], `${label}.wirevizSubtype`),
+    wirevizColor: expectOptionalString(obj['wirevizColor'], `${label}.wirevizColor`),
+    wirevizManufacturer: expectOptionalString(
+      obj['wirevizManufacturer'],
+      `${label}.wirevizManufacturer`,
+    ),
+    wirevizMpn: expectOptionalString(obj['wirevizMpn'], `${label}.wirevizMpn`),
+    wirevizStyle: expectOptionalString(obj['wirevizStyle'], `${label}.wirevizStyle`),
+    wirevizShowName: expectOptionalBoolean(obj['wirevizShowName'], `${label}.wirevizShowName`),
+    notes: expectOptionalString(obj['notes'], `${label}.notes`),
+    wirevizExtras: expectOptionalJsonRecord(
+      obj['wirevizExtras'],
+      `${label}.wirevizExtras`,
+      WIREVIZ_CONNECTOR_CANONICAL_KEYS,
+    ),
+    pins,
+  };
+}
+
+function parseV2Pin(raw, label) {
+  const obj = expectRecord(raw, label);
+  return {
+    id: expectNonEmptyString(obj['id'], `${label}.id`),
+    label: expectString(obj['label'], `${label}.label`),
+    direction: expectOneOf(obj['direction'], ALLOWED_PORT_DIRECTIONS, `${label}.direction`),
+    connectorType: expectOptionalString(obj['connectorType'], `${label}.connectorType`),
+    wirevizDesignator: expectOptionalString(
+      obj['wirevizDesignator'],
+      `${label}.wirevizDesignator`,
+    ),
+    wirevizLabel: expectOptionalString(obj['wirevizLabel'], `${label}.wirevizLabel`),
+  };
+}
+
+function parseV2Junction(raw, label) {
+  const obj = expectRecord(raw, label);
+  return {
+    id: expectNonEmptyString(obj['id'], `${label}.id`),
+    label: expectString(obj['label'], `${label}.label`),
+    kind: expectOneOf(obj['kind'], ALLOWED_JUNCTION_KINDS, `${label}.kind`),
+    notes: expectOptionalString(obj['notes'], `${label}.notes`),
+    wirevizName: expectOptionalString(obj['wirevizName'], `${label}.wirevizName`),
+    wirevizType: expectOptionalString(obj['wirevizType'], `${label}.wirevizType`),
+    wirevizSubtype: expectOptionalString(obj['wirevizSubtype'], `${label}.wirevizSubtype`),
+    wirevizColor: expectOptionalString(obj['wirevizColor'], `${label}.wirevizColor`),
+    wirevizManufacturer: expectOptionalString(
+      obj['wirevizManufacturer'],
+      `${label}.wirevizManufacturer`,
+    ),
+    wirevizMpn: expectOptionalString(obj['wirevizMpn'], `${label}.wirevizMpn`),
+    wirevizStyle: expectOptionalString(obj['wirevizStyle'], `${label}.wirevizStyle`),
+    wirevizShowName: expectOptionalBoolean(obj['wirevizShowName'], `${label}.wirevizShowName`),
+    wirevizExtras: expectOptionalJsonRecord(
+      obj['wirevizExtras'],
+      `${label}.wirevizExtras`,
+      WIREVIZ_CONNECTOR_CANONICAL_KEYS,
+    ),
+  };
+}
+
+function parseV2Cable(raw, label) {
+  const obj = expectRecord(raw, label);
+  const wireCount = expectPositiveInteger(obj['wireCount'], `${label}.wireCount`);
+  const colors = expectArray(obj['colors'], `${label}.colors`).map((value, index) =>
+    expectString(value, `${label}.colors[${index}]`),
+  );
+  if (colors.length > wireCount) {
+    throw new CanonicalProjectValidationError(
+      `${label}.colors: has ${colors.length} entries but wireCount is ${wireCount}`,
+    );
+  }
+  while (colors.length < wireCount) colors.push('');
+  const wireLabels =
+    obj['wireLabels'] === undefined
+      ? undefined
+      : expectArray(obj['wireLabels'], `${label}.wireLabels`).map((value, index) =>
+          expectString(value, `${label}.wireLabels[${index}]`),
+        );
+  if (wireLabels && wireLabels.length > wireCount) {
+    throw new CanonicalProjectValidationError(
+      `${label}.wireLabels: has ${wireLabels.length} entries but wireCount is ${wireCount}`,
+    );
+  }
+  if (wireLabels) while (wireLabels.length < wireCount) wireLabels.push('');
+
+  return {
+    name: expectNonEmptyString(obj['name'], `${label}.name`),
+    wireCount,
+    colors,
+    wireLabels,
+    gauge: expectOptionalString(obj['gauge'], `${label}.gauge`),
+    length: expectOptionalString(obj['length'], `${label}.length`),
+    notes: expectOptionalString(obj['notes'], `${label}.notes`),
+    type: expectOptionalString(obj['type'], `${label}.type`),
+    manufacturer: expectOptionalString(obj['manufacturer'], `${label}.manufacturer`),
+    mpn: expectOptionalString(obj['mpn'], `${label}.mpn`),
+    colorCode: expectOptionalString(obj['colorCode'], `${label}.colorCode`),
+    wirevizExtras: expectOptionalJsonRecord(
+      obj['wirevizExtras'],
+      `${label}.wirevizExtras`,
+      WIREVIZ_CABLE_CANONICAL_KEYS,
+    ),
+  };
+}
+
+function parseV2Net(raw, label) {
+  const obj = expectRecord(raw, label);
+  return {
+    id: expectNonEmptyString(obj['id'], `${label}.id`),
+    name: expectString(obj['name'], `${label}.name`),
+    endpoints: expectArray(obj['endpoints'], `${label}.endpoints`).map((value, index) =>
+      parseV2Endpoint(value, `${label}.endpoints[${index}]`),
+    ),
+    conductors: expectArray(obj['conductors'], `${label}.conductors`).map((value, index) =>
+      parseV2Conductor(value, `${label}.conductors[${index}]`),
+    ),
+  };
+}
+
+function parseV2Endpoint(raw, label) {
+  const obj = expectRecord(raw, label);
+  const kind = expectOneOf(obj['kind'], ALLOWED_ENDPOINT_KINDS, `${label}.kind`);
+  if (kind === 'junction') {
+    return { kind, junctionId: expectNonEmptyString(obj['junctionId'], `${label}.junctionId`) };
+  }
+  return {
+    kind,
+    componentId: expectNonEmptyString(obj['componentId'], `${label}.componentId`),
+    pinId: expectNonEmptyString(obj['pinId'], `${label}.pinId`),
+  };
+}
+
+function parseV2Conductor(raw, label) {
+  const obj = expectRecord(raw, label);
+  let cable;
+  if (obj['cable'] !== undefined) {
+    const cableRaw = expectRecord(obj['cable'], `${label}.cable`);
+    cable = {
+      name: expectNonEmptyString(cableRaw['name'], `${label}.cable.name`),
+      wireIndex: expectPositiveInteger(cableRaw['wireIndex'], `${label}.cable.wireIndex`),
+    };
+  }
+  return {
+    id: expectNonEmptyString(obj['id'], `${label}.id`),
+    from: parseV2Endpoint(obj['from'], `${label}.from`),
+    to: parseV2Endpoint(obj['to'], `${label}.to`),
+    cable,
+    wireType: expectOptionalString(obj['wireType'], `${label}.wireType`),
+    wirevizLink:
+      obj['wirevizLink'] === undefined
+        ? undefined
+        : expectOneOf(obj['wirevizLink'], ALLOWED_WIREVIZ_LINKS, `${label}.wirevizLink`),
+    wirevizLoop: expectOptionalBoolean(obj['wirevizLoop'], `${label}.wirevizLoop`),
+  };
+}
+
+function parseV2ComponentLayout(raw, label) {
+  const obj = expectRecord(raw, label);
+  return {
+    componentId: expectNonEmptyString(obj['componentId'], `${label}.componentId`),
+    position: expectPoint(obj['position'], `${label}.position`),
+    boardId: expectOptionalString(obj['boardId'], `${label}.boardId`),
+    pinHoles:
+      obj['pinHoles'] === undefined
+        ? undefined
+        : expectArray(obj['pinHoles'], `${label}.pinHoles`).map((value, index) =>
+            parseV2PinPlacement(value, `${label}.pinHoles[${index}]`),
+          ),
+  };
+}
+
+function parseV2PinPlacement(raw, label) {
+  const obj = expectRecord(raw, label);
+  return {
+    pinId: expectNonEmptyString(obj['pinId'], `${label}.pinId`),
+    hole: expectHole(obj['hole'], `${label}.hole`),
+  };
+}
+
+function parseV2JunctionLayout(raw, label) {
+  const obj = expectRecord(raw, label);
+  return {
+    junctionId: expectNonEmptyString(obj['junctionId'], `${label}.junctionId`),
+    position: expectPoint(obj['position'], `${label}.position`),
+    taps: expectPositiveInteger(obj['taps'], `${label}.taps`),
+    boardId: expectOptionalString(obj['boardId'], `${label}.boardId`),
+    hole: obj['hole'] === undefined ? undefined : expectHole(obj['hole'], `${label}.hole`),
+  };
+}
+
+function parseV2ConductorLayout(raw, label) {
+  const obj = expectRecord(raw, label);
+  return {
+    conductorId: expectNonEmptyString(obj['conductorId'], `${label}.conductorId`),
+    routingMode:
+      obj['routingMode'] === undefined
+        ? undefined
+        : expectOneOf(obj['routingMode'], ALLOWED_ROUTING_MODES, `${label}.routingMode`),
+    points:
+      obj['points'] === undefined
+        ? undefined
+        : expectArray(obj['points'], `${label}.points`).map((value, index) =>
+            expectPoint(value, `${label}.points[${index}]`),
+          ),
+    fromTap:
+      obj['fromTap'] === undefined
+        ? undefined
+        : expectNonNegativeInteger(obj['fromTap'], `${label}.fromTap`),
+    toTap:
+      obj['toTap'] === undefined
+        ? undefined
+        : expectNonNegativeInteger(obj['toTap'], `${label}.toTap`),
+  };
+}
+
+function validateV2Project(project) {
+  const { components, junctions, cables, nets } = project.electrical;
+  const { boards } = project.layout;
+  const nodeIds = new Set();
+  const claimNodeId = (id, label) => {
+    if (nodeIds.has(id)) {
+      throw new CanonicalProjectValidationError(`${label}: duplicate node id "${id}"`);
+    }
+    nodeIds.add(id);
+  };
+
+  const boardsById = new Map();
+  for (const board of boards) {
+    claimNodeId(board.id, 'project.layout.boards');
+    boardsById.set(board.id, board);
+  }
+
+  const componentsById = new Map();
+  for (const component of components) {
+    claimNodeId(component.id, 'project.electrical.components');
+    componentsById.set(component.id, component);
+    const pinIds = new Set();
+    for (const pin of component.pins) {
+      if (pinIds.has(pin.id)) {
+        throw new CanonicalProjectValidationError(
+          `project.electrical.components "${component.id}".pins: duplicate id "${pin.id}"`,
+        );
+      }
+      pinIds.add(pin.id);
+    }
+  }
+
+  const junctionsById = new Map();
+  for (const junction of junctions) {
+    claimNodeId(junction.id, 'project.electrical.junctions');
+    junctionsById.set(junction.id, junction);
+  }
+
+  const cablesByName = new Map();
+  for (const cable of cables) {
+    if (cablesByName.has(cable.name)) {
+      throw new CanonicalProjectValidationError(
+        `project.electrical.cables: duplicate name "${cable.name}"`,
+      );
+    }
+    cablesByName.set(cable.name, cable);
+  }
+
+  const netIds = new Set();
+  const conductorIds = new Set();
+  const endpointOwners = new Map();
+  const conductorsById = new Map();
+
+  for (const net of nets) {
+    if (netIds.has(net.id)) {
+      throw new CanonicalProjectValidationError(
+        `project.electrical.nets: duplicate id "${net.id}"`,
+      );
+    }
+    netIds.add(net.id);
+    const label = `project.electrical.nets "${net.id}"`;
+    if (net.conductors.length === 0) {
+      throw new CanonicalProjectValidationError(`${label}: a net must have at least one conductor`);
+    }
+
+    const declared = new Set();
+    for (const endpoint of net.endpoints) {
+      const key = v2EndpointKey(endpoint);
+      if (declared.has(key)) {
+        throw new CanonicalProjectValidationError(`${label}.endpoints: duplicate endpoint "${key}"`);
+      }
+      declared.add(key);
+      resolveV2Endpoint(endpoint, componentsById, junctionsById, `${label}.endpoints`);
+      const owner = endpointOwners.get(key);
+      if (owner !== undefined && owner !== net.id) {
+        throw new CanonicalProjectValidationError(
+          `${label}.endpoints: "${key}" already belongs to net "${owner}"`,
+        );
+      }
+      endpointOwners.set(key, net.id);
+    }
+
+    const touched = new Set();
+    for (const conductor of net.conductors) {
+      if (conductorIds.has(conductor.id)) {
+        throw new CanonicalProjectValidationError(
+          `project.electrical.nets: duplicate conductor id "${conductor.id}"`,
+        );
+      }
+      conductorIds.add(conductor.id);
+      conductorsById.set(conductor.id, conductor);
+
+      const conductorLabel = `${label}.conductors "${conductor.id}"`;
+      const fromKey = v2EndpointKey(conductor.from);
+      const toKey = v2EndpointKey(conductor.to);
+      if (fromKey === toKey) {
+        throw new CanonicalProjectValidationError(
+          `${conductorLabel}: both ends are the same endpoint`,
+        );
+      }
+      for (const key of [fromKey, toKey]) {
+        if (!declared.has(key)) {
+          throw new CanonicalProjectValidationError(
+            `${conductorLabel}: endpoint "${key}" is not listed in the net's endpoints`,
+          );
+        }
+        touched.add(key);
+      }
+
+      if (conductor.cable) {
+        if (conductor.wirevizLoop) {
+          throw new CanonicalProjectValidationError(
+            `${conductorLabel}: an internal WireViz loop cannot reference a cable`,
+          );
+        }
+        if (conductor.wirevizLink !== undefined) {
+          throw new CanonicalProjectValidationError(
+            `${conductorLabel}: wirevizLink is only valid when the conductor has no cable`,
+          );
+        }
+        const cable = cablesByName.get(conductor.cable.name);
+        if (!cable) {
+          throw new CanonicalProjectValidationError(
+            `${conductorLabel}: no cable "${conductor.cable.name}" in project.electrical.cables`,
+          );
+        }
+        if (conductor.cable.wireIndex > cable.wireCount) {
+          throw new CanonicalProjectValidationError(
+            `${conductorLabel}: wire index ${conductor.cable.wireIndex} is out of range`,
+          );
+        }
+      }
+      if (conductor.wirevizLoop) {
+        if (conductor.wirevizLink !== undefined) {
+          throw new CanonicalProjectValidationError(
+            `${conductorLabel}: an internal WireViz loop cannot declare wirevizLink`,
+          );
+        }
+        if (
+          conductor.from.kind !== 'pin' ||
+          conductor.to.kind !== 'pin' ||
+          conductor.from.componentId !== conductor.to.componentId
+        ) {
+          throw new CanonicalProjectValidationError(
+            `${conductorLabel}: an internal WireViz loop must join two pins of one component`,
+          );
+        }
+      }
+    }
+
+    for (const key of declared) {
+      if (!touched.has(key)) {
+        throw new CanonicalProjectValidationError(
+          `${label}.endpoints: "${key}" is declared but no conductor reaches it`,
+        );
+      }
+    }
+    if (v2ConnectedGroupCount(net.conductors) !== 1) {
+      throw new CanonicalProjectValidationError(`${label}: conductors are not one connected group`);
+    }
+  }
+
+  validateV2Layout(
+    project,
+    boardsById,
+    componentsById,
+    junctionsById,
+    conductorIds,
+    conductorsById,
+  );
+}
+
+function validateV2Layout(
+  project,
+  boardsById,
+  componentsById,
+  junctionsById,
+  conductorIds,
+  conductorsById,
+) {
+  const seenComponents = new Set();
+  for (const layout of project.layout.components) {
+    const label = `project.layout.components "${layout.componentId}"`;
+    if (seenComponents.has(layout.componentId)) {
+      throw new CanonicalProjectValidationError(`${label}: duplicate layout entry`);
+    }
+    seenComponents.add(layout.componentId);
+    const component = componentsById.get(layout.componentId);
+    if (!component) {
+      throw new CanonicalProjectValidationError(`${label}: no such component in project.electrical`);
+    }
+    if (layout.boardId !== undefined && !boardsById.has(layout.boardId)) {
+      throw new CanonicalProjectValidationError(
+        `${label}: boardId "${layout.boardId}" does not match any board in the project`,
+      );
+    }
+    const seenPins = new Set();
+    for (const placement of layout.pinHoles ?? []) {
+      if (seenPins.has(placement.pinId)) {
+        throw new CanonicalProjectValidationError(
+          `${label}.pinHoles: duplicate pin "${placement.pinId}"`,
+        );
+      }
+      seenPins.add(placement.pinId);
+      if (!component.pins.some((pin) => pin.id === placement.pinId)) {
+        throw new CanonicalProjectValidationError(
+          `${label}.pinHoles: no pin "${placement.pinId}"`,
+        );
+      }
+      validateV2Hole(placement.hole, layout.boardId, boardsById, `${label}.pinHoles`);
+    }
+  }
+
+  const seenJunctions = new Set();
+  const tapsByJunction = new Map();
+  for (const layout of project.layout.junctions) {
+    const label = `project.layout.junctions "${layout.junctionId}"`;
+    if (seenJunctions.has(layout.junctionId)) {
+      throw new CanonicalProjectValidationError(`${label}: duplicate layout entry`);
+    }
+    seenJunctions.add(layout.junctionId);
+    if (!junctionsById.has(layout.junctionId)) {
+      throw new CanonicalProjectValidationError(`${label}: no such junction in project.electrical`);
+    }
+    if (layout.boardId !== undefined && !boardsById.has(layout.boardId)) {
+      throw new CanonicalProjectValidationError(
+        `${label}: boardId "${layout.boardId}" does not match any board in the project`,
+      );
+    }
+    if (layout.hole) validateV2Hole(layout.hole, layout.boardId, boardsById, label);
+    tapsByJunction.set(layout.junctionId, layout.taps);
+  }
+
+  const seenConductors = new Set();
+  for (const layout of project.layout.conductors) {
+    const label = `project.layout.conductors "${layout.conductorId}"`;
+    if (seenConductors.has(layout.conductorId)) {
+      throw new CanonicalProjectValidationError(`${label}: duplicate layout entry`);
+    }
+    seenConductors.add(layout.conductorId);
+    if (!conductorIds.has(layout.conductorId)) {
+      throw new CanonicalProjectValidationError(`${label}: no such conductor in project.electrical`);
+    }
+    const conductor = conductorsById.get(layout.conductorId);
+    validateV2Tap(layout.fromTap, conductor?.from, tapsByJunction, `${label}.fromTap`);
+    validateV2Tap(layout.toTap, conductor?.to, tapsByJunction, `${label}.toTap`);
+  }
+}
+
+function resolveV2Endpoint(endpoint, componentsById, junctionsById, label) {
+  if (endpoint.kind === 'junction') {
+    if (!junctionsById.has(endpoint.junctionId)) {
+      throw new CanonicalProjectValidationError(`${label}: no junction "${endpoint.junctionId}"`);
+    }
+    return;
+  }
+  const component = componentsById.get(endpoint.componentId);
+  if (!component) {
+    throw new CanonicalProjectValidationError(`${label}: no component "${endpoint.componentId}"`);
+  }
+  if (!component.pins.some((pin) => pin.id === endpoint.pinId)) {
+    throw new CanonicalProjectValidationError(
+      `${label}: component "${endpoint.componentId}" has no pin "${endpoint.pinId}"`,
+    );
+  }
+}
+
+function validateV2Hole(hole, boardId, boardsById, label) {
+  if (boardId === undefined) {
+    throw new CanonicalProjectValidationError(`${label}.hole: a hole was given but no boardId`);
+  }
+  const board = boardsById.get(boardId);
+  if (!board || !isHoleInBounds(board, hole)) {
+    throw new CanonicalProjectValidationError(
+      `${label}.hole: {row: ${hole.row}, col: ${hole.col}} does not fit board "${boardId}"`,
+    );
+  }
+}
+
+function validateV2Tap(tap, endpoint, tapsByJunction, label) {
+  if (tap === undefined) return;
+  if (!endpoint || endpoint.kind !== 'junction') {
+    throw new CanonicalProjectValidationError(`${label}: this end is not a junction`);
+  }
+  const tapCount = tapsByJunction.get(endpoint.junctionId) ?? 1;
+  if (tap >= tapCount) {
+    throw new CanonicalProjectValidationError(
+      `${label}: tap ${tap} is out of range for junction "${endpoint.junctionId}"`,
+    );
+  }
+}
+
+function v2EndpointKey(endpoint) {
+  return endpoint.kind === 'pin'
+    ? `pin:${encodeURIComponent(endpoint.componentId)}/${encodeURIComponent(endpoint.pinId)}`
+    : `junction:${encodeURIComponent(endpoint.junctionId)}`;
+}
+
+function v2ConnectedGroupCount(conductors) {
+  const parent = new Map();
+  const find = (key) => {
+    let root = key;
+    while (parent.has(root) && parent.get(root) !== root) root = parent.get(root);
+    if (!parent.has(root)) parent.set(root, root);
+    return root;
+  };
+  const union = (a, b) => {
+    const rootA = find(a);
+    const rootB = find(b);
+    if (rootA !== rootB) parent.set(rootB, rootA);
+  };
+  for (const conductor of conductors) {
+    union(v2EndpointKey(conductor.from), v2EndpointKey(conductor.to));
+  }
+  return new Set(conductors.map((conductor) => find(v2EndpointKey(conductor.from)))).size;
 }
 
 function validateEndpoint(endpoint, componentsById, label) {
@@ -123,10 +763,10 @@ function parseBoard(raw, label) {
   };
 }
 
-function parseComponent(raw, label) {
+function parseLegacyComponent(raw, label) {
   const obj = expectRecord(raw, label);
   const pins = expectArray(obj['pins'], `${label}.pins`).map((p, i) =>
-    parsePin(p, `${label}.pins[${i}]`),
+    parseLegacyPin(p, `${label}.pins[${i}]`),
   );
 
   const pinIds = new Set();
@@ -150,7 +790,7 @@ function parseComponent(raw, label) {
   };
 }
 
-function parsePin(raw, label) {
+function parseLegacyPin(raw, label) {
   const obj = expectRecord(raw, label);
   return {
     id: expectNonEmptyString(obj['id'], `${label}.id`),
@@ -161,7 +801,7 @@ function parsePin(raw, label) {
   };
 }
 
-function parseNet(raw, label) {
+function parseLegacyNet(raw, label) {
   const obj = expectRecord(raw, label);
   return {
     id: expectNonEmptyString(obj['id'], `${label}.id`),
@@ -241,6 +881,51 @@ function expectNonEmptyString(raw, label) {
 function expectOptionalString(raw, label) {
   if (raw === undefined) return undefined;
   return expectString(raw, label);
+}
+
+function expectOptionalBoolean(raw, label) {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'boolean') {
+    throw new CanonicalProjectValidationError(`${label}: expected a boolean`);
+  }
+  return raw;
+}
+
+function expectOptionalJsonRecord(raw, label, reserved) {
+  if (raw === undefined) return undefined;
+  const obj = expectRecord(raw, label);
+  const result = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (DANGEROUS_OBJECT_KEYS.has(key)) {
+      throw new CanonicalProjectValidationError(`${label}.${key}: dangerous key is not allowed`);
+    }
+    if (reserved.has(key)) {
+      throw new CanonicalProjectValidationError(
+        `${label}.${key}: a preserved extra cannot replace a canonical WireViz field`,
+      );
+    }
+    result[key] = expectJsonValue(value, `${label}.${key}`);
+  }
+  return result;
+}
+
+function expectJsonValue(raw, label) {
+  if (raw === null || typeof raw === 'string' || typeof raw === 'boolean') return raw;
+  if (typeof raw === 'number') return expectFiniteNumber(raw, label);
+  if (Array.isArray(raw)) {
+    return raw.map((value, index) => expectJsonValue(value, `${label}[${index}]`));
+  }
+  if (typeof raw === 'object') {
+    const result = {};
+    for (const [key, value] of Object.entries(raw)) {
+      if (DANGEROUS_OBJECT_KEYS.has(key)) {
+        throw new CanonicalProjectValidationError(`${label}.${key}: dangerous key is not allowed`);
+      }
+      result[key] = expectJsonValue(value, `${label}.${key}`);
+    }
+    return result;
+  }
+  throw new CanonicalProjectValidationError(`${label}: expected a JSON-serializable value`);
 }
 
 function expectFiniteNumber(raw, label) {

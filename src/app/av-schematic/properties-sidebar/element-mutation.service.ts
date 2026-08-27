@@ -9,11 +9,17 @@ import {
 import {
   type DevicePort,
   type DeviceNodeData,
+  type JunctionNodeData,
   type WireEdgeData,
 } from '../diagram/model/interfaces';
+import { junctionTapIndex, junctionTapPortId } from '../diagram/model/canonical-project';
 import { formDataToDeviceData, type DeviceFieldChange } from '../device-form/device-form.mappers';
 import { formDataToWireData, type WireFieldChange } from './components/wire-form/wire-form.mappers';
 import { applyEdgeStretchOnSelectionMoved } from '../diagram/edge-reshaping/middleware/edge-stretch-on-move';
+import {
+  formDataToJunctionData,
+  type JunctionFieldChange,
+} from './components/junction-form/junction-form.mappers';
 
 /** Mutates diagram nodes and edges in response to sidebar form changes and removal requests, including port-direction-flip reflow and orphaned-edge cleanup. */
 @Injectable()
@@ -166,6 +172,42 @@ export class ElementMutationService {
     if (!edge) return;
     const updatedData = formDataToWireData(change.formData, edge.data);
     void this.modelService.updateEdgeData(change.edgeId, updatedData);
+  }
+
+  handleJunctionFieldChange(change: JunctionFieldChange): void {
+    const node = this.modelService.getNodeById<JunctionNodeData>(change.nodeId);
+    if (!node) return;
+    const updatedData = formDataToJunctionData(change.formData, node.data);
+    const tapsChanged = updatedData.taps !== node.data.taps;
+    if (!tapsChanged) {
+      void this.modelService.updateNodeData(change.nodeId, updatedData);
+      return;
+    }
+
+    const edgeUpdates = this.modelService.getConnectedEdges(change.nodeId).map((edge) => {
+      const update: { id: string; sourcePort?: string; targetPort?: string } = { id: edge.id };
+      if (edge.source === change.nodeId) {
+        const index = junctionTapIndex(edge.sourcePort) ?? 0;
+        update.sourcePort = junctionTapPortId(index % updatedData.taps);
+      }
+      if (edge.target === change.nodeId) {
+        const index = junctionTapIndex(edge.targetPort) ?? 0;
+        update.targetPort = junctionTapPortId(index % updatedData.taps);
+      }
+      return update;
+    });
+
+    void this.diagramService
+      .transaction(
+        () => {
+          void this.modelService.updateNodeData(change.nodeId, updatedData);
+          if (edgeUpdates.length > 0) void this.modelService.updateEdges(edgeUpdates);
+        },
+        { waitForMeasurements: true },
+      )
+      .then(() => {
+        applyEdgeStretchOnSelectionMoved(this.modelService, new Set([change.nodeId]), true);
+      });
   }
 
   resetEdgeRouting(edgeId: string): void {

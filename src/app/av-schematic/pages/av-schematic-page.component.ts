@@ -21,6 +21,7 @@ import { ElementMutationService } from '../properties-sidebar/element-mutation.s
 import { PropertiesSidebarComponent } from '../properties-sidebar/properties-sidebar.component';
 import { PropertiesSidebarService } from '../properties-sidebar/properties-sidebar.service';
 import { TopNavbarComponent } from '../top-navbar/top-navbar.component';
+import { WireVizExchangeService } from '../wireviz-import/wireviz-exchange.service';
 
 @Component({
   selector: 'app-av-schematic-page',
@@ -46,6 +47,7 @@ import { TopNavbarComponent } from '../top-navbar/top-navbar.component';
     LibraryService,
     DiagramExportService,
     ProjectStorageService,
+    WireVizExchangeService,
     EdgeCommandDispatcher,
     EdgeReshapeHandler,
     TempEdgePointsService,

@@ -1,6 +1,5 @@
 import { type Edge, type Node, type Point } from 'ng-diagram';
-import { isHoleInBounds } from './board-geometry';
-import { isBoardNode, isDeviceNode, isWireEdge } from './guards';
+import { isBoardNode, isDeviceNode, isJunctionNode, isWireEdge } from './guards';
 import {
   EdgeTemplateType,
   NodeTemplateType,
@@ -8,29 +7,199 @@ import {
   type BoardHole,
   type BoardNodeData,
   type DeviceNodeData,
+  type JunctionKind,
+  type JunctionNodeData,
   type PortDirection,
+  type PreservedFields,
   type WireEdgeData,
+  type WireVizLinkStyle,
 } from './interfaces';
+import { endpointKeysOf, groupConductorsIntoNets } from './net-grouping';
+import { canonicalColorValue, resolveWireColor } from './wire-colors';
 
 /**
- * Canonical, serializable project format (v1).
+ * Canonical, serializable project format (v2).
  *
- * This is the shape that round-trips through export/import and through the
- * local persistence service — a plain JSON-serializable snapshot of the
- * physical + electrical model, independent of ng-diagram's own `Node`/`Edge`
- * runtime types (which carry extra transient fields like `selected` or
- * `measuredPorts` that must NOT be persisted).
+ * Two things changed relative to the v1 format the issue #1 tracer wrote,
+ * both required by issue #2:
+ *
+ * 1. **A net is no longer a wire.** v1's `nets[]` was really a list of
+ *    two-endpoint edges, so a net touching three pins could only be
+ *    expressed as several unrelated entries — and a pin appearing in two of
+ *    them looked like an invalid reuse. v2 has real nets: `endpoints[]` (two
+ *    or more) plus the `conductors[]` that join them, with junctions and
+ *    rails as first-class electrical elements.
+ *
+ * 2. **Electrical semantics and visual geometry are separate sections.**
+ *    `electrical` holds only what a WireViz document can express — which
+ *    pins exist, what is connected to what, and the cable attributes
+ *    (gauge, length, colors, notes). `layout` holds everything WireViz has
+ *    no vocabulary for — board grids, node positions, which board hole a pin
+ *    occupies, which visual tap of a rail a conductor lands on, and manual
+ *    wire routing points. A WireViz export reads `electrical` and never
+ *    needs to discard geometry, because geometry was never mixed in.
+ *
+ * `formatVersion` identifies the contract; `canonical-project-parse.ts`
+ * accepts a stored v1 file and migrates it, so the format can keep moving
+ * without orphaning saved projects.
  */
-export interface CanonicalProjectV1 {
-  formatVersion: 1;
-  boards: CanonicalBoard[];
+export const CANONICAL_FORMAT_VERSION = 2;
+
+export interface CanonicalProjectV2 {
+  formatVersion: 2;
+  electrical: CanonicalElectrical;
+  layout: CanonicalLayout;
+}
+
+// ---------------------------------------------------------------------------
+// Electrical section — everything WireViz can express
+// ---------------------------------------------------------------------------
+
+export interface CanonicalElectrical {
   components: CanonicalComponent[];
+  junctions: CanonicalJunction[];
+  cables: CanonicalCable[];
   nets: CanonicalNet[];
 }
+
+/**
+ * Note on document-level WireViz keys (`metadata`, `options`, `tweak`, ...):
+ * they are *reported* by the importer, never stored here. Connector and cable
+ * extras have a home because a component/junction/cable record exists to hang
+ * them on; a document-level key has no counterpart in a canvas that can hold
+ * several imports at once, and inventing a project-wide bag that only one
+ * import path could ever fill would preserve them asymmetrically — kept when
+ * a project is assembled programmatically, silently dropped the moment the
+ * user edits and saves. See docs/wireviz-round-trip.md.
+ */
+
+export interface CanonicalPin {
+  id: string;
+  label: string;
+  direction: PortDirection;
+  connectorType?: string;
+  wirevizDesignator?: string;
+  wirevizLabel?: string;
+}
+
+export interface CanonicalComponent {
+  id: string;
+  deviceId: string;
+  manufacturer: string;
+  model: string;
+  category?: string;
+  location?: string;
+  /** Name this component takes as a WireViz `connectors.<name>` entry. */
+  wirevizName?: string;
+  wirevizType?: string;
+  /** WireViz connector *variant*. Preserved verbatim across the round-trip. */
+  wirevizSubtype?: string;
+  wirevizColor?: string;
+  wirevizManufacturer?: string;
+  wirevizMpn?: string;
+  wirevizStyle?: string;
+  wirevizShowName?: boolean;
+  notes?: string;
+  wirevizExtras?: PreservedFields;
+  pins: CanonicalPin[];
+}
+
+/**
+ * A splice or rail: one electrical point where conductors of a net meet.
+ * How many tap positions it is *drawn* with lives in `layout`, never here —
+ * see `JunctionNodeData` for why that separation is what makes a rail
+ * survive a WireViz round-trip intact.
+ */
+export interface CanonicalJunction {
+  id: string;
+  label: string;
+  kind: JunctionKind;
+  notes?: string;
+  wirevizName?: string;
+  wirevizType?: string;
+  wirevizSubtype?: string;
+  wirevizColor?: string;
+  wirevizManufacturer?: string;
+  wirevizMpn?: string;
+  wirevizStyle?: string;
+  wirevizShowName?: boolean;
+  wirevizExtras?: PreservedFields;
+}
+
+/**
+ * A cable, shaped like WireViz's own `cables.<name>` entry: attributes such
+ * as gauge, length and notes belong to the cable, and `colors[i]` describes
+ * wire `i + 1`.
+ *
+ * A color entry is either a WireViz abbreviation (`"YE"`) or a CSS hex value.
+ * WireViz's exact six-digit RGB form (`"#ff00aa"`) is re-emitted byte for
+ * byte. Other hex shapes are kept here verbatim and reported — never silently
+ * swapped for the nearest standard code — see
+ * `wireviz-import/export-wireviz.ts`.
+ */
+export interface CanonicalCable {
+  name: string;
+  wireCount: number;
+  colors: string[];
+  /** Positional WireViz `wirelabels`, including labels for unused conductors. */
+  wireLabels?: string[];
+  gauge?: string;
+  length?: string;
+  notes?: string;
+  type?: string;
+  manufacturer?: string;
+  mpn?: string;
+  /** WireViz `color_code`: which color *standard* the abbreviations follow. */
+  colorCode?: string;
+  wirevizExtras?: PreservedFields;
+}
+
+export type CanonicalNetEndpoint =
+  | { kind: 'pin'; componentId: string; pinId: string }
+  | { kind: 'junction'; junctionId: string };
+
+export interface CanonicalConductorCableRef {
+  name: string;
+  /** 1-based, matching WireViz's own wire numbering. */
+  wireIndex: number;
+}
+
+export interface CanonicalConductor {
+  id: string;
+  from: CanonicalNetEndpoint;
+  to: CanonicalNetEndpoint;
+  /** Absent means a direct connector-to-connector link with no cable. */
+  cable?: CanonicalConductorCableRef;
+  /** App-level classification (audio/power/control/...). No WireViz equivalent. */
+  wireType?: string;
+  /** WireViz pin-level arrow for a direct link. Absent direct links export as `--`. */
+  wirevizLink?: WireVizLinkStyle;
+  /** Internal short declared by WireViz `connectors.<name>.loops`. */
+  wirevizLoop?: boolean;
+}
+
+export interface CanonicalNet {
+  id: string;
+  name: string;
+  /** Every endpoint the net touches. Three or more means multi-drop. */
+  endpoints: CanonicalNetEndpoint[];
+  conductors: CanonicalConductor[];
+}
+
+// ---------------------------------------------------------------------------
+// Layout section — everything WireViz has no vocabulary for
+// ---------------------------------------------------------------------------
 
 export interface CanonicalPoint {
   x: number;
   y: number;
+}
+
+export interface CanonicalLayout {
+  boards: CanonicalBoard[];
+  components: CanonicalComponentLayout[];
+  junctions: CanonicalJunctionLayout[];
+  conductors: CanonicalConductorLayout[];
 }
 
 export interface CanonicalBoard {
@@ -42,51 +211,43 @@ export interface CanonicalBoard {
   position: CanonicalPoint;
 }
 
-export interface CanonicalPin {
-  id: string;
-  label: string;
-  direction: PortDirection;
-  connectorType?: string;
+export interface CanonicalPinPlacement {
+  pinId: string;
+  hole: BoardHole;
+}
+
+export interface CanonicalComponentLayout {
+  componentId: string;
+  position: CanonicalPoint;
+  /** See `DeviceNodeData.boardId` — required iff any `pinHoles` entry is present. */
+  boardId?: string;
+  pinHoles?: CanonicalPinPlacement[];
+}
+
+export interface CanonicalJunctionLayout {
+  junctionId: string;
+  position: CanonicalPoint;
+  /** Visual tap positions to draw (>= 1). Electrically they are all one point. */
+  taps: number;
+  boardId?: string;
   hole?: BoardHole;
 }
 
-export interface CanonicalComponent {
-  id: string;
-  deviceId: string;
-  manufacturer: string;
-  model: string;
-  category?: string;
-  location?: string;
-  /** See `DeviceNodeData.boardId` — required iff any `pins[].hole` is set. */
-  boardId?: string;
-  position: CanonicalPoint;
-  pins: CanonicalPin[];
-}
-
-export interface CanonicalNetEndpoint {
-  componentId: string;
-  pinId: string;
-}
-
 /**
- * The only routing mode this slice ever persists explicitly. Absence means
+ * The only routing mode this project ever persists explicitly. Absence means
  * "auto" (ng-diagram's default router output) — canonicalized as undefined
  * rather than as an explicit `'auto'` string, so the format has one way to
  * say "no manual points".
  */
 export type CanonicalRoutingMode = 'manual';
 
-export interface CanonicalNet {
-  id: string;
-  wireId: string;
-  wireType?: string;
-  netId?: string;
-  color?: string;
-  colorCode?: string;
-  source: CanonicalNetEndpoint;
-  target: CanonicalNetEndpoint;
+export interface CanonicalConductorLayout {
+  conductorId: string;
   routingMode?: CanonicalRoutingMode;
   points?: CanonicalPoint[];
+  /** 0-based visual tap each end lands on, when that end is a junction. */
+  fromTap?: number;
+  toTap?: number;
 }
 
 export class CanonicalProjectError extends Error {
@@ -96,45 +257,545 @@ export class CanonicalProjectError extends Error {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Endpoint identity
+// ---------------------------------------------------------------------------
+
+/**
+ * Stable, comparable key for an endpoint.
+ *
+ * `encodeURIComponent` escapes `/`, so the separator can never be produced
+ * by an id — two different endpoints can never collide onto one key, which
+ * is what makes net grouping and the round-trip comparison trustworthy.
+ */
+export function endpointKey(endpoint: CanonicalNetEndpoint): string {
+  return endpoint.kind === 'pin'
+    ? `pin:${encodeURIComponent(endpoint.componentId)}/${encodeURIComponent(endpoint.pinId)}`
+    : `junction:${encodeURIComponent(endpoint.junctionId)}`;
+}
+
+export function endpointsEqual(a: CanonicalNetEndpoint, b: CanonicalNetEndpoint): boolean {
+  return endpointKey(a) === endpointKey(b);
+}
+
+/** ng-diagram port id for a junction's visual tap. */
+export function junctionTapPortId(tapIndex: number): string {
+  return `tap-${tapIndex}`;
+}
+
+/** Inverse of `junctionTapPortId`; `undefined` for anything that is not a tap port. */
+export function junctionTapIndex(portId: string | undefined): number | undefined {
+  if (!portId) return undefined;
+  const match = /^tap-(\d+)$/.exec(portId);
+  return match ? Number.parseInt(match[1], 10) : undefined;
+}
+
+/**
+ * Collision-free ASCII fragment for ids derived from imported names.
+ *
+ * Slugification is not enough here: `A/B` and `A B` both become `a-b`, and
+ * that can turn two distinct conductors into the same diagram id. Encoding
+ * every Unicode code point as hex keeps the result deterministic and
+ * reversible without relying on a runtime-specific hash.
+ */
+export function stableIdFragment(value: string): string {
+  const parts: string[] = [];
+  for (const char of value) {
+    const codePoint = char.codePointAt(0);
+    if (codePoint !== undefined) parts.push(codePoint.toString(16));
+  }
+  return parts.join('-') || '0';
+}
+
+// ---------------------------------------------------------------------------
+// Model -> canonical
+// ---------------------------------------------------------------------------
+
+interface ConductorDraft {
+  conductor: CanonicalConductor;
+  layout: CanonicalConductorLayout;
+  netNameHint?: string;
+}
+
+/**
+ * Groups conductors into nets by connectivity.
+ *
+ * This is the single place nets come into existence — used when serializing
+ * the live model, when migrating a v1 project, and when importing a WireViz
+ * document — so all three routes agree by construction on what counts as one
+ * net.
+ *
+ * `nameHints` maps a conductor id to a preferred net name; the smallest hint
+ * in a group wins, so merging two nets yields the same name whichever wire
+ * was drawn first.
+ */
+export function buildNets(
+  conductors: readonly CanonicalConductor[],
+  nameHints?: ReadonlyMap<string, string>,
+): CanonicalNet[] {
+  const keyed = conductors.map((conductor) => ({
+    conductor,
+    fromKey: endpointKey(conductor.from),
+    toKey: endpointKey(conductor.to),
+  }));
+
+  const endpointsByKey = new Map<string, CanonicalNetEndpoint>();
+  for (const entry of keyed) {
+    endpointsByKey.set(entry.fromKey, entry.conductor.from);
+    endpointsByKey.set(entry.toKey, entry.conductor.to);
+  }
+
+  return groupConductorsIntoNets(keyed).map((group) => {
+    const keys = endpointKeysOf(group);
+    const endpoints = keys.map((key) => {
+      const endpoint = endpointsByKey.get(key);
+      if (!endpoint) {
+        throw new CanonicalProjectError(`net endpoint "${key}" could not be resolved`);
+      }
+      return endpoint;
+    });
+
+    const id = `net-${stableIdFragment(keys[0])}`;
+    const hints = group
+      .map((entry) => nameHints?.get(entry.conductor.id))
+      .filter((hint): hint is string => !!hint)
+      .sort();
+
+    return {
+      id,
+      name: hints[0] ?? id,
+      endpoints,
+      conductors: group.map((entry) => entry.conductor).sort(byId),
+    };
+  });
+}
+
 /**
  * Serializes the live diagram model into the canonical format.
  *
- * Takes the widened `Node`/`Edge` types the live `NgDiagramModelService`
- * signals actually expose (not the app-specific `Node<AvSchematicNodeData>`
- * union), and narrows with the same type guards the rest of the app uses —
- * so the storage client can pass `modelService.nodes()`/`.edges()` straight
- * through without a cast at the call site.
+ * Nets are *derived* here, never read off the edges: conductors are grouped
+ * by connectivity (`net-grouping.ts`), so a wire drawn between two existing
+ * nets merges them and deleting it splits them again, with no separate net
+ * registry to keep in sync. `WireEdgeData.netId` is only a denormalized
+ * label and is recomputed on every serialization.
  *
- * Only fully-connected wire edges (both endpoints resolved to a node + port)
- * are exportable — a dangling/in-progress edge is transient UI state, not
- * part of the persisted project. Non-wire edges (none exist in this app
- * today, but the guard makes that an invariant, not an assumption) are
- * silently skipped rather than persisted.
+ * Every collection comes out sorted by id, so two models that are equal up
+ * to insertion order serialize to byte-identical JSON.
  */
 export function toCanonicalProject(
   nodes: readonly Node[],
   edges: readonly Edge[],
-): CanonicalProjectV1 {
-  const boards = nodes.filter(isBoardNode).map(toCanonicalBoard);
-  const components = nodes.filter(isDeviceNode).map(toCanonicalComponent);
-  const nets = edges.filter(isWireEdge).map(toCanonicalNet);
-  return { formatVersion: 1, boards, components, nets };
+  cableInventory: readonly CanonicalCable[] = [],
+): CanonicalProjectV2 {
+  const deviceNodes = nodes.filter(isDeviceNode);
+  const junctionNodes = nodes.filter(isJunctionNode);
+  const boardNodes = nodes.filter(isBoardNode);
+
+  const nodeKinds = new Map<string, 'device' | 'junction'>();
+  for (const node of deviceNodes) nodeKinds.set(node.id, 'device');
+  for (const node of junctionNodes) nodeKinds.set(node.id, 'junction');
+
+  const wireEdges = edges.filter(isWireEdge);
+  const drafts = wireEdges.map((edge) => toConductorDraft(edge, nodeKinds));
+
+  const nameHints = new Map<string, string>();
+  for (const draft of drafts) {
+    if (draft.netNameHint) nameHints.set(draft.conductor.id, draft.netNameHint);
+  }
+  const nets = buildNets(
+    drafts.map((draft) => draft.conductor),
+    nameHints,
+  );
+
+  return {
+    formatVersion: CANONICAL_FORMAT_VERSION,
+    electrical: {
+      components: deviceNodes.map(toCanonicalComponent).sort(byId),
+      junctions: junctionNodes.map(toCanonicalJunction).sort(byId),
+      cables: buildCables(wireEdges, cableInventory),
+      nets,
+    },
+    layout: {
+      boards: boardNodes.map(toCanonicalBoard).sort(byId),
+      components: deviceNodes.map(toComponentLayout).sort(byKey((c) => c.componentId)),
+      junctions: junctionNodes.map(toJunctionLayout).sort(byKey((j) => j.junctionId)),
+      conductors: drafts.map((draft) => draft.layout).sort(byKey((c) => c.conductorId)),
+    },
+  };
 }
 
-/** Rebuilds an ng-diagram node/edge model from a canonical project snapshot. */
-export function fromCanonicalProject(project: CanonicalProjectV1): {
-  nodes: Node<AvSchematicNodeData>[];
-  edges: Edge<WireEdgeData>[];
-} {
-  const boardNodes = project.boards.map(fromCanonicalBoard);
-  const componentNodes = project.components.map(fromCanonicalComponent);
-  const edges = project.nets.map(fromCanonicalNet);
-  return { nodes: [...boardNodes, ...componentNodes], edges };
+function byId(a: { id: string }, b: { id: string }): number {
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-// ---------------------------------------------------------------------------
-// Boards
-// ---------------------------------------------------------------------------
+function byKey<T>(key: (value: T) => string): (a: T, b: T) => number {
+  return (a, b) => {
+    const ka = key(a);
+    const kb = key(b);
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  };
+}
+
+function toConductorDraft(
+  edge: Edge<WireEdgeData>,
+  nodeKinds: ReadonlyMap<string, 'device' | 'junction'>,
+): ConductorDraft {
+  if (!edge.source || !edge.sourcePort || !edge.target || !edge.targetPort) {
+    throw new CanonicalProjectError(
+      `edge "${edge.id}" is not fully connected (dangling edges are not exportable)`,
+    );
+  }
+
+  const from = toEndpoint(edge.id, 'source', edge.source, edge.sourcePort, nodeKinds);
+  const to = toEndpoint(edge.id, 'target', edge.target, edge.targetPort, nodeKinds);
+
+  const conductor: CanonicalConductor = {
+    id: edge.id,
+    from: from.endpoint,
+    to: to.endpoint,
+    cable: edge.data.wireId
+      ? { name: edge.data.wireId, wireIndex: edge.data.wireIndex ?? 1 }
+      : undefined,
+    wireType: edge.data.wireType,
+    wirevizLink: edge.data.wirevizLink,
+    wirevizLoop: edge.data.wirevizLoop,
+  };
+
+  const manual = edge.routingMode === 'manual';
+  const layout: CanonicalConductorLayout = {
+    conductorId: edge.id,
+    // Only 'manual' is a meaningful persisted state; anything else (e.g. the
+    // 'auto' ng-diagram sometimes sets explicitly) canonicalizes to absence.
+    routingMode: manual ? 'manual' : undefined,
+    points: manual ? edge.points?.map(toCanonicalPoint) : undefined,
+    fromTap: from.tap,
+    toTap: to.tap,
+  };
+
+  return { conductor, layout, netNameHint: edge.data.netName };
+}
+
+function toEndpoint(
+  edgeId: string,
+  side: 'source' | 'target',
+  nodeId: string,
+  portId: string,
+  nodeKinds: ReadonlyMap<string, 'device' | 'junction'>,
+): { endpoint: CanonicalNetEndpoint; tap?: number } {
+  const kind = nodeKinds.get(nodeId);
+  if (kind === 'device') {
+    return { endpoint: { kind: 'pin', componentId: nodeId, pinId: portId } };
+  }
+  if (kind === 'junction') {
+    return { endpoint: { kind: 'junction', junctionId: nodeId }, tap: junctionTapIndex(portId) };
+  }
+  throw new CanonicalProjectError(
+    `edge "${edgeId}".${side}: node "${nodeId}" is neither a device nor a junction`,
+  );
+}
+
+/**
+ * Re-normalizes the cable attributes denormalized onto every edge back into
+ * one entry per cable name.
+ *
+ * Edges are visited in id order, so the result does not depend on model
+ * ordering. Imported cable metadata is merged when one edge lacks a value;
+ * contradictory values are rejected instead of choosing one silently.
+ */
+function buildCables(
+  edges: readonly Edge<WireEdgeData>[],
+  cableInventory: readonly CanonicalCable[],
+): CanonicalCable[] {
+  const byName = new Map<string, CanonicalCable>();
+
+  for (const edge of [...edges].sort(byId)) {
+    const name = edge.data.wireId;
+    if (!name) continue;
+
+    const wireIndex = edge.data.wireIndex ?? 1;
+    const existing = byName.get(name);
+    const importedColors = edge.data.cableColors ? [...edge.data.cableColors] : [];
+    const importedWireLabels = edge.data.cableWireLabels
+      ? [...edge.data.cableWireLabels]
+      : undefined;
+    const cable: CanonicalCable = existing ?? {
+      name,
+      wireCount: Math.max(
+        edge.data.cableWireCount ?? 0,
+        importedColors.length,
+        importedWireLabels?.length ?? 0,
+        wireIndex,
+      ),
+      colors: importedColors,
+      wireLabels: importedWireLabels,
+      gauge: edge.data.gauge,
+      length: edge.data.length,
+      notes: edge.data.notes,
+      type: edge.data.cableType,
+      manufacturer: edge.data.manufacturer,
+      mpn: edge.data.mpn,
+      colorCode: edge.data.cableColorCode,
+      wirevizExtras: edge.data.cableExtras,
+    };
+
+    mergeCableString(cable, 'gauge', edge.data.gauge, edge.id);
+    mergeCableString(cable, 'length', edge.data.length, edge.id);
+    mergeCableString(cable, 'notes', edge.data.notes, edge.id);
+    mergeCableString(cable, 'type', edge.data.cableType, edge.id);
+    mergeCableString(cable, 'manufacturer', edge.data.manufacturer, edge.id);
+    mergeCableString(cable, 'mpn', edge.data.mpn, edge.id);
+    mergeCableString(cable, 'colorCode', edge.data.cableColorCode, edge.id);
+    mergeCableExtras(cable, edge.data.cableExtras, edge.id);
+    mergeCableWireLabels(cable, importedWireLabels, edge.id);
+
+    cable.wireCount = Math.max(
+      cable.wireCount,
+      edge.data.cableWireCount ?? 0,
+      importedColors.length,
+      importedWireLabels?.length ?? 0,
+      wireIndex,
+    );
+    for (let i = 0; i < importedColors.length; i++) {
+      const incoming = importedColors[i];
+      const current = cable.colors[i];
+      if (current && incoming && current !== incoming) {
+        throw new CanonicalProjectError(
+          `cabo "${name}": cores contraditórias no condutor ${i + 1} ("${current}" e "${incoming}")`,
+        );
+      }
+      if (!current && incoming) cable.colors[i] = incoming;
+    }
+    const color = canonicalColorValue({ color: edge.data.color, colorCode: edge.data.colorCode });
+    const currentColor = cable.colors[wireIndex - 1];
+    if (currentColor && color && currentColor !== color) {
+      throw new CanonicalProjectError(
+        `cabo "${name}": a aresta "${edge.id}" contradiz a cor do condutor ` +
+          `${wireIndex} ("${currentColor}" e "${color}")`,
+      );
+    }
+    if (color !== undefined) cable.colors[wireIndex - 1] = color;
+
+    byName.set(name, cable);
+  }
+
+  // The diagram has no edge to hang a completely disconnected cable on.
+  // Keep the project-level inventory as a lossless fallback. For a connected
+  // cable, live edge data wins while the inventory fills attributes and
+  // currently unused slots that an edge may not carry.
+  for (const cable of cableInventory) {
+    const live = byName.get(cable.name);
+    if (live) mergeInventoryCable(live, cable);
+    else byName.set(cable.name, cloneCable(cable));
+  }
+
+  // A sparse `colors` array (wire 2 colored, wire 1 not) would serialize to
+  // JSON nulls, so gaps are filled with '' — the same "no color" signal an
+  // absent WireViz color entry carries.
+  for (const cable of byName.values()) {
+    for (let i = 0; i < cable.wireCount; i++) {
+      cable.colors[i] ??= '';
+    }
+    cable.colors.length = cable.wireCount;
+    if (cable.wireLabels) {
+      while (cable.wireLabels.length < cable.wireCount) cable.wireLabels.push('');
+      cable.wireLabels.length = cable.wireCount;
+    }
+  }
+
+  return [...byName.values()].sort(byKey((cable) => cable.name));
+}
+
+function mergeInventoryCable(live: CanonicalCable, inventory: CanonicalCable): void {
+  live.wireCount = Math.max(live.wireCount, inventory.wireCount);
+  for (let index = 0; index < inventory.wireCount; index++) {
+    if (!live.colors[index] && inventory.colors[index]) {
+      live.colors[index] = inventory.colors[index];
+    }
+  }
+  if (inventory.wireLabels) {
+    if (!live.wireLabels) live.wireLabels = [...inventory.wireLabels];
+    else {
+      for (let index = 0; index < inventory.wireLabels.length; index++) {
+        if (!live.wireLabels[index] && inventory.wireLabels[index]) {
+          live.wireLabels[index] = inventory.wireLabels[index];
+        }
+      }
+    }
+  }
+
+  const stringKeys: readonly CableStringKey[] = [
+    'gauge',
+    'length',
+    'notes',
+    'type',
+    'manufacturer',
+    'mpn',
+    'colorCode',
+  ];
+  for (const key of stringKeys) {
+    live[key] ??= inventory[key];
+  }
+  if (live.wirevizExtras === undefined && inventory.wirevizExtras !== undefined) {
+    live.wirevizExtras = { ...inventory.wirevizExtras };
+  }
+}
+
+function mergeCableWireLabels(
+  cable: CanonicalCable,
+  incoming: readonly string[] | undefined,
+  edgeId: string,
+): void {
+  if (incoming === undefined) return;
+  if (cable.wireLabels === undefined) {
+    cable.wireLabels = [...incoming];
+    return;
+  }
+  const width = Math.max(cable.wireLabels.length, incoming.length);
+  for (let index = 0; index < width; index++) {
+    const current = cable.wireLabels[index];
+    const next = incoming[index];
+    if (current && next && current !== next) {
+      throw new CanonicalProjectError(
+        `cabo "${cable.name}": a aresta "${edgeId}" contradiz o wirelabel do condutor ` +
+          `${index + 1} ("${current}" e "${next}")`,
+      );
+    }
+    if (!current && next) cable.wireLabels[index] = next;
+  }
+}
+
+function cloneCable(cable: CanonicalCable): CanonicalCable {
+  return {
+    ...cable,
+    colors: [...cable.colors],
+    wireLabels: cable.wireLabels ? [...cable.wireLabels] : undefined,
+    wirevizExtras: cable.wirevizExtras ? { ...cable.wirevizExtras } : undefined,
+  };
+}
+
+type CableStringKey = 'gauge' | 'length' | 'notes' | 'type' | 'manufacturer' | 'mpn' | 'colorCode';
+
+function mergeCableString(
+  cable: CanonicalCable,
+  key: CableStringKey,
+  incoming: string | undefined,
+  edgeId: string,
+): void {
+  if (incoming === undefined) return;
+  const current = cable[key];
+  if (current === undefined) {
+    cable[key] = incoming;
+    return;
+  }
+  if (current !== incoming) {
+    throw new CanonicalProjectError(
+      `cabo "${cable.name}": a aresta "${edgeId}" declara ${key}="${incoming}", ` +
+        `mas outro condutor declara "${current}"`,
+    );
+  }
+}
+
+function mergeCableExtras(
+  cable: CanonicalCable,
+  incoming: PreservedFields | undefined,
+  edgeId: string,
+): void {
+  if (incoming === undefined) return;
+  if (cable.wirevizExtras === undefined) {
+    cable.wirevizExtras = incoming;
+    return;
+  }
+  if (stableJson(cable.wirevizExtras) !== stableJson(incoming)) {
+    throw new CanonicalProjectError(
+      `cabo "${cable.name}": a aresta "${edgeId}" possui campos WireViz preservados contraditórios`,
+    );
+  }
+}
+
+function stableJson(value: unknown): string {
+  const serialized = JSON.stringify(value, (_key, inner: unknown) => {
+    if (typeof inner !== 'object' || inner === null || Array.isArray(inner)) return inner;
+    const record = inner as Record<string, unknown>;
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(record).sort()) sorted[key] = record[key];
+    return sorted;
+  });
+  if (serialized === undefined) {
+    throw new CanonicalProjectError('cannot serialize preserved WireViz fields');
+  }
+  return serialized;
+}
+
+function toCanonicalComponent(node: Node<DeviceNodeData>): CanonicalComponent {
+  return {
+    id: node.id,
+    deviceId: node.data.deviceId,
+    manufacturer: node.data.manufacturer,
+    model: node.data.model,
+    category: node.data.category,
+    location: node.data.location,
+    wirevizName: node.data.wirevizName,
+    wirevizType: node.data.wirevizType,
+    wirevizSubtype: node.data.wirevizSubtype,
+    wirevizColor: node.data.wirevizColor,
+    wirevizManufacturer: node.data.wirevizManufacturer,
+    wirevizMpn: node.data.wirevizMpn,
+    wirevizStyle: node.data.wirevizStyle,
+    wirevizShowName: node.data.wirevizShowName,
+    notes: node.data.notes,
+    wirevizExtras: node.data.wirevizExtras,
+    pins: node.data.ports.map((port) => ({
+      id: port.id,
+      label: port.label,
+      direction: port.direction,
+      connectorType: port.connectorType,
+      wirevizDesignator: port.wirevizDesignator,
+      wirevizLabel: port.wirevizLabel,
+    })),
+  };
+}
+
+function toComponentLayout(node: Node<DeviceNodeData>): CanonicalComponentLayout {
+  const pinHoles: CanonicalPinPlacement[] = [];
+  for (const port of node.data.ports) {
+    if (port.hole !== undefined) pinHoles.push({ pinId: port.id, hole: port.hole });
+  }
+
+  return {
+    componentId: node.id,
+    position: toCanonicalPoint(node.position),
+    boardId: node.data.boardId,
+    pinHoles: pinHoles.length > 0 ? pinHoles : undefined,
+  };
+}
+
+function toCanonicalJunction(node: Node<JunctionNodeData>): CanonicalJunction {
+  return {
+    id: node.id,
+    label: node.data.label,
+    kind: node.data.kind,
+    notes: node.data.notes,
+    wirevizName: node.data.wirevizName,
+    wirevizType: node.data.wirevizType,
+    wirevizSubtype: node.data.wirevizSubtype,
+    wirevizColor: node.data.wirevizColor,
+    wirevizManufacturer: node.data.wirevizManufacturer,
+    wirevizMpn: node.data.wirevizMpn,
+    wirevizStyle: node.data.wirevizStyle,
+    wirevizShowName: node.data.wirevizShowName,
+    wirevizExtras: node.data.wirevizExtras,
+  };
+}
+
+function toJunctionLayout(node: Node<JunctionNodeData>): CanonicalJunctionLayout {
+  return {
+    junctionId: node.id,
+    position: toCanonicalPoint(node.position),
+    taps: node.data.taps,
+    boardId: node.data.boardId,
+    hole: node.data.hole,
+  };
+}
 
 function toCanonicalBoard(node: Node<BoardNodeData>): CanonicalBoard {
   return {
@@ -144,6 +805,72 @@ function toCanonicalBoard(node: Node<BoardNodeData>): CanonicalBoard {
     cols: node.data.cols,
     pitch: node.data.pitch,
     position: toCanonicalPoint(node.position),
+  };
+}
+
+function toCanonicalPoint(point: Point): CanonicalPoint {
+  return { x: point.x, y: point.y };
+}
+
+// ---------------------------------------------------------------------------
+// Canonical -> model
+// ---------------------------------------------------------------------------
+
+const DEFAULT_POSITION: CanonicalPoint = { x: 0, y: 0 };
+
+/**
+ * Rebuilds an ng-diagram node/edge model from a canonical project snapshot.
+ *
+ * The two sections are merged here and only here: `electrical` supplies
+ * identity and connectivity, `layout` supplies position, board holes, tap
+ * assignment and manual routes. A missing layout entry is not an error — a
+ * project that was just imported from WireViz has electrical content and no
+ * geometry yet — it falls back to the origin with a single tap.
+ *
+ * Node order is boards, then components, then junctions, so boards render
+ * behind everything and junction markers sit on top (nodes stack in array
+ * order, see `NgDiagramConfig.zIndex` in diagram.component.ts).
+ */
+export function fromCanonicalProject(project: CanonicalProjectV2): {
+  nodes: Node<AvSchematicNodeData>[];
+  edges: Edge<WireEdgeData>[];
+  /** Cable records that have no standalone ng-diagram element. */
+  cableInventory: CanonicalCable[];
+} {
+  const componentLayouts = new Map(project.layout.components.map((c) => [c.componentId, c]));
+  const junctionLayouts = new Map(project.layout.junctions.map((j) => [j.junctionId, j]));
+  const conductorLayouts = new Map(project.layout.conductors.map((c) => [c.conductorId, c]));
+  const cables = new Map(project.electrical.cables.map((cable) => [cable.name, cable]));
+
+  const netByJunction = new Map<string, CanonicalNet>();
+  for (const net of project.electrical.nets) {
+    for (const endpoint of net.endpoints) {
+      if (endpoint.kind === 'junction') netByJunction.set(endpoint.junctionId, net);
+    }
+  }
+
+  const boardNodes = project.layout.boards.map(fromCanonicalBoard);
+  const componentNodes = project.electrical.components.map((component) =>
+    fromCanonicalComponent(component, componentLayouts.get(component.id)),
+  );
+  const junctionNodes = project.electrical.junctions.map((junction) =>
+    fromCanonicalJunction(
+      junction,
+      junctionLayouts.get(junction.id),
+      netByJunction.get(junction.id),
+    ),
+  );
+
+  const edges = project.electrical.nets.flatMap((net) =>
+    net.conductors.map((conductor) =>
+      fromCanonicalConductor(conductor, net, conductorLayouts.get(conductor.id), cables),
+    ),
+  );
+
+  return {
+    nodes: [...boardNodes, ...componentNodes, ...junctionNodes],
+    edges,
+    cableInventory: project.electrical.cables.map(cloneCable),
   };
 }
 
@@ -163,35 +890,16 @@ function fromCanonicalBoard(board: CanonicalBoard): Node<BoardNodeData> {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Components
-// ---------------------------------------------------------------------------
+function fromCanonicalComponent(
+  component: CanonicalComponent,
+  layout: CanonicalComponentLayout | undefined,
+): Node<DeviceNodeData> {
+  const holesByPin = new Map((layout?.pinHoles ?? []).map((entry) => [entry.pinId, entry.hole]));
 
-function toCanonicalComponent(node: Node<DeviceNodeData>): CanonicalComponent {
-  return {
-    id: node.id,
-    deviceId: node.data.deviceId,
-    manufacturer: node.data.manufacturer,
-    model: node.data.model,
-    category: node.data.category,
-    location: node.data.location,
-    boardId: node.data.boardId,
-    position: toCanonicalPoint(node.position),
-    pins: node.data.ports.map((port) => ({
-      id: port.id,
-      label: port.label,
-      direction: port.direction,
-      connectorType: port.connectorType,
-      hole: port.hole,
-    })),
-  };
-}
-
-function fromCanonicalComponent(component: CanonicalComponent): Node<DeviceNodeData> {
   return {
     id: component.id,
     type: NodeTemplateType.DeviceNode,
-    position: component.position,
+    position: layout?.position ?? DEFAULT_POSITION,
     data: {
       type: 'device',
       deviceId: component.deviceId,
@@ -199,360 +907,113 @@ function fromCanonicalComponent(component: CanonicalComponent): Node<DeviceNodeD
       model: component.model,
       category: component.category,
       location: component.location,
-      boardId: component.boardId,
+      boardId: layout?.boardId,
+      wirevizName: component.wirevizName,
+      wirevizType: component.wirevizType,
+      wirevizSubtype: component.wirevizSubtype,
+      wirevizColor: component.wirevizColor,
+      wirevizManufacturer: component.wirevizManufacturer,
+      wirevizMpn: component.wirevizMpn,
+      wirevizStyle: component.wirevizStyle,
+      wirevizShowName: component.wirevizShowName,
+      notes: component.notes,
+      wirevizExtras: component.wirevizExtras,
       ports: component.pins.map((pin) => ({
         id: pin.id,
         label: pin.label,
         direction: pin.direction,
         connectorType: pin.connectorType,
-        hole: pin.hole,
+        wirevizDesignator: pin.wirevizDesignator,
+        wirevizLabel: pin.wirevizLabel,
+        hole: holesByPin.get(pin.id),
       })),
     },
   };
 }
 
-// ---------------------------------------------------------------------------
-// Nets (wire edges)
-// ---------------------------------------------------------------------------
-
-function toCanonicalNet(edge: Edge<WireEdgeData>): CanonicalNet {
-  if (!edge.source || !edge.sourcePort || !edge.target || !edge.targetPort) {
-    throw new CanonicalProjectError(
-      `edge "${edge.id}" is not fully connected (dangling edges are not exportable)`,
-    );
-  }
+function fromCanonicalJunction(
+  junction: CanonicalJunction,
+  layout: CanonicalJunctionLayout | undefined,
+  net: CanonicalNet | undefined,
+): Node<JunctionNodeData> {
   return {
-    id: edge.id,
-    wireId: edge.data.wireId,
-    wireType: edge.data.wireType,
-    netId: edge.data.netId,
-    color: edge.data.color,
-    colorCode: edge.data.colorCode,
-    source: { componentId: edge.source, pinId: edge.sourcePort },
-    target: { componentId: edge.target, pinId: edge.targetPort },
-    // Only 'manual' is a meaningful persisted state; anything else (e.g. the
-    // 'auto' ng-diagram sometimes sets explicitly) canonicalizes to absence.
-    routingMode: edge.routingMode === 'manual' ? 'manual' : undefined,
-    points: edge.points?.map(toCanonicalPoint),
-  };
-}
-
-function fromCanonicalNet(net: CanonicalNet): Edge<WireEdgeData> {
-  return {
-    id: net.id,
-    type: EdgeTemplateType.WireEdge,
-    source: net.source.componentId,
-    sourcePort: net.source.pinId,
-    target: net.target.componentId,
-    targetPort: net.target.pinId,
-    routingMode: net.routingMode,
-    points: net.points,
+    id: junction.id,
+    type: NodeTemplateType.JunctionNode,
+    position: layout?.position ?? DEFAULT_POSITION,
     data: {
-      type: 'wire',
-      wireId: net.wireId,
-      wireType: net.wireType,
-      netId: net.netId,
-      color: net.color,
-      colorCode: net.colorCode,
+      type: 'junction',
+      junctionId: junction.id,
+      label: junction.label,
+      kind: junction.kind,
+      taps: layout?.taps ?? 1,
+      notes: junction.notes,
+      netId: net?.id,
+      netName: net?.name,
+      wirevizName: junction.wirevizName,
+      wirevizType: junction.wirevizType,
+      wirevizSubtype: junction.wirevizSubtype,
+      wirevizColor: junction.wirevizColor,
+      wirevizManufacturer: junction.wirevizManufacturer,
+      wirevizMpn: junction.wirevizMpn,
+      wirevizStyle: junction.wirevizStyle,
+      wirevizShowName: junction.wirevizShowName,
+      wirevizExtras: junction.wirevizExtras,
+      boardId: layout?.boardId,
+      hole: layout?.hole,
     },
   };
 }
 
-function toCanonicalPoint(point: Point): CanonicalPoint {
-  return { x: point.x, y: point.y };
-}
-
-// ---------------------------------------------------------------------------
-// Parsing / validation — untrusted JSON (disk, network) -> CanonicalProjectV1.
-//
-// Mirrors the style of wireviz-import/wireviz-model.ts: every field is
-// checked explicitly, every failure throws a labeled CanonicalProjectError,
-// no blind casts. Used by both the storage client (after GET) and the
-// server (before PUT is written to disk).
-// ---------------------------------------------------------------------------
-
-const ALLOWED_ROUTING_MODES: readonly CanonicalRoutingMode[] = ['manual'];
-const ALLOWED_PORT_DIRECTIONS: readonly PortDirection[] = ['input', 'output'];
-
-/** Parses and validates an untrusted value as a CanonicalProjectV1. Throws CanonicalProjectError on any mismatch. */
-export function parseCanonicalProject(raw: unknown): CanonicalProjectV1 {
-  const root = expectRecord(raw, 'project');
-
-  if (root['formatVersion'] !== 1) {
-    throw new CanonicalProjectError(
-      `project.formatVersion: expected 1, got ${JSON.stringify(root['formatVersion'])}`,
-    );
-  }
-
-  const boards = expectArray(root['boards'], 'project.boards').map((b, i) =>
-    parseCanonicalBoard(b, `project.boards[${i}]`),
-  );
-  const components = expectArray(root['components'], 'project.components').map((c, i) =>
-    parseCanonicalComponent(c, `project.components[${i}]`),
-  );
-  const nets = expectArray(root['nets'], 'project.nets').map((n, i) =>
-    parseCanonicalNet(n, `project.nets[${i}]`),
+function fromCanonicalConductor(
+  conductor: CanonicalConductor,
+  net: CanonicalNet,
+  layout: CanonicalConductorLayout | undefined,
+  cables: ReadonlyMap<string, CanonicalCable>,
+): Edge<WireEdgeData> {
+  const cable = conductor.cable ? cables.get(conductor.cable.name) : undefined;
+  const { color, colorCode } = resolveWireColor(
+    cable?.colors[(conductor.cable?.wireIndex ?? 1) - 1],
   );
 
-  const nodeIds = new Set<string>();
-  for (const board of boards) {
-    if (nodeIds.has(board.id)) {
-      throw new CanonicalProjectError(`project.boards: duplicate id "${board.id}"`);
-    }
-    nodeIds.add(board.id);
-  }
-
-  const boardsById = new Map(boards.map((board) => [board.id, board]));
-
-  const componentsById = new Map<string, CanonicalComponent>();
-  for (const component of components) {
-    if (nodeIds.has(component.id)) {
-      throw new CanonicalProjectError(`project.components: duplicate id "${component.id}"`);
-    }
-    nodeIds.add(component.id);
-    componentsById.set(component.id, component);
-
-    if (component.boardId !== undefined && !boardsById.has(component.boardId)) {
-      throw new CanonicalProjectError(
-        `component "${component.id}": boardId "${component.boardId}" does not match any board in the project`,
-      );
-    }
-
-    for (const pin of component.pins) {
-      if (pin.hole) {
-        validateHoleBounds(
-          pin.hole,
-          component,
-          boardsById,
-          `component "${component.id}" pin "${pin.id}"`,
-        );
-      }
-    }
-  }
-
-  const netIds = new Set<string>();
-  for (const net of nets) {
-    if (netIds.has(net.id)) {
-      throw new CanonicalProjectError(`project.nets: duplicate id "${net.id}"`);
-    }
-    netIds.add(net.id);
-    validateEndpoint(net.source, componentsById, `project.nets "${net.id}".source`);
-    validateEndpoint(net.target, componentsById, `project.nets "${net.id}".target`);
-  }
-
-  return { formatVersion: 1, boards, components, nets };
-}
-
-function validateEndpoint(
-  endpoint: CanonicalNetEndpoint,
-  componentsById: ReadonlyMap<string, CanonicalComponent>,
-  label: string,
-): void {
-  const component = componentsById.get(endpoint.componentId);
-  if (!component) {
-    throw new CanonicalProjectError(`${label}: no component "${endpoint.componentId}"`);
-  }
-  if (!component.pins.some((pin) => pin.id === endpoint.pinId)) {
-    throw new CanonicalProjectError(
-      `${label}: component "${endpoint.componentId}" has no pin "${endpoint.pinId}"`,
-    );
-  }
-}
-
-/**
- * A hole address is only meaningful relative to one specific board, so a
- * component that has any holed pin must declare which board via `boardId`
- * (checked separately, before this runs) — this only checks the address
- * itself fits that board's grid, not merely *some* board in the project.
- */
-function validateHoleBounds(
-  hole: BoardHole,
-  component: CanonicalComponent,
-  boardsById: ReadonlyMap<string, CanonicalBoard>,
-  label: string,
-): void {
-  if (component.boardId === undefined) {
-    throw new CanonicalProjectError(`${label}.hole: component has a hole but no boardId`);
-  }
-  // boardId's existence was already validated against boardsById by the caller.
-  const board = boardsById.get(component.boardId);
-  if (!board || !isHoleInBounds(board, hole)) {
-    throw new CanonicalProjectError(
-      `${label}.hole: {row: ${hole.row}, col: ${hole.col}} does not fit board "${component.boardId}"`,
-    );
-  }
-}
-
-function parseCanonicalBoard(raw: unknown, label: string): CanonicalBoard {
-  const obj = expectRecord(raw, label);
   return {
-    id: expectNonEmptyString(obj['id'], `${label}.id`),
-    label: expectString(obj['label'], `${label}.label`),
-    rows: expectPositiveInteger(obj['rows'], `${label}.rows`),
-    cols: expectPositiveInteger(obj['cols'], `${label}.cols`),
-    pitch: expectPositiveFiniteNumber(obj['pitch'], `${label}.pitch`),
-    position: expectPoint(obj['position'], `${label}.position`),
+    id: conductor.id,
+    type: EdgeTemplateType.WireEdge,
+    source: endpointNodeId(conductor.from),
+    sourcePort: endpointPortId(conductor.from, layout?.fromTap),
+    target: endpointNodeId(conductor.to),
+    targetPort: endpointPortId(conductor.to, layout?.toTap),
+    routingMode: layout?.routingMode,
+    points: layout?.points,
+    data: {
+      type: 'wire',
+      wireId: conductor.cable?.name ?? '',
+      wireIndex: conductor.cable?.wireIndex,
+      cableWireCount: cable?.wireCount,
+      cableColors: cable ? [...cable.colors] : undefined,
+      cableWireLabels: cable?.wireLabels ? [...cable.wireLabels] : undefined,
+      wireType: conductor.wireType,
+      wirevizLink: conductor.wirevizLink,
+      wirevizLoop: conductor.wirevizLoop,
+      netId: net.id,
+      netName: net.name,
+      color,
+      colorCode,
+      gauge: cable?.gauge,
+      length: cable?.length,
+      notes: cable?.notes,
+      cableType: cable?.type,
+      manufacturer: cable?.manufacturer,
+      mpn: cable?.mpn,
+      cableColorCode: cable?.colorCode,
+      cableExtras: cable?.wirevizExtras,
+    },
   };
 }
 
-function parseCanonicalComponent(raw: unknown, label: string): CanonicalComponent {
-  const obj = expectRecord(raw, label);
-  const pins = expectArray(obj['pins'], `${label}.pins`).map((p, i) =>
-    parseCanonicalPin(p, `${label}.pins[${i}]`),
-  );
-
-  const pinIds = new Set<string>();
-  for (const pin of pins) {
-    if (pinIds.has(pin.id)) {
-      throw new CanonicalProjectError(`${label}.pins: duplicate id "${pin.id}"`);
-    }
-    pinIds.add(pin.id);
-  }
-
-  return {
-    id: expectNonEmptyString(obj['id'], `${label}.id`),
-    deviceId: expectString(obj['deviceId'], `${label}.deviceId`),
-    manufacturer: expectString(obj['manufacturer'], `${label}.manufacturer`),
-    model: expectString(obj['model'], `${label}.model`),
-    category: expectOptionalString(obj['category'], `${label}.category`),
-    location: expectOptionalString(obj['location'], `${label}.location`),
-    boardId: expectOptionalString(obj['boardId'], `${label}.boardId`),
-    position: expectPoint(obj['position'], `${label}.position`),
-    pins,
-  };
+function endpointNodeId(endpoint: CanonicalNetEndpoint): string {
+  return endpoint.kind === 'pin' ? endpoint.componentId : endpoint.junctionId;
 }
 
-function parseCanonicalPin(raw: unknown, label: string): CanonicalPin {
-  const obj = expectRecord(raw, label);
-  return {
-    id: expectNonEmptyString(obj['id'], `${label}.id`),
-    label: expectString(obj['label'], `${label}.label`),
-    direction: expectOneOf(obj['direction'], ALLOWED_PORT_DIRECTIONS, `${label}.direction`),
-    connectorType: expectOptionalString(obj['connectorType'], `${label}.connectorType`),
-    hole: obj['hole'] === undefined ? undefined : expectHole(obj['hole'], `${label}.hole`),
-  };
-}
-
-function parseCanonicalNet(raw: unknown, label: string): CanonicalNet {
-  const obj = expectRecord(raw, label);
-  return {
-    id: expectNonEmptyString(obj['id'], `${label}.id`),
-    wireId: expectString(obj['wireId'], `${label}.wireId`),
-    wireType: expectOptionalString(obj['wireType'], `${label}.wireType`),
-    netId: expectOptionalString(obj['netId'], `${label}.netId`),
-    color: expectOptionalString(obj['color'], `${label}.color`),
-    colorCode: expectOptionalString(obj['colorCode'], `${label}.colorCode`),
-    source: expectEndpoint(obj['source'], `${label}.source`),
-    target: expectEndpoint(obj['target'], `${label}.target`),
-    routingMode:
-      obj['routingMode'] === undefined
-        ? undefined
-        : expectOneOf(obj['routingMode'], ALLOWED_ROUTING_MODES, `${label}.routingMode`),
-    points:
-      obj['points'] === undefined
-        ? undefined
-        : expectArray(obj['points'], `${label}.points`).map((p, i) =>
-            expectPoint(p, `${label}.points[${i}]`),
-          ),
-  };
-}
-
-function expectEndpoint(raw: unknown, label: string): CanonicalNetEndpoint {
-  const obj = expectRecord(raw, label);
-  return {
-    componentId: expectNonEmptyString(obj['componentId'], `${label}.componentId`),
-    pinId: expectNonEmptyString(obj['pinId'], `${label}.pinId`),
-  };
-}
-
-function expectHole(raw: unknown, label: string): BoardHole {
-  const obj = expectRecord(raw, label);
-  return {
-    row: expectNonNegativeInteger(obj['row'], `${label}.row`),
-    col: expectNonNegativeInteger(obj['col'], `${label}.col`),
-  };
-}
-
-function expectPoint(raw: unknown, label: string): CanonicalPoint {
-  const obj = expectRecord(raw, label);
-  return {
-    x: expectFiniteNumber(obj['x'], `${label}.x`),
-    y: expectFiniteNumber(obj['y'], `${label}.y`),
-  };
-}
-
-function expectRecord(raw: unknown, label: string): Record<string, unknown> {
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-    throw new CanonicalProjectError(`${label}: expected an object`);
-  }
-  return raw as Record<string, unknown>;
-}
-
-function expectArray(raw: unknown, label: string): unknown[] {
-  if (!Array.isArray(raw)) {
-    throw new CanonicalProjectError(`${label}: expected an array`);
-  }
-  return raw;
-}
-
-function expectString(raw: unknown, label: string): string {
-  if (typeof raw !== 'string') {
-    throw new CanonicalProjectError(`${label}: expected a string, got ${typeof raw}`);
-  }
-  return raw;
-}
-
-function expectNonEmptyString(raw: unknown, label: string): string {
-  const value = expectString(raw, label);
-  if (value.length === 0) {
-    throw new CanonicalProjectError(`${label}: expected a non-empty string`);
-  }
-  return value;
-}
-
-function expectOptionalString(raw: unknown, label: string): string | undefined {
-  if (raw === undefined) return undefined;
-  return expectString(raw, label);
-}
-
-function expectFiniteNumber(raw: unknown, label: string): number {
-  if (typeof raw !== 'number' || !Number.isFinite(raw)) {
-    throw new CanonicalProjectError(
-      `${label}: expected a finite number, got ${JSON.stringify(raw)}`,
-    );
-  }
-  return raw;
-}
-
-function expectPositiveFiniteNumber(raw: unknown, label: string): number {
-  const value = expectFiniteNumber(raw, label);
-  if (value <= 0) {
-    throw new CanonicalProjectError(`${label}: expected a positive number, got ${value}`);
-  }
-  return value;
-}
-
-function expectPositiveInteger(raw: unknown, label: string): number {
-  const value = expectFiniteNumber(raw, label);
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new CanonicalProjectError(`${label}: expected a positive integer, got ${value}`);
-  }
-  return value;
-}
-
-function expectNonNegativeInteger(raw: unknown, label: string): number {
-  const value = expectFiniteNumber(raw, label);
-  if (!Number.isInteger(value) || value < 0) {
-    throw new CanonicalProjectError(`${label}: expected a non-negative integer, got ${value}`);
-  }
-  return value;
-}
-
-function expectOneOf<T extends string>(raw: unknown, allowed: readonly T[], label: string): T {
-  if (typeof raw !== 'string' || !(allowed as readonly string[]).includes(raw)) {
-    throw new CanonicalProjectError(
-      `${label}: expected one of ${allowed.map((v) => `"${v}"`).join(', ')}, got ${JSON.stringify(raw)}`,
-    );
-  }
-  return raw as T;
+function endpointPortId(endpoint: CanonicalNetEndpoint, tap: number | undefined): string {
+  return endpoint.kind === 'pin' ? endpoint.pinId : junctionTapPortId(tap ?? 0);
 }

@@ -47,7 +47,7 @@ export function formDataToWireData(
 ): WireEdgeData {
   return {
     ...existingData,
-    wireId: formData.wireId,
+    wireId: existingData.wirevizLoop ? '' : formData.wireId,
     wireType: formData.wireType || undefined,
   };
 }

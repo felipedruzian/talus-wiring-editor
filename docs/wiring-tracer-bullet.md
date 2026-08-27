@@ -134,7 +134,8 @@ real em `board-geometry.spec.ts`.
 minimal-two-nets.fixture.ts (texto YAML)
   -> wireviz-yaml.ts        parseYamlSubset()      valor genérico do subconjunto YAML
   -> wireviz-model.ts       parseWireVizDocument()  WireVizDocument validado
-  -> wireviz-to-diagram.ts  wirevizConnectionsToEdges()  Edge<WireEdgeData>[]
+  -> wireviz-to-diagram.ts  wirevizToElectrical()  CanonicalElectrical
+  -> canonical-project.ts   fromCanonicalProject()  Node[] + Edge[]
 ```
 
 `diagram/data.ts` executa esse pipeline sobre os nodes semeados de
@@ -145,27 +146,32 @@ o que o parser aceita e rejeita, e por que é uma implementação clean-room
 em vez de código adaptado do `Garth-42/WireForm` (GPL-3.0 — ver
 [`docs/license-matrix.md`](license-matrix.md)).
 
-O casamento pino-porta é feito por igualdade exata da string
-`DevicePort.label` (`D9` -> a porta cujo `label` é `"D9"`). O nome de um
-conector no fixture mapeia para o id de um node do diagrama através de um
-registro explícito `WireVizPlacement`
+O casamento pino-porta considera designador WireViz preservado, label e id
+local. O resultado precisa identificar exatamente um pino; colisões são
+rejeitadas em vez de selecionar a primeira ocorrência. O nome de um conector
+no fixture mapeia para o id de um node do diagrama através de um registro
+explícito `WireVizPlacement`
 (`{ NANO: 'nano-1', TB6612FNG: 'tb6612-1' }`) — o importador nunca tenta
 adivinhar a identidade do node a partir do nome do conector.
 
 ## Formato canônico que pode ser serializado
 
-`diagram/model/canonical-project.ts` define `CanonicalProjectV1`: um objeto
-plano e serializado em JSON no formato `{ boards, components, nets }`,
-independente dos tipos de runtime `Node`/`Edge` do `ng-diagram` (que
-carregam campos transitórios como `selected` ou `measuredPorts`, que nunca
-devem ser persistidos). `toCanonicalProject()` / `fromCanonicalProject()`
-são funções puras de ida e volta; `canonical-project.spec.ts` comprova que
-o round trip preserva placas, componentes, pinos (incluindo `hole`), nets,
-cores e `points` manuais — usando o modelo real semeado/importado, não um
-fixture sintético.
+`diagram/model/canonical-project.ts` define `CanonicalProjectV2`, serializado
+em JSON e independente dos tipos de runtime `Node`/`Edge` do `ng-diagram`.
+A seção `electrical` contém componentes, junções, cabos e nets; `layout`
+contém placas, posições, furos, taps e rotas manuais. Essa separação, adicionada
+pela issue #2, impede que uma exportação WireViz confunda semântica elétrica
+com geometria que o formato não representa. `toCanonicalProject()` /
+`fromCanonicalProject()` são funções puras de ida e volta, enquanto
+`parseCanonicalProject()` aceita v2 e migra snapshots v1 em memória.
+
+`canonical-project.spec.ts` cobre placas, componentes, pinos, nets, cores,
+rotas manuais, junções multi-drop e migração v1. O contrato de round-trip da
+issue #2 está detalhado em
+[`docs/wireviz-round-trip.md`](wireviz-round-trip.md).
 
 Este é o formato que o serviço local (ver
-[`docs/local-service.md`](local-service.md)) persiste literalmente como o
+[`docs/local-service.md`](local-service.md)) valida, normaliza e persiste como o
 arquivo JSON de um projeto.
 
 ## Salvar e Abrir: o que já está implementado
@@ -195,11 +201,25 @@ acessível, na barra de navegação superior, ao lado do menu de exportação). 
 
 Isso cobre o critério de aceite "um projeto salvo em um navegador pode ser
 reaberto em outro cliente da Tailnet pela persistência central do serviço"
-**no nível do cliente e do formato de dados**: o round trip
+**no nível do cliente e do formato de dados**: o round-trip
 model -> canônico -> JSON -> canônico -> model é testado automaticamente
-(`canonical-project.spec.ts`). A validação da mudança também executa o
-fluxo Salvar/Abrir em um navegador real contra o build de produção e o
-serviço locais.
+(`canonical-project.spec.ts`). A prova com dois navegadores fisicamente
+distintos na Tailnet depende do ambiente implantado e permanece como gate
+operacional posterior; não foi executada nesta worktree.
+
+## Importar, exportar e inspecionar WireViz na interface
+
+A barra superior agora liga o pipeline a fluxos reais: seleciona um arquivo
+YAML, carrega o fixture multi-drop, baixa a exportação WireViz e abre o
+relatório global da última operação. A importação usa somente a identidade e
+o placement do projeto vivo como esqueleto, substitui o modelo pelo resultado
+validado e não reaproveita metadados WireViz capazes de mascarar uma perda.
+
+O fixture inclui um trilho de fan-out utilizável, referências de condutor por
+número, `wirelabel` e cor, além de um cabo `SPARE` desconectado com posições
+sem uso e RGB de seis dígitos. A junção/trilho pode ser selecionada no canvas;
+a barra lateral permite editar nome, representação, taps e observação e
+inspecionar id, net e a semântica comum de todos os taps.
 
 ## Verificação e implantação operacional
 
@@ -216,7 +236,7 @@ documento permanece como contrato técnico do tracer bullet.
 
 ## Fora do escopo desta fatia (isso sim, deliberadamente)
 
-Itens que a issue #1 não exige e que ficam de fora por decisão de escopo,
+Itens que continuam fora por decisão de escopo,
 não por falta de autorização: edição via barra lateral de propriedades
 para nodes de placa (dimensões, espaçamento de furos); uma ilustração
 literal e fiel de pinagem DIP/header para Nano/TB6612FNG (a representação
@@ -225,13 +245,11 @@ a seção "encaixados" acima — não um footprint fiel à folha de dados do
 componente); encaixe visual de cada pino individual de componente sobre seu
 furo exato na placa (`holeLocalPoint()` existe e o posicionamento do node já
 sobrepõe a placa, mas ainda não está conectado ao posicionamento por pino);
-uma ação de UI "Importar WireViz" (o pipeline roda uma vez, no momento do
-seed, provando que funciona de ponta a ponta — a UI de Salvar/Abrir descrita
-acima é sobre o formato canônico, não sobre reimportar YAML WireViz a partir
-da interface); exportação `DXF` para nodes de placa (cai no aviso "nenhum
-renderer registrado" do `DxfExporter` e é ignorado — inofensivo, mas nodes
-de placa ainda não aparecem na exportação `DXF`); nets multi-drop, bundles e
-junções no parser WireViz (ver o documento de limites); e suporte a
+exportação `DXF` para nodes de placa (cai no aviso "nenhum renderer
+registrado" do `DxfExporter` e é ignorado — inofensivo, mas nodes de placa
+ainda não aparecem na exportação `DXF`); autogeração/templates completos do
+WireViz, shields como conectividade e bundles além do subconjunto documentado;
+e suporte a
 múltiplos usuários simultâneos gravando o mesmo projeto (o servidor local
 resolve concorrência apenas ao nível do `rename()` atômico do sistema de
 arquivos — ver `docs/local-service.md`).

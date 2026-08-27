@@ -73,15 +73,18 @@ abaixo é implementada explicitamente no próprio `wiring-editor-server.mjs`
   `parseCanonicalProject()` de `server/canonical-project-validate.mjs` —
   uma reimplementação em JavaScript puro (sem build/bundler ligando o
   servidor ao TypeScript do Angular) das mesmas regras de
-  `diagram/model/canonical-project.ts::parseCanonicalProject`. Um corpo que
-  não seja um `CanonicalProjectV1` válido (tipos errados, ids duplicados,
-  furo fora dos limites da placa, endpoint de net apontando para
-  componente/pino inexistente etc.) é rejeitado com `400 invalid_project`
-  antes de qualquer gravação. Como as duas implementações não compartilham
-  módulo, precisam ser mantidas em sincronia manualmente sempre que o
-  formato canônico mudar — `canonical-project.spec.ts` (cliente) e
-  `wiring-editor-server.spec.mjs` (servidor) são o cruzamento de checagem
-  disponível para isso.
+  `diagram/model/canonical-project-parse.ts::parseCanonicalProject`. Um corpo
+  que não seja um projeto canônico v1 ou v2 válido (tipos errados, ids
+  duplicados, referências inexistentes, nets desconectadas, furos ou taps
+  fora dos limites, endpoints v1 iguais, conflitos de cor v1, loops inválidos
+  ou extras capazes de sobrescrever campos canônicos etc.) é rejeitado com
+  `400 invalid_project` antes de
+  qualquer gravação. O servidor mantém snapshots v1 na versão v1, após
+  normalizar somente os campos reconhecidos; o frontend os migra para v2 ao
+  abrir. Como as duas
+  implementações não compartilham módulo, precisam ser mantidas em sincronia
+  manualmente — `canonical-project.spec.ts` (cliente) e
+  `wiring-editor-server.spec.mjs` (servidor) são o cruzamento de checagem.
 - **`:id` restrito antes de tocar o sistema de arquivos**: validado contra
   `^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$` — sem separador de caminho, sem ponto
   inicial, então não há travessia de diretório possível.
@@ -104,8 +107,8 @@ benefício).
 | Método | Caminho | Corpo | Resposta |
 |---|---|---|---|
 | `GET` | `/api/projects` | — | `{ projects: [{ id, name, updatedAt }] }` |
-| `GET` | `/api/projects/:id` | — | O `CanonicalProjectV1` armazenado, em JSON, literalmente, ou `404` |
-| `PUT` | `/api/projects/:id` | Um objeto JSON validado como `CanonicalProjectV1` (ver "Validação" acima) | `{ id, saved: true }`, ou `400 invalid_project` se a validação falhar |
+| `GET` | `/api/projects/:id` | — | O projeto canônico v1 ou v2 normalizado e armazenado em JSON, ou `404` |
+| `PUT` | `/api/projects/:id` | Um objeto JSON canônico v1 ou v2 validado (ver "Validação" acima) | `{ id, saved: true }`, ou `400 invalid_project` se a validação falhar |
 | `DELETE` | `/api/projects/:id` | — | `{ id, deleted: true }`, ou `404` |
 
 Gravações são atômicas: o corpo é escrito em um arquivo de rascunho no
@@ -122,7 +125,7 @@ explicitamente pelo critério de aceite público da issue).
 
 ```
 $WIRING_EDITOR_STORAGE_DIR/
-  <id-do-projeto>.json   # CanonicalProjectV1, formatado (pretty-printed)
+  <id-do-projeto>.json   # projeto canônico versionado, formatado (pretty-printed)
   ...
 ```
 
@@ -160,9 +163,12 @@ A implantação do host deve preservar estas invariantes:
 
 O round-trip entre clientes da Tailnet e a política de backup dos projetos
 continuam sendo validações operacionais do host, não responsabilidades do
-build Angular. O estado corrente dessas verificações deve ser consultado na
-issue/PR de implantação, em vez de ficar congelado neste documento de
-código da aplicação.
+build Angular. Em particular, o gate posterior precisa salvar em um
+navegador/dispositivo e reabrir em outro navegador/dispositivo fisicamente
+distinto, ambos pela URL HTTPS da Tailnet; duas requisições no mesmo processo
+não substituem essa evidência. O estado corrente dessas verificações deve ser
+consultado na issue/PR de implantação, em vez de ficar congelado neste
+documento de código da aplicação.
 
 ## Fontes consultadas
 

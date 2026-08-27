@@ -6,7 +6,7 @@ _Live demo: [https://www.ngdiagram.dev/templates/av/](https://www.ngdiagram.dev/
 
 Interactive AV (audio/video) schematic diagram built with Angular 21 and [ng-diagram](https://www.npmjs.com/package/ng-diagram). Use this project as a starting point for AV system design — building your own schematic, signal-flow, or device-wiring diagram. Minimal dependencies: only Angular and ng-diagram, with no opinionated third-party UI libraries.
 
-> **Este fork (`talus-wiring-editor`)** está evoluindo este template para um editor de fiação física. O diagrama exibido ao carregar é agora o [tracer bullet da issue #1](https://github.com/felipedruzian/talus-wiring-editor/issues/1) — uma placa física, um Arduino Nano e um TB6612FNG, fiados a partir de uma importação WireViz — não mais o exemplo de rack AV original. Ver [`docs/wiring-tracer-bullet.md`](docs/wiring-tracer-bullet.md) para a decisão de integração e [`docs/license-matrix.md`](docs/license-matrix.md) para o status de licenciamento de cada peça reaproveitada.
+> **Este fork (`talus-wiring-editor`)** está evoluindo este template para um editor de fiação física. O tracer bullet da issue #1 foi estendido pela issue #2 com nets multi-drop, junções/trilhos explícitos, projeto canônico v2 e round-trip WireViz com relatório de compatibilidade. Ver [`docs/wiring-tracer-bullet.md`](docs/wiring-tracer-bullet.md), [`docs/wireviz-round-trip.md`](docs/wireviz-round-trip.md) e [`docs/license-matrix.md`](docs/license-matrix.md).
 
 Features:
 
@@ -26,6 +26,11 @@ Features:
 - Editable category **combobox** (predefined list with free-text input — pick from the dictionary or type a custom category)
 - Dark/light theme
 - **Export to PNG** (raster, theme-aware) and **Export to DXF** (vector, for AutoCAD / BricsCAD / LibreCAD) from a top-navbar dropdown — see [`docs/export.md`](docs/export.md)
+- Nets WireViz multi-drop derivadas por conectividade, sem tratar fan-out como colisão de porta
+- Junções e trilhos selecionáveis e editáveis no canvas, com taps visuais separados da semântica elétrica
+- Projeto canônico v2 persistido pela API local de mesma origem, com migração endurecida de snapshots v1 e inventário de cabos desconectados
+- Importação de arquivo YAML, fixture multi-drop, exportação WireViz e relatório global acessíveis pela barra superior
+- Round-trip WireViz clean-room com `pinlabels`, `wirelabels`, referências sem ambiguidade, loops internos e RGB exato de seis dígitos
 
 ## Getting Started
 
@@ -62,6 +67,7 @@ Deep-dive documentation lives in [`docs/`](docs/):
 - [`docs/export.md`](docs/export.md) — PNG and DXF export pipelines
 - [`docs/wiring-tracer-bullet.md`](docs/wiring-tracer-bullet.md) — issue #1: representação de placa/componente/net física, formato canônico de projeto, o que está pendente ou fora de escopo
 - [`docs/wireviz-import-limits.md`](docs/wireviz-import-limits.md) — o subconjunto de YAML WireViz que o parser desta fatia aceita
+- [`docs/wireviz-round-trip.md`](docs/wireviz-round-trip.md) — projeto canônico v2, multi-drop, relatório e equivalência elétrica
 - [`docs/license-matrix.md`](docs/license-matrix.md) — origem, revisão, licença e estratégia de reuso para cada base avaliada para este fork
 - [`docs/local-service.md`](docs/local-service.md) — o serviço local estático+API (`server/`) e o contrato de implantação no Talus
 
