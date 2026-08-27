@@ -26,6 +26,8 @@ import { PropertiesSidebarService } from '../properties-sidebar/properties-sideb
 import { randomShortId } from '../shared/utils/random-short-id';
 import { generateDeviceId } from './model/auto-device-id';
 import { isDeviceNode, isJunctionNode, isWireEdge } from './model/guards';
+import { physicalEdgeNet } from './model/physical-connectivity';
+import { snapForNode } from './model/physical-snap';
 import {
   EdgeTemplateType,
   NodeTemplateType,
@@ -35,7 +37,9 @@ import {
 import { NodeVisibilityConfigService } from './node-visibility/node-visibility-config.service';
 import { BoardNodeComponent } from './node/board-node.component';
 import { DeviceNodeComponent } from './node/device-node.component';
+import { FootprintNodeComponent } from './node/footprint-node.component';
 import { JunctionNodeComponent } from './node/junction-node.component';
+import { BoardPlacementService } from './placement/board-placement.service';
 import { applyEdgeStretchOnSelectionMoved } from './edge-reshaping/middleware/edge-stretch-on-move';
 import { EdgeReshapeOverlayComponent } from './edge-reshaping/edge-reshape-overlay.component';
 import { WireEdgeComponent } from './wire-edge.component';
@@ -59,6 +63,7 @@ export class DiagramComponent {
   private readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly exportService = inject(DiagramExportService);
   private readonly danglingEdge = inject(DanglingEdgeService);
+  private readonly boardPlacement = inject(BoardPlacementService);
 
   constructor() {
     this.exportService.setDiagramElement(this.elementRef);
@@ -84,7 +89,9 @@ export class DiagramComponent {
         sourcePort: Port | null,
         target: Node | null,
         targetPort: Port | null,
-      ): boolean => !this.isSamePort(source, sourcePort, target, targetPort),
+      ): boolean =>
+        !this.isSamePort(source, sourcePort, target, targetPort) &&
+        this.physicalConnectionIsCompatible(source, sourcePort, target, targetPort),
       temporaryEdgeDataBuilder: (edge: Edge): Edge<WireEdgeData> => ({
         ...edge,
         ...this.snapTemporaryTarget(edge),
@@ -92,7 +99,11 @@ export class DiagramComponent {
         routing: 'orthogonal',
         sourceArrowhead: undefined,
         targetArrowhead: undefined,
-        data: { type: 'wire', wireId: '' },
+        data: {
+          type: 'wire',
+          wireId: '',
+          netId: physicalEdgeNet(this.modelService.getModel().getNodes(), edge).netId,
+        },
       }),
       finalEdgeDataBuilder: (edge: Edge): Edge<WireEdgeData> => ({
         ...edge,
@@ -100,7 +111,11 @@ export class DiagramComponent {
         routing: undefined,
         sourceArrowhead: undefined,
         targetArrowhead: undefined,
-        data: { type: 'wire', wireId: generateWireId() },
+        data: {
+          type: 'wire',
+          wireId: generateWireId(),
+          netId: physicalEdgeNet(this.modelService.getModel().getNodes(), edge).netId,
+        },
       }),
     },
     snapping: {
@@ -108,6 +123,11 @@ export class DiagramComponent {
         width: this.avConfig.snapping.gridSize,
         height: this.avConfig.snapping.gridSize,
       },
+      computeSnapForNodeDrag: (node: Node) =>
+        snapForNode(node, this.modelService.getModel().getNodes(), {
+          width: this.avConfig.snapping.gridSize,
+          height: this.avConfig.snapping.gridSize,
+        }),
       shouldSnapDragForNode: () => this.avConfig.snapping.enabled,
     },
     watermarkPosition: 'bottom-left',
@@ -120,6 +140,7 @@ export class DiagramComponent {
     [NodeTemplateType.DeviceNode, DeviceNodeComponent],
     [NodeTemplateType.BoardNode, BoardNodeComponent],
     [NodeTemplateType.JunctionNode, JunctionNodeComponent],
+    [NodeTemplateType.FootprintNode, FootprintNodeComponent],
   ]);
 
   edgeTemplateMap = new NgDiagramEdgeTemplateMap([[EdgeTemplateType.WireEdge, WireEdgeComponent]]);
@@ -138,12 +159,14 @@ export class DiagramComponent {
   // ports of any moved node (auto edges are handled by ng-diagram's router).
   // Mid-drag: re-anchor only, no merge — the route mustn't simplify before drop.
   onSelectionMoved(event: SelectionMovedEvent): void {
-    applyEdgeStretchOnSelectionMoved(this.modelService, this.nodeIds(event.nodes), false);
+    void applyEdgeStretchOnSelectionMoved(this.modelService, this.nodeIds(event.nodes), false);
   }
 
-  // On drop: fold the bends the drag left collinear, once (point #4).
-  onNodeDragEnded(event: NodeDragEndedEvent): void {
-    applyEdgeStretchOnSelectionMoved(this.modelService, this.nodeIds(event.nodes), true);
+  // On drop, snap footprinted devices to their board holes, carry components
+  // seated on a moved board, then re-anchor every affected manual route.
+  async onNodeDragEnded(event: NodeDragEndedEvent): Promise<void> {
+    const affectedNodeIds = await this.boardPlacement.settleDrag(this.nodeIds(event.nodes));
+    await applyEdgeStretchOnSelectionMoved(this.modelService, affectedNodeIds, true);
   }
 
   private nodeIds(nodes: readonly { id: string }[]): Set<string> {
@@ -159,10 +182,36 @@ export class DiagramComponent {
     return !!source && source.id === target?.id && !!sourcePort && sourcePort.id === targetPort?.id;
   }
 
+  private physicalConnectionIsCompatible(
+    source: Node | null,
+    sourcePort: Port | null,
+    target: Node | null,
+    targetPort: Port | null,
+  ): boolean {
+    const result = physicalEdgeNet(this.modelService.getModel().getNodes(), {
+      source: source?.id ?? '',
+      sourcePort: sourcePort?.id,
+      target: target?.id ?? '',
+      targetPort: targetPort?.id,
+    });
+    return result.conflict.length === 0;
+  }
+
   private snapTemporaryTarget(edge: Edge): Pick<Edge, 'targetPosition'> | undefined {
     if (!this.avConfig.snapping.enabled || edge.target || !edge.targetPosition) return undefined;
-    const step = this.avConfig.snapping.gridSize;
-    return { targetPosition: snapPointToGrid(edge.targetPosition, { x: step, y: step }) };
+    const nodes = this.modelService.getModel().getNodes();
+    const reference = nodes.find((node) => node.id === edge.source);
+    const fallback = {
+      width: this.avConfig.snapping.gridSize,
+      height: this.avConfig.snapping.gridSize,
+    };
+    const snap = reference ? snapForNode(reference, nodes, fallback) : fallback;
+    return {
+      targetPosition: snapPointToGrid(edge.targetPosition, {
+        x: snap.width,
+        y: snap.height,
+      }),
+    };
   }
 
   onSelectionGestureEnded(event: SelectionGestureEndedEvent): void {

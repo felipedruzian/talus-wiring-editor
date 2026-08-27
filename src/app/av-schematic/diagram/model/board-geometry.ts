@@ -3,17 +3,24 @@ import { type BoardHole, type BoardNodeData } from './interfaces';
 /** Outer margin (px) around the hole grid, so holes don't sit flush on the board edge. */
 export const BOARD_MARGIN = 16;
 
+/** Drawn hole diameter (px) when a board doesn't override `holeDiameter`. */
+export const DEFAULT_HOLE_DIAMETER = 5;
+
 export interface BoardSize {
   width: number;
   height: number;
 }
+
+/** Grid bounds plus an optional sparse hole list, without a whole `BoardNodeData`. */
+export type BoardGrid = Pick<BoardNodeData, 'rows' | 'cols' | 'holes'>;
+export type BoardMetrics = Pick<BoardNodeData, 'rows' | 'cols' | 'pitch'>;
 
 /**
  * Pixel size of a board's rendered body, derived from its hole grid.
  * `rows`/`cols` count holes, so the grid spans `(n - 1) * pitch` between the
  * first and last hole on each axis.
  */
-export function boardSize(board: Pick<BoardNodeData, 'rows' | 'cols' | 'pitch'>): BoardSize {
+export function boardSize(board: BoardMetrics): BoardSize {
   return {
     width: (board.cols - 1) * board.pitch + BOARD_MARGIN * 2,
     height: (board.rows - 1) * board.pitch + BOARD_MARGIN * 2,
@@ -32,8 +39,46 @@ export function holeLocalPoint(
   return { x: BOARD_MARGIN + hole.col * board.pitch, y: BOARD_MARGIN + hole.row * board.pitch };
 }
 
+/**
+ * The hole whose center is nearest to a point given in board-local pixels —
+ * the inverse of `holeLocalPoint`, and the primitive the drag-to-seat snap is
+ * built on. Not clamped to the grid: an out-of-bounds result is a real answer
+ * ("you dropped past the edge") that the caller decides what to do with.
+ */
+export function nearestHole(
+  board: Pick<BoardNodeData, 'pitch'>,
+  localPoint: { x: number; y: number },
+): BoardHole {
+  return {
+    row: Math.round((localPoint.y - BOARD_MARGIN) / board.pitch),
+    col: Math.round((localPoint.x - BOARD_MARGIN) / board.pitch),
+  };
+}
+
+/**
+ * Nearest hole that actually exists on a board. For a regular board this is
+ * the rounded grid address; for an explicit sparse hole list it is the closest
+ * listed address in Euclidean grid distance. Returns null for an explicitly
+ * empty list, which represents a board with no holes.
+ */
+export function nearestAvailableHole(
+  board: BoardMetrics & Pick<BoardNodeData, 'holes'>,
+  localPoint: { x: number; y: number },
+): BoardHole | null {
+  const rounded = nearestHole(board, localPoint);
+  if (board.holes === undefined) return rounded;
+  if (board.holes.length === 0) return null;
+  const pointRow = (localPoint.y - BOARD_MARGIN) / board.pitch;
+  const pointCol = (localPoint.x - BOARD_MARGIN) / board.pitch;
+  return board.holes.reduce((closest, candidate) => {
+    const closestDistance = (closest.row - pointRow) ** 2 + (closest.col - pointCol) ** 2;
+    const candidateDistance = (candidate.row - pointRow) ** 2 + (candidate.col - pointCol) ** 2;
+    return candidateDistance < closestDistance ? candidate : closest;
+  });
+}
+
 /** Every hole address on a board's grid, row-major. */
-export function allHoles(board: Pick<BoardNodeData, 'rows' | 'cols'>): BoardHole[] {
+export function allHoles(board: BoardGrid): BoardHole[] {
   const holes: BoardHole[] = [];
   for (let row = 0; row < board.rows; row++) {
     for (let col = 0; col < board.cols; col++) {
@@ -43,11 +88,28 @@ export function allHoles(board: Pick<BoardNodeData, 'rows' | 'cols'>): BoardHole
   return holes;
 }
 
-export function isHoleInBounds(
-  board: Pick<BoardNodeData, 'rows' | 'cols'>,
-  hole: BoardHole,
-): boolean {
+/** Holes physically present: the explicit list, or every cell for a regular grid. */
+export function boardHoles(board: BoardGrid): BoardHole[] {
+  return board.holes?.map((hole) => ({ ...hole })) ?? allHoles(board);
+}
+
+export function isHoleInBounds(board: BoardGrid, hole: BoardHole): boolean {
   return hole.row >= 0 && hole.row < board.rows && hole.col >= 0 && hole.col < board.cols;
+}
+
+/** True only when the address is in bounds and is not omitted by a sparse board. */
+export function isBoardHoleAvailable(board: BoardGrid, hole: BoardHole): boolean {
+  if (!isHoleInBounds(board, hole)) return false;
+  return board.holes === undefined || board.holes.some((candidate) => holesEqual(candidate, hole));
+}
+
+/** Stable string form of a hole address, for map keys and port ids. */
+export function holeKey(hole: BoardHole): string {
+  return `${hole.row}:${hole.col}`;
+}
+
+export function holesEqual(a: BoardHole, b: BoardHole): boolean {
+  return a.row === b.row && a.col === b.col;
 }
 
 /**
@@ -70,11 +132,11 @@ export interface BoardHoleClaim {
  */
 export function findOutOfBoundsHoleClaims(
   claims: readonly BoardHoleClaim[],
-  boardsById: ReadonlyMap<string, Pick<BoardNodeData, 'rows' | 'cols'>>,
+  boardsById: ReadonlyMap<string, BoardGrid>,
 ): BoardHoleClaim[] {
   return claims.filter((claim) => {
     const board = boardsById.get(claim.boardId);
-    return !board || !isHoleInBounds(board, claim.hole);
+    return !board || !isBoardHoleAvailable(board, claim.hole);
   });
 }
 
@@ -85,11 +147,15 @@ export function findOutOfBoundsHoleClaims(
  * even if their `row`/`col` match. Returns one group per colliding hole
  * (each group has length >= 2); an empty result means every claimed hole on
  * every board is used by at most one pin.
+ *
+ * Claims that share an `ownerId` never collide with each other: that is the
+ * same physical pin being re-evaluated (e.g. a live drag preview against the
+ * placement it is replacing), not two pins fighting over one hole.
  */
 export function findHoleCollisions(claims: readonly BoardHoleClaim[]): BoardHoleClaim[][] {
   const byKey = new Map<string, BoardHoleClaim[]>();
   for (const claim of claims) {
-    const key = `${claim.boardId}:${claim.hole.row}:${claim.hole.col}`;
+    const key = `${claim.boardId}:${holeKey(claim.hole)}`;
     const group = byKey.get(key);
     if (group) {
       group.push(claim);
@@ -97,5 +163,22 @@ export function findHoleCollisions(claims: readonly BoardHoleClaim[]): BoardHole
       byKey.set(key, [claim]);
     }
   }
-  return [...byKey.values()].filter((group) => group.length > 1);
+  return [...byKey.values()].filter(
+    (group) => new Set(group.map((claim) => claim.ownerId)).size > 1,
+  );
+}
+
+/** The set of holes on one board that are already claimed by someone else. */
+export function occupiedHoleKeys(
+  claims: readonly BoardHoleClaim[],
+  boardId: string,
+  excludeOwnerIds: ReadonlySet<string> = new Set(),
+): Set<string> {
+  const keys = new Set<string>();
+  for (const claim of claims) {
+    if (claim.boardId !== boardId) continue;
+    if (excludeOwnerIds.has(claim.ownerId)) continue;
+    keys.add(holeKey(claim.hole));
+  }
+  return keys;
 }

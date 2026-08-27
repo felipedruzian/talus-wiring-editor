@@ -34,7 +34,7 @@ export class DxfExporter {
       this.config.scaleMmPerPx,
       this.config.paddingPx,
     );
-    const ctx: DxfRenderContext = { doc, mapper };
+    const ctx: DxfRenderContext = { doc, mapper, nodes };
     const warnedNodeTypes = new Set<string>();
     const warnedEdgeTypes = new Set<string>();
 

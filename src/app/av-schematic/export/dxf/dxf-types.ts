@@ -11,6 +11,7 @@ import type { DxfTextStyle } from './dxf-text-style';
 export interface DxfRenderContext {
   readonly doc: DxfDocument;
   readonly mapper: CoordinateMapper;
+  readonly nodes: readonly Node[];
 }
 
 export type DxfNodeRenderer = (ctx: DxfRenderContext, node: Node) => void;

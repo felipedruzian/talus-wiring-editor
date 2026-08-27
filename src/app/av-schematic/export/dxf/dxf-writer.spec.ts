@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DxfDocument } from './dxf-document';
-import { DxfLwPolyline, DxfText } from './dxf-entity';
+import { DxfCircle, DxfLwPolyline, DxfText } from './dxf-entity';
 import { formatCoord } from './dxf-format';
 import { DxfLayer } from './dxf-layer';
 import { DxfTextStyle } from './dxf-text-style';
@@ -140,6 +140,7 @@ const buildDoc = (): DxfDocument => {
       25,
     ),
   );
+  doc.addEntity(new DxfCircle('DEVICES', 42, 43, 2.5, undefined, 25));
   doc.addEntity(new DxfText('DEVICES', 'MIC-1', 51, 184, 4.2, 'BOLD', 1, 2));
   doc.addEntity(new DxfText('WIRES', 'W-001', 98, 159, 3));
   // Exercises sanitizeDxfText: % must not survive as a %%-format code and
@@ -316,6 +317,21 @@ describe('DxfWriter AutoCAD skeleton', () => {
         }
       }
     });
+  });
+
+  it('serializes physical holes as spec-shaped CIRCLE entities', () => {
+    const circles = recordsOf(sectionOf(pairs, 'ENTITIES'), 'CIRCLE');
+    expect(circles).toHaveLength(1);
+    expect(circles[0]).toEqual(
+      expect.arrayContaining([
+        { code: 100, value: 'AcDbCircle' },
+        { code: 10, value: formatCoord(42) },
+        { code: 20, value: formatCoord(43) },
+        { code: 30, value: formatCoord(0) },
+        { code: 40, value: formatCoord(2.5) },
+        { code: 370, value: '25' },
+      ]),
+    );
   });
 
   it('sanitizes TEXT content that would break group framing or trigger %% format codes', () => {

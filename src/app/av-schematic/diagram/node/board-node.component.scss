@@ -3,8 +3,18 @@
   position: relative;
   cursor: grab;
 
+  --board-hole-fill: var(--av-color-board-hole, #2b2118);
+
   &:active {
     cursor: grabbing;
+  }
+
+  // Board ports draw their own hit target; suppress ng-diagram's default dot so
+  // the grid stays readable at 168 ports on a 6 x 28 board.
+  ng-diagram-port {
+    --ngd-port-size: 0;
+    --ngd-port-background-color: transparent;
+    --ngd-port-border-size: 0;
   }
 }
 
@@ -34,9 +44,78 @@
 
 .board-node__grid {
   display: block;
+  position: absolute;
+  inset: 0;
+}
+
+.board-node__trace-run {
+  stroke-linecap: round;
+  opacity: 0.55;
+}
+
+.board-node__trace-dot {
+  opacity: 0.75;
+  stroke: none;
+}
+
+.board-node__trace-bridge {
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+  opacity: 0.7;
+  fill: none;
 }
 
 .board-node__hole {
-  fill: var(--av-color-board-hole, #2b2118);
+  fill: var(--board-hole-fill);
   opacity: 0.8;
+}
+
+.board-node__hole--conflicted {
+  fill: var(--av-color-error, #d92d20);
+  opacity: 1;
+}
+
+.board-node__trace-label {
+  position: absolute;
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ngd-txt-secondary-default);
+  white-space: nowrap;
+  user-select: none;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+// The port box's left edge sits exactly on the point it represents, so
+// portFlowPosition() (left edge, vertical centre) resolves to the hole centre
+// with no correction anywhere else. Only the visual dot is nudged back.
+.board-node__port {
+  position: absolute;
+  display: block;
+}
+
+.board-node__port-hit {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  transform: translateX(-50%);
+  background: transparent;
+  transition: background 120ms ease;
+
+  &:hover {
+    background: color-mix(in srgb, var(--av-color-accent) 45%, transparent);
+  }
+}
+
+.board-node__port-hit--trace {
+  border-radius: 3px;
+  opacity: 0.9;
+
+  &:hover {
+    opacity: 1;
+    outline: 2px solid var(--av-color-selection-border);
+  }
 }

@@ -1,5 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { NgDiagramModelService, type Edge, type Node } from 'ng-diagram';
+import { applyEdgeStretchOnSelectionMoved } from '../diagram/edge-reshaping/middleware/edge-stretch-on-move';
 import {
   CanonicalProjectError,
   fromCanonicalProject,
@@ -181,7 +182,14 @@ export class ProjectStorageService {
     if (nodes.length > 0) {
       await this.modelService.addNodes(nodes, { waitForMeasurements: true });
     }
-    if (edges.length > 0) await this.modelService.addEdges(edges);
+    if (edges.length > 0) {
+      await this.modelService.addEdges(edges);
+      await applyEdgeStretchOnSelectionMoved(
+        this.modelService,
+        new Set(nodes.map((node) => node.id)),
+        true,
+      );
+    }
   }
 
   private begin(operation: ProjectStorageOperation): void {

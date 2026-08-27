@@ -24,6 +24,7 @@ AvSchematicPageComponent (providers)
   ├── Library: LibraryService (left palette state, draft mode)
   ├── Visibility: NodeVisibilityConfigService
   ├── Navigation: PortFocusService → ViewportAnimationService
+  ├── Layout físico: BoardPlacementService (snap, rotação, ocupação e acompanhamento da placa)
   ├── Export: DiagramExportService
   ├── Persistência de projeto: ProjectStorageService
   ├── Intercâmbio WireViz: WireVizExchangeService
@@ -48,6 +49,8 @@ AvSchematicPageComponent (providers)
   conectividade, e o destaque é apenas estado de visualização. Valores de
   cabo são usados no WireViz somente quando todos os condutores envolvidos
   podem compartilhá-los sem perda.
+- **Footprints no mesmo modelo** — placas, footprints e componentes externos são tipos de nó no mesmo `Node[]`; `BoardPlacementService` apenas reconcilia posição, encaixe e ocupação após movimentos.
+- **Cobre como junção elétrica** — um furo ou trilha usado por um condutor vira uma `CanonicalJunction` na seção `electrical`, com a geometria (`boardId`, furo, trilha) apenas em `layout`. As nets continuam derivadas da conectividade, nunca escritas pelo cobre.
 - **Viewport overlays** — `appViewportBounds` / `appViewportOverlay` directives register UI elements that obscure the diagram so visibility / zoom-to-fit calculations account for them.
 - **Per-row port positioning** — each `.port-row` is `position: relative`, so each `<ng-diagram-port>`'s absolute positioning anchors to its own row, not the whole node. Side-specific transforms push the port shape entirely outside the card edge.
 
@@ -67,8 +70,16 @@ src/app/av-schematic/
 │   │   ├── interfaces.ts                 # Dispositivos, placas, junções, portas e fios
 │   │   ├── guards.ts                     # Type guards de node/edge
 │   │   ├── board-geometry.ts             # Geometria pura da grade de furos (holeLocalPoint, boardSize, allHoles)
+│   │   ├── board-selection.ts            # Escolha determinística entre placas sobrepostas
+│   │   ├── board-trace.ts                # Expansão e associação elétrica das trilhas
+│   │   ├── board-ports.ts                # IDs persistentes de endpoints de furos e trilhas
+│   │   ├── footprint.ts                  # Catálogo original de footprints vetoriais em unidades de furo
+│   │   ├── footprint-geometry.ts         # Rotação, snap, ocupação e associação pino-furo
+│   │   ├── physical-connectivity.ts      # Resolução pino -> furo -> trilha e rótulo de cobre
+│   │   ├── physical-diagnostics.ts       # Relatório acionável de encaixe, cobre e divergência de net
 │   │   ├── canonical-project.ts          # CanonicalProjectV2 <-> Node/Edge; elétrica separada do layout
 │   │   ├── canonical-project-parse.ts    # Validação v2 e migração de snapshots v1
+│   │   ├── canonical-project-corpus.mjs  # Casos idênticos para os validadores TypeScript e Node
 │   │   ├── net-grouping.ts               # Nets determinísticas derivadas da conectividade
 │   │   ├── electrical-equivalence.ts     # Comparação elétrica independente da ordem textual
 │   │   ├── wire-colors.ts                # Códigos WireViz e RGB exato para modelo/renderização
@@ -82,7 +93,9 @@ src/app/av-schematic/
 │   │   ├── commands/                     # reshapeEdge data + lifecycle signals + dispatcher
 │   │   ├── middleware/                   # Endpoint-sync (node-move reflow) + lifecycle event emitters
 │   │   └── logic/                        # Pure orthogonal-path math (segment orientation, simplify, snap, etc.)
-│   ├── node/                             # Templates DeviceNode, BoardNode e JunctionNode
+│   ├── fixtures/                         # Placas A/origem/D/E/F/G e montagem física de demonstração
+│   ├── node/                             # Templates DeviceNode, BoardNode, JunctionNode e FootprintNode
+│   ├── placement/                        # Reconciliação de drag, rotação e acompanhamento da placa
 │   └── node-visibility/                  # Viewport-aware overlay registration
 ├── wireviz-import/                       # Importador clean-room de um subconjunto YAML do WireViz (ver docs/wireviz-import-limits.md)
 │   ├── wireviz-yaml.ts                   # Parser genérico de valor de um subconjunto de YAML (sem conhecimento de WireViz)

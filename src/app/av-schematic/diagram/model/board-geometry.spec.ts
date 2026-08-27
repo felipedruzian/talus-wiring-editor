@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { diagramModel } from '../data';
 import {
   allHoles,
+  boardHoles,
   boardSize,
   findHoleCollisions,
   findOutOfBoundsHoleClaims,
   holeLocalPoint,
+  isBoardHoleAvailable,
   isHoleInBounds,
+  nearestAvailableHole,
   type BoardHoleClaim,
 } from './board-geometry';
 import { isBoardNode, isDeviceNode } from './guards';
@@ -55,6 +58,37 @@ describe('allHoles', () => {
   });
 });
 
+describe('explicit board holes', () => {
+  const sparseBoard = {
+    rows: 3,
+    cols: 3,
+    pitch: 20,
+    holes: [
+      { row: 0, col: 0 },
+      { row: 0, col: 2 },
+      { row: 2, col: 2 },
+    ],
+  };
+
+  it('uses the configured hole list instead of assuming a full rectangle', () => {
+    expect(boardHoles(sparseBoard)).toEqual(sparseBoard.holes);
+    expect(isBoardHoleAvailable(sparseBoard, { row: 0, col: 2 })).toBe(true);
+    expect(isBoardHoleAvailable(sparseBoard, { row: 1, col: 1 })).toBe(false);
+  });
+
+  it('snaps to the nearest hole that actually exists', () => {
+    expect(nearestAvailableHole(sparseBoard, { x: 36, y: 36 })).toEqual({ row: 0, col: 0 });
+    expect(nearestAvailableHole(sparseBoard, { x: 54, y: 20 })).toEqual({ row: 0, col: 2 });
+  });
+
+  it('treats an explicit empty list as a board with no holes', () => {
+    const emptyBoard = { rows: 3, cols: 3, pitch: 17, holes: [] };
+    expect(boardHoles(emptyBoard)).toEqual([]);
+    expect(isBoardHoleAvailable(emptyBoard, { row: 0, col: 0 })).toBe(false);
+    expect(nearestAvailableHole(emptyBoard, { x: 16, y: 16 })).toBeNull();
+  });
+});
+
 describe('isHoleInBounds', () => {
   it('accepts holes within the grid', () => {
     expect(isHoleInBounds(boardA, { row: 0, col: 0 })).toBe(true);
@@ -99,6 +133,16 @@ describe('findOutOfBoundsHoleClaims', () => {
       hole: { row: 0, col: 0 },
     };
     expect(findOutOfBoundsHoleClaims([claim], boardsById)).toEqual([claim]);
+  });
+
+  it('flags an in-bounds address omitted by an explicit sparse hole list', () => {
+    const sparse = new Map([['sparse', { rows: 2, cols: 2, holes: [{ row: 0, col: 0 }] }]]);
+    const claim: BoardHoleClaim = {
+      boardId: 'sparse',
+      ownerId: 'part:a',
+      hole: { row: 1, col: 1 },
+    };
+    expect(findOutOfBoundsHoleClaims([claim], sparse)).toEqual([claim]);
   });
 });
 

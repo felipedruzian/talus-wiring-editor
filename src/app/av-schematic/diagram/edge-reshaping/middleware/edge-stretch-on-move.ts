@@ -16,7 +16,7 @@ export const applyEdgeStretchOnSelectionMoved = (
   modelService: NgDiagramModelService,
   movedNodeIds: ReadonlySet<string>,
   merge: boolean,
-): void => {
+): Promise<void> => {
   const patches: { id: string; points: Point[] }[] = [];
   // Committed model, not the edges() signal: this runs inside diagram event
   // handlers and right after awaited writes, where the signal still shows the
@@ -79,8 +79,9 @@ export const applyEdgeStretchOnSelectionMoved = (
     }
   }
   if (patches.length > 0) {
-    void modelService.updateEdges(patches);
+    return modelService.updateEdges(patches);
   }
+  return Promise.resolve();
 };
 
 // Returns null when the port isn't measured yet (transient mount state).

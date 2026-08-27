@@ -15,6 +15,7 @@ import {
   snapPointToGrid,
   type EdgeEndpointSide,
 } from '../edge-reshaping/logic';
+import { physicalEdgeNet } from '../model/physical-connectivity';
 import { RelinkTargetHighlightService } from './relink-target-highlight.service';
 
 interface RelinkState {
@@ -152,7 +153,22 @@ export class RelinkEndpointHandler {
             sourcePort: hit.portId,
             sourcePosition: undefined,
           };
+    if (this.wouldShortPhysicalCopper(drag.edgeId, patch)) {
+      // Refuse a physical short and leave the dragged end visibly dangling at
+      // the attempted port instead of committing incompatible copper nets.
+      if (portPos) this.leaveDangling(drag, portPos, true);
+      return;
+    }
     void this.modelService.updateEdge(drag.edgeId, patch);
+  }
+
+  private wouldShortPhysicalCopper(edgeId: string, patch: Partial<Edge>): boolean {
+    const edge = this.modelService.getEdgeById(edgeId);
+    if (!edge) return false;
+    return physicalEdgeNet(this.modelService.getModel().getNodes(), {
+      ...edge,
+      ...patch,
+    }).conflict.length > 0;
   }
 
   /**

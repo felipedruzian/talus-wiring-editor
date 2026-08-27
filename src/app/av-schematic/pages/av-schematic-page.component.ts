@@ -11,6 +11,7 @@ import { TempEdgePointsService } from '../diagram/dangling-edge-creation/temp-ed
 import { NetHighlightService } from '../diagram/net-highlight/net-highlight.service';
 import { NodeVisibilityConfigService } from '../diagram/node-visibility/node-visibility-config.service';
 import { PortFocusService } from '../diagram/port-focus.service';
+import { BoardPlacementService } from '../diagram/placement/board-placement.service';
 import { ViewportAnimationService } from '../diagram/viewport-animation.service';
 import { ViewportBoundsDirective } from '../diagram/node-visibility/viewport-bounds.directive';
 import { ViewportOverlayDirective } from '../diagram/node-visibility/viewport-overlay.directive';
@@ -46,6 +47,7 @@ import { WireVizExchangeService } from '../wireviz-import/wireviz-exchange.servi
     NodeVisibilityConfigService,
     ViewportAnimationService,
     PortFocusService,
+    BoardPlacementService,
     LibraryService,
     DiagramExportService,
     ProjectStorageService,
