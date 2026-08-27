@@ -8,6 +8,8 @@ export const DEVICE_CATEGORY_PREFIXES: Readonly<Record<string, string>> = {
   display: 'DISPLAY',
   camera: 'CAM',
   switcher: 'SW',
+  microcontroller: 'MCU',
+  'motor-driver': 'DRV',
 };
 
 export const DEVICE_CATEGORIES: readonly string[] = Object.keys(DEVICE_CATEGORY_PREFIXES);

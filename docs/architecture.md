@@ -1,5 +1,17 @@
 # Architecture
 
+> **Tracer bullet da issue #1.** O diagrama semeado, o modelo de node e o
+> formato canônico de projeto descritos aqui foram estendidos (não
+> substituídos) para também representar uma placa física + nets importadas
+> do WireViz no mesmo canvas, além de persistência via Salvar/Abrir contra
+> um serviço local. Ver
+> [`docs/wiring-tracer-bullet.md`](wiring-tracer-bullet.md) para a decisão
+> de integração, [`docs/wireviz-import-limits.md`](wireviz-import-limits.md)
+> para o pipeline de importação, [`docs/license-matrix.md`](license-matrix.md)
+> para o status de licenciamento de cada peça reaproveitada, e
+> [`docs/local-service.md`](local-service.md) para o serviço local e sua
+> API.
+
 ## Service Hierarchy
 
 All services are provided at the page component level (`AvSchematicPageComponent`), no `providedIn: 'root'`.
@@ -12,6 +24,7 @@ AvSchematicPageComponent (providers)
   ├── Visibility: NodeVisibilityConfigService
   ├── Navigation: PortFocusService → ViewportAnimationService
   ├── Export: DiagramExportService
+  ├── Persistência de projeto: ProjectStorageService
   ├── Edge reshaping:
   │     ├── EdgeReshapeLifecycleEmitter   (subscribe for toolbar / telemetry hooks)
   │     ├── EdgeReshapeCommandDispatcher  (routes commands to executors)
@@ -51,8 +64,10 @@ src/app/av-schematic/
 │   ├── viewport-animation.service.ts     # Animated viewport pan primitive
 │   ├── data.ts                           # Seed data
 │   ├── model/                            # Domain types & helpers
-│   │   ├── interfaces.ts                 # DeviceNodeData, WireEdgeData, DevicePort
-│   │   ├── guards.ts                     # Type guards
+│   │   ├── interfaces.ts                 # DeviceNodeData, BoardNodeData, WireEdgeData, DevicePort
+│   │   ├── guards.ts                     # Type guards (isDeviceNode, isBoardNode, ...)
+│   │   ├── board-geometry.ts             # Geometria pura da grade de furos (holeLocalPoint, boardSize, allHoles)
+│   │   ├── canonical-project.ts          # Round trip CanonicalProjectV1 <-> Node/Edge do ng-diagram (ver docs/wiring-tracer-bullet.md)
 │   │   ├── device-categories.ts          # Category → ID-prefix dictionary, used by combobox + auto-id
 │   │   └── auto-device-id.ts             # generateDeviceId(category, existingNodes) → <PREFIX>-<N>
 │   ├── edge-reshaping/                   # Manual edge routing — three layers, designed to port into ng-diagram
@@ -61,8 +76,18 @@ src/app/av-schematic/
 │   │   ├── commands/                     # reshapeEdge data + lifecycle signals + dispatcher
 │   │   ├── middleware/                   # Endpoint-sync (node-move reflow) + lifecycle event emitters
 │   │   └── logic/                        # Pure orthogonal-path math (segment orientation, simplify, snap, etc.)
-│   ├── node/                             # DeviceNode template
+│   ├── node/                             # Templates DeviceNode + BoardNode
 │   └── node-visibility/                  # Viewport-aware overlay registration
+├── wireviz-import/                       # Importador clean-room de um subconjunto YAML do WireViz (ver docs/wireviz-import-limits.md)
+│   ├── wireviz-yaml.ts                   # Parser genérico de valor de um subconjunto de YAML (sem conhecimento de WireViz)
+│   ├── wireviz-model.ts                  # Valida + tipa o subconjunto connectors/cables/connections do WireViz
+│   ├── wireviz-colors.ts                 # Subconjunto de código de cor WireViz -> cor CSS
+│   ├── wireviz-to-diagram.ts             # WireVizDocument + placement -> Edge<WireEdgeData>[]
+│   ├── import-wireviz.ts                 # Composição de conveniência importWireViz(yamlText)
+│   └── fixtures/                         # Fixtures escritos à mão (minimal-two-nets: o fixture de 2 nets da issue #1)
+├── project-storage/                      # Cliente de persistência de projeto (ver docs/local-service.md)
+│   ├── project-storage.service.ts        # GET/PUT em /api/projects/:id; serializa via canonical-project.ts
+│   └── project-storage-menu.component.ts # Controles Salvar/Abrir no top navbar (id de projeto + status)
 ├── properties-sidebar/                   # Right panel: edit selected device/wire (live updates)
 │   ├── element-mutation.service.ts       # Removal + live field updates (wraps transactions for structural ops)
 │   └── components/
@@ -98,7 +123,7 @@ src/app/av-schematic/
 │   │   └── sidebar-shell/                # common :host / .sidebar / animation rules
 │   └── utils/                            # Pure functions
 │       └── random-short-id.ts
-├── top-navbar/                           # Navigation bar + theme toggle + export menu
+├── top-navbar/                           # Navigation bar + theme toggle + export menu + menu Salvar/Abrir (app-project-storage-menu, de ../project-storage/)
 │   ├── theme-toggle/                     # Light/dark theme switcher
 │   └── export-menu/                      # PNG/DXF export trigger
 └── minimap-panel/                        # Minimap with zoom controls

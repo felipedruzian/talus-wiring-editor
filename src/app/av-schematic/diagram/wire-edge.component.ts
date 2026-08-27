@@ -48,9 +48,10 @@ export class WireEdgeComponent implements NgDiagramEdgeTemplate<WireEdgeData> {
     });
   }
 
-  protected readonly strokeColor = computed(() =>
-    this.edge().selected ? 'var(--av-color-accent)' : 'var(--av-color-wire-stroke)',
-  );
+  protected readonly strokeColor = computed(() => {
+    if (this.edge().selected) return 'var(--av-color-accent)';
+    return this.edge().data.color ?? 'var(--av-color-wire-stroke)';
+  });
 
   protected readonly strokeWidth = computed(() => (this.edge().selected ? 2 : 1));
 
