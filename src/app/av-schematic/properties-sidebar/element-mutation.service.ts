@@ -12,7 +12,9 @@ import {
   type JunctionNodeData,
   type WireEdgeData,
 } from '../diagram/model/interfaces';
+import { isWireEdge } from '../diagram/model/guards';
 import { junctionTapIndex, junctionTapPortId } from '../diagram/model/canonical-project';
+import { ProjectStorageService } from '../project-storage/project-storage.service';
 import { formDataToDeviceData, type DeviceFieldChange } from '../device-form/device-form.mappers';
 import { formDataToWireData, type WireFieldChange } from './components/wire-form/wire-form.mappers';
 import { applyEdgeStretchOnSelectionMoved } from '../diagram/edge-reshaping/middleware/edge-stretch-on-move';
@@ -26,6 +28,7 @@ import {
 export class ElementMutationService {
   private readonly modelService = inject(NgDiagramModelService);
   private readonly diagramService = inject(NgDiagramService);
+  private readonly storage = inject(ProjectStorageService);
 
   async removeNode(nodeId: string): Promise<void> {
     await this.modelService.deleteNodes([nodeId]);
@@ -167,11 +170,37 @@ export class ElementMutationService {
       .map((edge) => edge.id);
   }
 
-  handleWireFieldChange(change: WireFieldChange): void {
+  async handleWireFieldChange(change: WireFieldChange): Promise<void> {
     const edge = this.modelService.getEdgeById<WireEdgeData>(change.edgeId);
     if (!edge) return;
     const updatedData = formDataToWireData(change.formData, edge.data);
-    void this.modelService.updateEdgeData(change.edgeId, updatedData);
+    const previousName = edge.data.wireId;
+    const nextName = updatedData.wireId;
+
+    if (!change.fields.includes('wireId') || previousName === nextName || !previousName) {
+      await this.modelService.updateEdgeData(change.edgeId, updatedData);
+      return;
+    }
+
+    const wireEdges = this.modelService.getModel().getEdges().filter(isWireEdge);
+    if (
+      nextName &&
+      wireEdges.some(
+        (candidate) => candidate.data.wireId === nextName && candidate.data.wireId !== previousName,
+      )
+    ) {
+      throw new Error(`cannot rename cable "${previousName}" to existing cable "${nextName}"`);
+    }
+
+    await this.diagramService.transaction(() => {
+      this.storage.renameCableIdentity(previousName, nextName);
+      for (const candidate of wireEdges) {
+        if (candidate.data.wireId !== previousName) continue;
+        const data =
+          candidate.id === change.edgeId ? updatedData : { ...candidate.data, wireId: nextName };
+        void this.modelService.updateEdgeData(candidate.id, data);
+      }
+    });
   }
 
   handleJunctionFieldChange(change: JunctionFieldChange): void {

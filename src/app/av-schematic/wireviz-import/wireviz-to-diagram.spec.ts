@@ -129,6 +129,110 @@ describe('wirevizToElectrical', () => {
     expect(imported.electrical.cables.find((cable) => cable.name === 'W1')?.colors).toEqual(['YE']);
   });
 
+  it('maps positional pinlabels onto local pin labels and ids on the first placed import', () => {
+    const yaml = stringifyYamlSubset({
+      connectors: {
+        X1: { pins: [1, 2], pinlabels: ['VCC', 'GND'] },
+        LOAD: { pins: ['P'] },
+      },
+      connections: [[{ X1: [1] }, '--', { LOAD: ['P'] }]],
+    });
+    const imported = importWireViz(yaml, {
+      placement: { X1: 'local-device' },
+      components: [
+        {
+          id: 'local-device',
+          deviceId: 'LOCAL',
+          manufacturer: '',
+          model: '',
+          pins: [
+            { id: 'vcc', label: 'VCC', direction: 'output' },
+            { id: 'gnd', label: 'GND', direction: 'output' },
+          ],
+        },
+      ],
+    });
+
+    const component = imported.electrical.components.find(
+      (candidate) => candidate.id === 'local-device',
+    );
+    const conductor = imported.electrical.nets[0].conductors[0];
+    expect(component?.pins).toEqual([
+      expect.objectContaining({ id: 'vcc', wirevizDesignator: '1', wirevizLabel: 'VCC' }),
+      expect.objectContaining({ id: 'gnd', wirevizDesignator: '2', wirevizLabel: 'GND' }),
+    ]);
+    expect(conductor.from).toEqual({ kind: 'pin', componentId: 'local-device', pinId: 'vcc' });
+  });
+
+  it('keeps a preserved WireViz designator authoritative on reimport', () => {
+    const imported = importWireViz(
+      stringifyYamlSubset({
+        connectors: { X1: { pins: [1], pinlabels: ['VCC'] } },
+        connections: [],
+      }),
+      {
+        placement: { X1: 'local-device' },
+        components: [
+          {
+            id: 'local-device',
+            deviceId: 'LOCAL',
+            manufacturer: '',
+            model: '',
+            pins: [
+              { id: 'vcc', label: 'RENAMED', direction: 'output', wirevizDesignator: '1' },
+              { id: '1', label: 'VCC', direction: 'output' },
+            ],
+          },
+        ],
+      },
+    );
+
+    expect(imported.electrical.components[0].pins).toEqual([
+      expect.objectContaining({ id: 'vcc', wirevizDesignator: '1', wirevizLabel: 'VCC' }),
+      expect.objectContaining({ id: '1' }),
+    ]);
+    expect(imported.electrical.components[0].pins[1]).not.toHaveProperty('wirevizDesignator');
+  });
+
+  it.each([
+    {
+      name: 'one positional label identifies multiple local pins',
+      pins: [
+        { id: 'vcc', label: 'VCC', direction: 'output' as const },
+        { id: 'VCC', label: 'OTHER', direction: 'output' as const },
+      ],
+      connector: { pins: [1], pinlabels: ['VCC'] },
+    },
+    {
+      name: 'the designator and positional label identify different local pins',
+      pins: [
+        { id: '1', label: 'OTHER', direction: 'output' as const },
+        { id: 'vcc', label: 'VCC', direction: 'output' as const },
+      ],
+      connector: { pins: [1], pinlabels: ['VCC'] },
+    },
+    {
+      name: 'two positional pins claim the same local pin',
+      pins: [{ id: 'vcc', label: 'VCC', direction: 'output' as const }],
+      connector: { pins: [1, 2], pinlabels: ['VCC', 'VCC'] },
+    },
+  ])('rejects placed-pin ambiguity when $name', ({ pins, connector }) => {
+    expect(() =>
+      importWireViz(stringifyYamlSubset({ connectors: { X1: connector }, connections: [] }), {
+        placement: { X1: 'local-device' },
+        components: [
+          {
+            id: 'local-device',
+            deviceId: 'LOCAL',
+            manufacturer: '',
+            model: '',
+            pins,
+          },
+        ],
+      }),
+    ).toThrow(WireVizImportError);
+  });
+
   it('imports one rail fan-out as one four-endpoint net', () => {
     const imported = importMultidrop();
     const net = imported.electrical.nets[0];
@@ -330,6 +434,38 @@ describe('WireViz electrical round-trip', () => {
     const second = reimportWithIdentity(first, exported.yaml);
 
     expect(exported.yaml).toContain('pinlabels:');
+    expect(electricallyEquivalent(first, second)).toBe(true);
+  });
+
+  it('does not invent WireViz manufacturer metadata from a placed local component', () => {
+    const yaml = stringifyYamlSubset({
+      connectors: { LOCAL: { pins: ['P'] }, REMOTE: { pins: ['P'] } },
+      connections: [[{ LOCAL: ['P'] }, '--', { REMOTE: ['P'] }]],
+    });
+    const first = importWireViz(yaml, {
+      placement: { LOCAL: 'local-device' },
+      components: [
+        {
+          id: 'local-device',
+          deviceId: 'LOCAL',
+          manufacturer: 'Arduino',
+          model: 'Nano',
+          pins: [{ id: 'p', label: 'P', direction: 'output' }],
+        },
+      ],
+    }).electrical;
+    const exported = exportWireViz(first);
+    const second = reimportWithIdentity(first, exported.yaml);
+
+    expect(first.components.find((component) => component.id === 'local-device')).toMatchObject({
+      manufacturer: 'Arduino',
+      wirevizManufacturer: undefined,
+    });
+    expect(exported.yaml).not.toContain('manufacturer:');
+    expect(second.components.find((component) => component.id === 'local-device')).toMatchObject({
+      manufacturer: 'Arduino',
+      wirevizManufacturer: undefined,
+    });
     expect(electricallyEquivalent(first, second)).toBe(true);
   });
 

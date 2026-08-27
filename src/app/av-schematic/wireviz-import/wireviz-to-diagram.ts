@@ -257,16 +257,32 @@ function buildComponent(
   existing: CanonicalComponent | undefined,
 ): CanonicalComponent {
   const pins: CanonicalPin[] = existing ? existing.pins.map((pin) => ({ ...pin })) : [];
+  const matchablePins = [...pins];
   const known = new Set(pins.map((pin) => pin.id));
+  const claimed = new Map<string, string>();
 
   connector.pins.forEach((designator, index) => {
-    const matched = findPin(pins, designator, `connector "${connector.name}"`);
+    const pinLabel = connector.pinLabels?.[index];
+    const matched = findPlacedPin(
+      matchablePins,
+      designator,
+      pinLabel,
+      `connector "${connector.name}" pin "${designator}"`,
+    );
     if (matched) {
+      const owner = claimed.get(matched.id);
+      if (owner !== undefined) {
+        throw new WireVizImportError(
+          `connector "${connector.name}": WireViz pins "${owner}" and "${designator}" ` +
+            `both resolve to local pin "${matched.id}"`,
+        );
+      }
+      claimed.set(matched.id, designator);
       const matchedIndex = pins.indexOf(matched);
       pins[matchedIndex] = {
         ...matched,
         wirevizDesignator: designator,
-        wirevizLabel: connector.pinLabels?.[index],
+        wirevizLabel: pinLabel,
       };
       return;
     }
@@ -274,10 +290,10 @@ function buildComponent(
     known.add(pinId);
     pins.push({
       id: pinId,
-      label: connector.pinLabels?.[index] ?? designator,
+      label: pinLabel ?? designator,
       direction: SYNTHESIZED_PIN_DIRECTION,
       wirevizDesignator: designator,
-      wirevizLabel: connector.pinLabels?.[index],
+      wirevizLabel: pinLabel,
     });
   });
 
@@ -304,27 +320,75 @@ function buildComponent(
 }
 
 /**
- * A preserved WireViz designator wins on reimport. For a local component
- * being placed for the first time, its visible label is matched next — that
- * is what makes `D9` in YAML land on the port labelled `D9` — followed by
- * its stable pin id.
+ * A preserved WireViz designator wins on reimport. On first placement, the
+ * positional pinlabel and the designator must resolve to one unambiguous
+ * local pin; disagreeing aliases are a collision, never a reason to pick one
+ * silently or synthesize a duplicate pin.
  */
-function findPin(
+function findPlacedPin(
+  pins: readonly CanonicalPin[],
+  designator: string,
+  pinLabel: string | undefined,
+  label: string,
+): CanonicalPin | undefined {
+  const preserved = uniqueAliasMatch(
+    pins,
+    (pin) => pin.wirevizDesignator === designator,
+    designator,
+    `${label} preserved WireViz designator`,
+  );
+  if (preserved) return preserved;
+
+  const positional = pinLabel
+    ? uniqueAliasMatch(
+        pins,
+        (pin) => pin.label === pinLabel || pin.id === pinLabel,
+        pinLabel,
+        `${label} positional pinlabel`,
+      )
+    : undefined;
+  const localDesignator = uniqueAliasMatch(
+    pins,
+    (pin) => pin.label === designator || pin.id === designator,
+    designator,
+    `${label} designator`,
+  );
+
+  if (positional && localDesignator && positional.id !== localDesignator.id) {
+    throw new WireVizImportError(
+      `${label}: positional pinlabel "${pinLabel}" resolves to local pin "${positional.id}", ` +
+        `but designator "${designator}" resolves to "${localDesignator.id}"`,
+    );
+  }
+  return positional ?? localDesignator;
+}
+
+function uniqueAliasMatch(
+  pins: readonly CanonicalPin[],
+  predicate: (pin: CanonicalPin) => boolean,
+  alias: string,
+  label: string,
+): CanonicalPin | undefined {
+  const matches = pins.filter(predicate);
+  if (matches.length > 1) {
+    throw new WireVizImportError(
+      `${label} "${alias}" matches multiple local pins (${matches.map((pin) => pin.id).join(', ')})`,
+    );
+  }
+  return matches[0];
+}
+
+function findImportedPin(
   pins: readonly CanonicalPin[],
   designator: string,
   label: string,
 ): CanonicalPin | undefined {
-  const matches = pins.filter(
-    (pin) =>
-      pin.wirevizDesignator === designator || pin.label === designator || pin.id === designator,
+  return uniqueAliasMatch(
+    pins,
+    (pin) => pin.wirevizDesignator === designator,
+    designator,
+    `${label} WireViz designator`,
   );
-  if (matches.length > 1) {
-    throw new WireVizImportError(
-      `${label}: pin reference "${designator}" matches multiple local pins ` +
-        `(${matches.map((pin) => pin.id).join(', ')})`,
-    );
-  }
-  return matches[0];
 }
 
 function uniquePinId(base: string, taken: ReadonlySet<string>): string {
@@ -354,7 +418,7 @@ function toEndpoint(
 
   const component = componentsById.get(target.id);
   const pin = component
-    ? findPin(component.pins, ref.pin, `component "${component.id}"`)
+    ? findImportedPin(component.pins, ref.pin, `component "${component.id}"`)
     : undefined;
   if (!component || !pin) {
     throw new WireVizImportError(

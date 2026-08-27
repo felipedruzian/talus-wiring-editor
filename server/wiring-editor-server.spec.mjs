@@ -17,6 +17,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { OPERATIONAL_LIMITS } from '../src/app/av-schematic/diagram/model/operational-limits.mjs';
 import { createWiringEditorServer } from './wiring-editor-server.mjs';
 
 const HOST = '127.0.0.1';
@@ -212,6 +213,27 @@ function legacyConnectedProjectPayload() {
   };
 }
 
+function emptyV2Payload() {
+  return {
+    formatVersion: 2,
+    electrical: { components: [], junctions: [], cables: [], nets: [] },
+    layout: { boards: [], components: [], junctions: [], conductors: [] },
+  };
+}
+
+function canonicalCableBudgetPayload(total) {
+  const project = emptyV2Payload();
+  let remaining = total;
+  let index = 0;
+  while (remaining >= 2) {
+    const wireCount = Math.min(OPERATIONAL_LIMITS.maxWiresPerCable, remaining - 1);
+    project.electrical.cables.push({ name: `C${index++}`, wireCount, colors: [] });
+    remaining -= wireCount + 1;
+  }
+  if (remaining !== 0) throw new Error(`cannot represent entity budget ${total}`);
+  return project;
+}
+
 describe('wiring-editor-server', () => {
   let storageDir;
   let staticDir;
@@ -385,6 +407,77 @@ describe('wiring-editor-server', () => {
   });
 
   describe('canonical v1/v2 validation parity', () => {
+    it.each([
+      ['below', OPERATIONAL_LIMITS.maxPinsPerComponent - 1, 200],
+      ['at', OPERATIONAL_LIMITS.maxPinsPerComponent, 200],
+      ['above', OPERATIONAL_LIMITS.maxPinsPerComponent + 1, 400],
+    ])('enforces the pin-count limit %s the boundary', async (_label, pinCount, status) => {
+      const project = emptyV2Payload();
+      project.electrical.components.push({
+        id: 'x1',
+        deviceId: 'X1',
+        manufacturer: '',
+        model: '',
+        pins: Array.from({ length: pinCount }, (_, index) => ({
+          id: `p${index}`,
+          label: `P${index}`,
+          direction: 'output',
+        })),
+      });
+      project.layout.components.push({ componentId: 'x1', position: { x: 0, y: 0 } });
+
+      const res = await fetch(`${server.baseUrl}/api/projects/pin-limit-${pinCount}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(res.status).toBe(status);
+    });
+
+    it.each([
+      ['below', OPERATIONAL_LIMITS.maxWiresPerCable - 1, 200],
+      ['at', OPERATIONAL_LIMITS.maxWiresPerCable, 200],
+      ['above', OPERATIONAL_LIMITS.maxWiresPerCable + 1, 400],
+    ])('enforces the wire-count limit %s the boundary', async (_label, wireCount, status) => {
+      const project = emptyV2Payload();
+      project.electrical.cables.push({ name: 'C', wireCount, colors: [] });
+      const res = await fetch(`${server.baseUrl}/api/projects/wire-limit-${wireCount}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(res.status).toBe(status);
+    });
+
+    it.each([
+      ['below', OPERATIONAL_LIMITS.maxTotalEntities - 1, 200],
+      ['at', OPERATIONAL_LIMITS.maxTotalEntities, 200],
+      ['above', OPERATIONAL_LIMITS.maxTotalEntities + 1, 400],
+    ])('enforces the total-entity limit %s the boundary', async (_label, total, status) => {
+      const project = canonicalCableBudgetPayload(total);
+      const res = await fetch(`${server.baseUrl}/api/projects/entity-limit-${total}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(res.status).toBe(status);
+    });
+
+    it('rejects unsafe integer capacities', async () => {
+      const project = emptyV2Payload();
+      project.electrical.cables.push({
+        name: 'C',
+        wireCount: Number.MAX_SAFE_INTEGER + 1,
+        colors: [],
+      });
+      const res = await fetch(`${server.baseUrl}/api/projects/unsafe-integer`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(res.status).toBe(400);
+    });
+
     it('normalizes unused cable color and wirelabel slots before storage', async () => {
       const project = validProjectPayload();
       const spare = project.electrical.cables.find((cable) => cable.name === 'SPARE');

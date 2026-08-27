@@ -81,10 +81,11 @@ abaixo é implementada explicitamente no próprio `wiring-editor-server.mjs`
   `400 invalid_project` antes de
   qualquer gravação. O servidor mantém snapshots v1 na versão v1, após
   normalizar somente os campos reconhecidos; o frontend os migra para v2 ao
-  abrir. Como as duas
-  implementações não compartilham módulo, precisam ser mantidas em sincronia
-  manualmente — `canonical-project.spec.ts` (cliente) e
-  `wiring-editor-server.spec.mjs` (servidor) são o cruzamento de checagem.
+  abrir. As implementações de validação permanecem separadas, mas importam a
+  mesma fonte auditável de limites operacionais em
+  `diagram/model/operational-limits.mjs`; `canonical-project.spec.ts`
+  (cliente) e `wiring-editor-server.spec.mjs` (servidor) exercitam o mesmo
+  corpus abaixo, no ponto e acima de cada fronteira.
 - **`:id` restrito antes de tocar o sistema de arquivos**: validado contra
   `^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$` — sem separador de caminho, sem ponto
   inicial, então não há travessia de diretório possível.

@@ -20,6 +20,7 @@ class ProjectStorageStub {
   project = emptyProject();
 
   readonly snapshotProject = vi.fn(() => structuredClone(this.project));
+  readonly snapshotImportSkeleton = vi.fn(() => structuredClone(this.project));
   readonly replaceProject = vi.fn((project: CanonicalProjectV2): Promise<void> => {
     this.project = structuredClone(project);
     return Promise.resolve();
@@ -94,5 +95,16 @@ describe('WireVizExchangeService', () => {
     expect(service.reportEntries()).toEqual([
       expect.objectContaining({ severity: 'error', code: 'operation-failed', path: 'import' }),
     ]);
+  });
+
+  it('replaces a project even when its full snapshot is not exportable', async () => {
+    storage.snapshotProject.mockImplementation(() => {
+      throw new Error('dangling edges are not exportable');
+    });
+
+    expect(await service.importYaml('connectors: {}\nconnections: []\n')).toBe(true);
+    expect(storage.snapshotImportSkeleton).toHaveBeenCalledOnce();
+    expect(storage.snapshotProject).not.toHaveBeenCalled();
+    expect(storage.replaceProject).toHaveBeenCalledOnce();
   });
 });

@@ -11,6 +11,7 @@ import { parseCanonicalProject } from './canonical-project-parse';
 import { electricallyEquivalent } from './electrical-equivalence';
 import { isBoardNode, isDeviceNode } from './guards';
 import { type WireEdgeData } from './interfaces';
+import { OPERATIONAL_LIMITS } from './operational-limits.mjs';
 
 function must<T>(value: T | undefined): T {
   if (value === undefined) throw new Error('expected a value, got undefined');
@@ -27,6 +28,19 @@ function emptyV2(): CanonicalProjectV2 {
     electrical: { components: [], junctions: [], cables: [], nets: [] },
     layout: { boards: [], components: [], junctions: [], conductors: [] },
   };
+}
+
+function canonicalCableBudgetProject(total: number): CanonicalProjectV2 {
+  const project = emptyV2();
+  let remaining = total;
+  let index = 0;
+  while (remaining >= 2) {
+    const wireCount = Math.min(OPERATIONAL_LIMITS.maxWiresPerCable, remaining - 1);
+    project.electrical.cables.push({ name: `C${index++}`, wireCount, colors: [] });
+    remaining -= wireCount + 1;
+  }
+  if (remaining !== 0) throw new Error(`cannot represent entity budget ${total}`);
+  return project;
 }
 
 function legacyTwoPointProject(): Record<string, unknown> {
@@ -169,6 +183,66 @@ describe('parseCanonicalProject', () => {
   it('accepts an empty v2 project', () => {
     const empty = emptyV2();
     expect(parseCanonicalProject(clone(empty))).toEqual(empty);
+  });
+
+  it.each([
+    ['below', OPERATIONAL_LIMITS.maxPinsPerComponent - 1, true],
+    ['at', OPERATIONAL_LIMITS.maxPinsPerComponent, true],
+    ['above', OPERATIONAL_LIMITS.maxPinsPerComponent + 1, false],
+  ] as const)('enforces the pin-count limit %s the boundary', (_label, pinCount, accepted) => {
+    const project = emptyV2();
+    project.electrical.components.push({
+      id: 'x1',
+      deviceId: 'X1',
+      manufacturer: '',
+      model: '',
+      pins: Array.from({ length: pinCount }, (_, index) => ({
+        id: `p${index}`,
+        label: `P${index}`,
+        direction: 'output',
+      })),
+    });
+    project.layout.components.push({ componentId: 'x1', position: { x: 0, y: 0 } });
+
+    const parse = () => parseCanonicalProject(project);
+    if (accepted) expect(parse).not.toThrow();
+    else expect(parse).toThrow(/pin count.*operational limit/);
+  });
+
+  it.each([
+    ['below', OPERATIONAL_LIMITS.maxWiresPerCable - 1, true],
+    ['at', OPERATIONAL_LIMITS.maxWiresPerCable, true],
+    ['above', OPERATIONAL_LIMITS.maxWiresPerCable + 1, false],
+  ] as const)('enforces the wire-count limit %s the boundary', (_label, wireCount, accepted) => {
+    const project = emptyV2();
+    project.electrical.cables.push({ name: 'C', wireCount, colors: [] });
+    const parse = () => parseCanonicalProject(project);
+    if (accepted) expect(parse).not.toThrow();
+    else expect(parse).toThrow(/wire count.*operational limit/);
+  });
+
+  it.each([
+    ['below', OPERATIONAL_LIMITS.maxTotalEntities - 1, true],
+    ['at', OPERATIONAL_LIMITS.maxTotalEntities, true],
+    ['above', OPERATIONAL_LIMITS.maxTotalEntities + 1, false],
+  ] as const)('enforces the total-entity limit %s the boundary', (_label, total, accepted) => {
+    const parse = () => parseCanonicalProject(canonicalCableBudgetProject(total));
+    if (accepted) expect(parse).not.toThrow();
+    else expect(parse).toThrow(/total entity.*operational limit/);
+  });
+
+  it('rejects unsafe integer capacities and indexes', () => {
+    const unsafeWireCount = emptyV2();
+    unsafeWireCount.electrical.cables.push({
+      name: 'C',
+      wireCount: Number.MAX_SAFE_INTEGER + 1,
+      colors: [],
+    });
+    expect(() => parseCanonicalProject(unsafeWireCount)).toThrow(/safe positive integer/);
+
+    const unsafeBoard = clone(validProject);
+    unsafeBoard.layout.boards[0].rows = Number.MAX_SAFE_INTEGER + 1;
+    expect(() => parseCanonicalProject(unsafeBoard)).toThrow(/safe positive integer/);
   });
 
   it('migrates an empty v1 project to v2', () => {

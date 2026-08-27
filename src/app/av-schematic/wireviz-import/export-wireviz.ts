@@ -214,9 +214,7 @@ function emitComponent(
   if (component.wirevizType) entry['type'] = component.wirevizType;
   if (component.wirevizSubtype) entry['subtype'] = component.wirevizSubtype;
   if (component.wirevizColor) entry['color'] = component.wirevizColor;
-  if (component.wirevizManufacturer ?? component.manufacturer) {
-    entry['manufacturer'] = component.wirevizManufacturer ?? component.manufacturer;
-  }
+  if (component.wirevizManufacturer) entry['manufacturer'] = component.wirevizManufacturer;
   if (component.wirevizMpn) entry['mpn'] = component.wirevizMpn;
   if (component.wirevizStyle) entry['style'] = component.wirevizStyle;
   if (component.wirevizShowName !== undefined) entry['show_name'] = component.wirevizShowName;

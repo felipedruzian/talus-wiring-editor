@@ -1,4 +1,5 @@
 import { type WireVizLinkStyle } from '../diagram/model/interfaces';
+import { OPERATIONAL_LIMITS } from '../diagram/model/operational-limits.mjs';
 import {
   isDangerousObjectKey,
   WIREVIZ_CABLE_CANONICAL_KEYS,
@@ -143,18 +144,149 @@ const CABLE_UNMODELED_KEYS = ['shield', 'category'] as const;
 export function parseWireVizDocument(raw: YamlValue): WireVizDocument {
   const report = new WireVizReportBuilder();
   const root = expectObject(raw, 'document root');
+  preflightWireViz(root);
+  const budget = new WireVizEntityBudget();
 
-  const connectors = parseConnectors(root['connectors'], report);
-  const cables = parseCables(root['cables'], report);
+  const connectors = parseConnectors(root['connectors'], report, budget);
+  const cables = parseCables(root['cables'], report, budget);
   assertDisjointNames(connectors, cables);
   const conductors = [
     ...parseConnectorLoops(connectors, report),
-    ...parseConnections(root['connections'], connectors, cables, report),
+    ...parseConnections(root['connections'], connectors, cables, report, budget),
   ];
 
   const extras = collectExtras(root, DOCUMENT_KNOWN_KEYS, '', report, false);
 
   return { connectors, cables, conductors, extras, report: report.build() };
+}
+
+/** Proves every allocation-sensitive bound before normalized arrays are built. */
+function preflightWireViz(root: Record<string, YamlValue>): void {
+  const budget = new WireVizEntityBudget();
+  const connectors = expectObject(root['connectors'], 'connectors');
+  const connectorNames = new Set(Object.keys(connectors));
+  budget.add(connectorNames.size, 'connectors');
+
+  for (const [name, raw] of Object.entries(connectors)) {
+    const path = `connectors.${name}`;
+    const entry = expectObject(raw, path);
+    const pins = boundedArrayLength(
+      entry['pins'],
+      `${path}.pins`,
+      OPERATIONAL_LIMITS.maxPinsPerComponent,
+      'pin count',
+    );
+    const pinLabels = boundedArrayLength(
+      entry['pinlabels'],
+      `${path}.pinlabels`,
+      OPERATIONAL_LIMITS.maxPinsPerComponent,
+      'pin count',
+    );
+    const declaredCount =
+      entry['pincount'] === undefined
+        ? undefined
+        : expectBoundedPositiveInteger(
+            entry['pincount'],
+            `${path}.pincount`,
+            OPERATIONAL_LIMITS.maxPinsPerComponent,
+            'pin count',
+          );
+    const pinCount = pins ?? declaredCount ?? pinLabels ?? 0;
+    budget.add(pinCount, `${path}.pins`);
+    if (pinLabels !== undefined) budget.add(pinLabels, `${path}.pinlabels`);
+
+    if (entry['loops'] !== undefined) {
+      if (!Array.isArray(entry['loops'])) {
+        throw new WireVizModelError(`${path}.loops: expected a list of two-pin pairs`);
+      }
+      budget.addConductors(entry['loops'].length, `${path}.loops`);
+    }
+  }
+
+  const cables = root['cables'] === undefined ? undefined : expectObject(root['cables'], 'cables');
+  if (cables) {
+    budget.add(Object.keys(cables).length, 'cables');
+    for (const [name, raw] of Object.entries(cables)) {
+      const path = `cables.${name}`;
+      const entry = expectObject(raw, path);
+      const colors = boundedArrayLength(
+        entry['colors'],
+        `${path}.colors`,
+        OPERATIONAL_LIMITS.maxWiresPerCable,
+        'wire count',
+      );
+      const wireLabels = boundedArrayLength(
+        entry['wirelabels'],
+        `${path}.wirelabels`,
+        OPERATIONAL_LIMITS.maxWiresPerCable,
+        'wire count',
+      );
+      const declaredCount =
+        entry['wirecount'] === undefined
+          ? undefined
+          : expectBoundedPositiveInteger(
+              entry['wirecount'],
+              `${path}.wirecount`,
+              OPERATIONAL_LIMITS.maxWiresPerCable,
+              'wire count',
+            );
+      budget.add(Math.max(declaredCount ?? 0, colors ?? 0), `${path}.wirecount`);
+      if (wireLabels !== undefined) budget.add(wireLabels, `${path}.wirelabels`);
+    }
+  }
+
+  if (root['connections'] === undefined) return;
+  if (!Array.isArray(root['connections'])) {
+    throw new WireVizModelError('connections must be a list of connection sets');
+  }
+  budget.add(root['connections'].length, 'connections');
+  root['connections'].forEach((raw, index) => {
+    const label = `connections[${index}]`;
+    if (!Array.isArray(raw)) {
+      throw new WireVizModelError(`${label}: expected a list of connector/cable references`);
+    }
+    budget.add(raw.length, label);
+    let width = 0;
+    let connectorStops = 0;
+    raw.forEach((reference, refIndex) => {
+      const referenceLabel = `${label}[${refIndex}]`;
+      if (typeof reference === 'string') {
+        width = Math.max(width, 1);
+        if (connectorNames.has(reference)) connectorStops++;
+        return;
+      }
+      if (Array.isArray(reference)) {
+        assertCollectionLimit(
+          reference.length,
+          OPERATIONAL_LIMITS.maxExpandedRange,
+          referenceLabel,
+          'parallel reference width',
+        );
+        budget.add(reference.length, referenceLabel);
+        width = Math.max(width, reference.length);
+        return;
+      }
+      const mapping = expectObject(reference, referenceLabel);
+      const keys = Object.keys(mapping);
+      if (keys.length !== 1) return;
+      const key = keys[0];
+      const values = Array.isArray(mapping[key]) ? mapping[key] : [mapping[key]];
+      let expandedLength = 0;
+      values.forEach((value, valueIndex) => {
+        expandedLength += rangeLength(value, `${referenceLabel}.${key}[${valueIndex}]`);
+        assertCollectionLimit(
+          expandedLength,
+          OPERATIONAL_LIMITS.maxExpandedRange,
+          `${referenceLabel}.${key}`,
+          'range expansion',
+        );
+      });
+      budget.add(expandedLength, `${referenceLabel}.${key}`);
+      width = Math.max(width, expandedLength);
+      if (connectorNames.has(key)) connectorStops++;
+    });
+    budget.addConductors(width * Math.max(0, connectorStops - 1), label);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -164,15 +296,18 @@ export function parseWireVizDocument(raw: YamlValue): WireVizDocument {
 function parseConnectors(
   raw: YamlValue | undefined,
   report: WireVizReportBuilder,
+  budget: WireVizEntityBudget,
 ): WireVizConnector[] {
   const obj = expectObject(raw, 'connectors');
-  return Object.entries(obj).map(([name, value]) => parseConnector(name, value, report));
+  budget.add(Object.keys(obj).length, 'connectors');
+  return Object.entries(obj).map(([name, value]) => parseConnector(name, value, report, budget));
 }
 
 function parseConnector(
   name: string,
   value: YamlValue,
   report: WireVizReportBuilder,
+  budget: WireVizEntityBudget,
 ): WireVizConnector {
   const path = `connectors.${name}`;
   const entry = expectObject(value, path);
@@ -180,8 +315,13 @@ function parseConnector(
   const pinLabels =
     entry['pinlabels'] === undefined
       ? undefined
-      : expectStringArray(entry['pinlabels'], `${path}.pinlabels`);
-  const pins = resolvePins(entry, name, path, report, pinLabels);
+      : expectBoundedStringArray(
+          entry['pinlabels'],
+          `${path}.pinlabels`,
+          OPERATIONAL_LIMITS.maxPinsPerComponent,
+          'pin count',
+        );
+  const pins = resolvePins(entry, name, path, report, pinLabels, budget);
 
   if (pinLabels && pinLabels.length !== pins.length) {
     throw new WireVizModelError(
@@ -190,7 +330,7 @@ function parseConnector(
   }
 
   const style = optionalString(entry['style'], `${path}.style`);
-  const loops = parseLoops(entry['loops'], { name, pins, pinLabels }, path);
+  const loops = parseLoops(entry['loops'], { name, pins, pinLabels }, path, budget);
   const isJunction = style === 'simple' && pins.length === 1;
   if (isJunction) {
     report.info(
@@ -242,14 +382,25 @@ function resolvePins(
   path: string,
   report: WireVizReportBuilder,
   pinLabels: readonly string[] | undefined,
+  budget: WireVizEntityBudget,
 ): string[] {
   const declaredCount =
     entry['pincount'] === undefined
       ? undefined
-      : expectPositiveInteger(entry['pincount'], `${path}.pincount`);
+      : expectBoundedPositiveInteger(
+          entry['pincount'],
+          `${path}.pincount`,
+          OPERATIONAL_LIMITS.maxPinsPerComponent,
+          'pin count',
+        );
 
   if (entry['pins'] !== undefined) {
-    const pins = expectStringArray(entry['pins'], `${path}.pins`);
+    const pins = expectBoundedStringArray(
+      entry['pins'],
+      `${path}.pins`,
+      OPERATIONAL_LIMITS.maxPinsPerComponent,
+      'pin count',
+    );
     if (pins.length === 0) {
       throw new WireVizModelError(`${path}.pins must not be empty`);
     }
@@ -259,11 +410,13 @@ function resolvePins(
         `${path}.pincount: declares ${declaredCount}, but pins has ${pins.length} entries`,
       );
     }
+    budget.add(pins.length, `${path}.pins`);
     return pins;
   }
 
   const count = declaredCount ?? pinLabels?.length;
   if (count !== undefined && count > 0) {
+    budget.add(count, declaredCount === undefined ? `${path}.pinlabels` : `${path}.pincount`);
     report.info(
       'inferred-pins',
       declaredCount === undefined ? `${path}.pinlabels` : `${path}.pincount`,
@@ -280,11 +433,13 @@ function parseLoops(
   raw: YamlValue | undefined,
   connector: Pick<WireVizConnector, 'name' | 'pins' | 'pinLabels'>,
   path: string,
+  budget: WireVizEntityBudget,
 ): [string, string][] {
   if (raw === undefined) return [];
   if (!Array.isArray(raw)) {
     throw new WireVizModelError(`${path}.loops: expected a list of two-pin pairs`);
   }
+  budget.addConductors(raw.length, `${path}.loops`);
 
   const seen = new Set<string>();
   return raw.map((value, index) => {
@@ -347,27 +502,50 @@ function assertDisjointNames(
 // Cables
 // ---------------------------------------------------------------------------
 
-function parseCables(raw: YamlValue | undefined, report: WireVizReportBuilder): WireVizCable[] {
+function parseCables(
+  raw: YamlValue | undefined,
+  report: WireVizReportBuilder,
+  budget: WireVizEntityBudget,
+): WireVizCable[] {
   if (raw === undefined) return [];
   const obj = expectObject(raw, 'cables');
-  return Object.entries(obj).map(([name, value]) => parseCable(name, value, report));
+  budget.add(Object.keys(obj).length, 'cables');
+  return Object.entries(obj).map(([name, value]) => parseCable(name, value, report, budget));
 }
 
-function parseCable(name: string, value: YamlValue, report: WireVizReportBuilder): WireVizCable {
+function parseCable(
+  name: string,
+  value: YamlValue,
+  report: WireVizReportBuilder,
+  budget: WireVizEntityBudget,
+): WireVizCable {
   const path = `cables.${name}`;
   const entry = expectObject(value, path);
 
   const sourceColors =
-    entry['colors'] === undefined ? [] : expectStringArray(entry['colors'], `${path}.colors`);
+    entry['colors'] === undefined
+      ? []
+      : expectBoundedStringArray(
+          entry['colors'],
+          `${path}.colors`,
+          OPERATIONAL_LIMITS.maxWiresPerCable,
+          'wire count',
+        );
   const declaredCount =
     entry['wirecount'] === undefined
       ? undefined
-      : expectPositiveInteger(entry['wirecount'], `${path}.wirecount`);
+      : expectBoundedPositiveInteger(
+          entry['wirecount'],
+          `${path}.wirecount`,
+          OPERATIONAL_LIMITS.maxWiresPerCable,
+          'wire count',
+        );
 
   const wireCount = declaredCount ?? sourceColors.length;
   if (wireCount === 0) {
     throw new WireVizModelError(`${path}: expected either "colors" or "wirecount"`);
   }
+  budget.add(wireCount, `${path}.wirecount`);
   const colors =
     declaredCount !== undefined && sourceColors.length > 0
       ? Array.from({ length: wireCount }, (_, index) => sourceColors[index % sourceColors.length])
@@ -385,7 +563,12 @@ function parseCable(name: string, value: YamlValue, report: WireVizReportBuilder
   const wireLabels =
     entry['wirelabels'] === undefined
       ? undefined
-      : expectStringArray(entry['wirelabels'], `${path}.wirelabels`);
+      : expectBoundedStringArray(
+          entry['wirelabels'],
+          `${path}.wirelabels`,
+          OPERATIONAL_LIMITS.maxWiresPerCable,
+          'wire count',
+        );
   if (wireLabels && wireLabels.length !== wireCount) {
     throw new WireVizModelError(
       `${path}.wirelabels: has ${wireLabels.length} entries but the cable declares ${wireCount} wires`,
@@ -427,11 +610,13 @@ function parseConnections(
   connectors: readonly WireVizConnector[],
   cables: readonly WireVizCable[],
   report: WireVizReportBuilder,
+  budget: WireVizEntityBudget,
 ): WireVizConductor[] {
   if (raw === undefined) return [];
   if (!Array.isArray(raw)) {
     throw new WireVizModelError('connections must be a list of connection sets');
   }
+  budget.add(raw.length, 'connections');
 
   const connectorsByName = new Map(connectors.map((c) => [c.name, c]));
   const cablesByName = new Map(cables.map((c) => [c.name, c]));
@@ -446,6 +631,7 @@ function parseConnections(
       connectorsByName,
       cablesByName,
       report,
+      budget,
     )) {
       const key = conductorKey(conductor);
       const firstSet = seen.get(key);
@@ -502,6 +688,7 @@ function parseConnectionSet(
   connectorsByName: ReadonlyMap<string, WireVizConnector>,
   cablesByName: ReadonlyMap<string, WireVizCable>,
   report: WireVizReportBuilder,
+  budget: WireVizEntityBudget,
 ): WireVizConductor[] {
   const label = `connections[${index}]`;
   if (!Array.isArray(raw)) {
@@ -510,6 +697,7 @@ function parseConnectionSet(
   if (raw.length === 0) {
     throw new WireVizModelError(`${label}: a connection set needs at least one reference`);
   }
+  budget.add(raw.length, label);
 
   if (
     raw.length === 1 &&
@@ -533,7 +721,8 @@ function parseConnectionSet(
   // simple connectors that imply autogenerated instances are deliberately
   // rejected for parallel sets because this importer does not mint hidden
   // instances whose identity depends on textual order.
-  const width = Math.max(...refs.map((ref) => ref.values.length));
+  let width = 0;
+  for (const ref of refs) width = Math.max(width, ref.values.length);
   for (const ref of refs) {
     if (ref.values.length !== width && !(ref.kind === 'link' && ref.values.length === 1)) {
       throw new WireVizModelError(
@@ -541,6 +730,11 @@ function parseConnectionSet(
       );
     }
   }
+
+  const connectorStops = refs.filter(
+    (ref) => ref.kind === 'named' && connectorsByName.has(ref.key),
+  ).length;
+  budget.addConductors(width * Math.max(0, connectorStops - 1), label);
 
   const conductors: WireVizConductor[] = [];
   for (let position = 0; position < width; position++) {
@@ -681,7 +875,7 @@ function resolvePin(
 function resolveWire(cable: WireVizCable, designator: string, label: string): number {
   const matches = new Set<number>();
   const numeric = Number(designator);
-  if (Number.isInteger(numeric) && numeric >= 1 && numeric <= cable.wireCount) {
+  if (Number.isSafeInteger(numeric) && numeric >= 1 && numeric <= cable.wireCount) {
     matches.add(numeric);
   }
 
@@ -736,6 +930,12 @@ function parseConnectionRef(
   }
 
   if (Array.isArray(raw)) {
+    assertCollectionLimit(
+      raw.length,
+      OPERATIONAL_LIMITS.maxExpandedRange,
+      label,
+      'parallel reference width',
+    );
     if (raw.length > 0 && raw.every(isPinLink)) {
       return { kind: 'link', key: 'arrow', values: raw };
     }
@@ -756,7 +956,7 @@ function parseConnectionRef(
   return {
     kind: 'named',
     key,
-    values: values.flatMap((item) => expandRange(item)),
+    values: expandReferenceValues(values, `${label}.${key}`),
   };
 }
 
@@ -768,15 +968,55 @@ function isPinLink(value: YamlValue): value is WireVizLinkStyle {
  * Expands WireViz's `N-M` shorthand inside a reference list (`X1: [1-4]`),
  * including descending ranges such as `9-7`.
  */
-function expandRange(raw: YamlValue): YamlValue[] {
-  if (typeof raw !== 'string') return [raw];
-  const match = /^(\d+)-(\d+)$/.exec(raw.trim());
-  if (!match) return [raw];
+function expandReferenceValues(values: readonly YamlValue[], label: string): YamlValue[] {
+  const expanded: YamlValue[] = [];
+  values.forEach((value, index) => {
+    const next = expandRange(value, `${label}[${index}]`);
+    if (expanded.length + next.length > OPERATIONAL_LIMITS.maxExpandedRange) {
+      throw new WireVizModelError(
+        `${label}: range expansion exceeds operational limit of ` +
+          `${OPERATIONAL_LIMITS.maxExpandedRange} entries`,
+      );
+    }
+    expanded.push(...next);
+  });
+  return expanded;
+}
 
-  const start = Number.parseInt(match[1], 10);
-  const end = Number.parseInt(match[2], 10);
-  const step = end >= start ? 1 : -1;
-  return Array.from({ length: Math.abs(end - start) + 1 }, (_, i) => String(start + i * step));
+function expandRange(raw: YamlValue, label: string): YamlValue[] {
+  const range = parseRange(raw, label);
+  if (!range) return [raw];
+  if (range.length > OPERATIONAL_LIMITS.maxExpandedRange) {
+    throw new WireVizModelError(
+      `${label}: range expansion of ${range.length} entries exceeds operational limit of ` +
+        `${OPERATIONAL_LIMITS.maxExpandedRange}`,
+    );
+  }
+  return Array.from({ length: range.length }, (_, i) => String(range.start + i * range.step));
+}
+
+function rangeLength(raw: YamlValue, label: string): number {
+  return parseRange(raw, label)?.length ?? 1;
+}
+
+function parseRange(
+  raw: YamlValue,
+  label: string,
+): { start: number; step: 1 | -1; length: number } | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const match = /^(\d+)-(\d+)$/.exec(raw.trim());
+  if (!match) return undefined;
+
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)) {
+    throw new WireVizModelError(`${label}: range endpoints must be safe integers`);
+  }
+  const length = Math.abs(end - start) + 1;
+  if (!Number.isSafeInteger(length)) {
+    throw new WireVizModelError(`${label}: range length must be a safe integer`);
+  }
+  return { start, step: end >= start ? 1 : -1, length };
 }
 
 // ---------------------------------------------------------------------------
@@ -856,11 +1096,43 @@ function expectObject(raw: YamlValue | undefined, label: string): Record<string,
   return raw;
 }
 
-function expectStringArray(raw: YamlValue | undefined, label: string): string[] {
+function expectBoundedStringArray(
+  raw: YamlValue | undefined,
+  label: string,
+  limit: number,
+  kind: string,
+): string[] {
   if (!Array.isArray(raw)) {
     throw new WireVizModelError(`${label}: expected a list`);
   }
+  if (raw.length > limit) {
+    throw new WireVizModelError(
+      `${label}: ${kind} ${raw.length} exceeds operational limit of ${limit}`,
+    );
+  }
   return raw.map((value, index) => expectScalarString(value, `${label}[${index}]`));
+}
+
+function boundedArrayLength(
+  raw: YamlValue | undefined,
+  label: string,
+  limit: number,
+  kind: string,
+): number | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw)) {
+    throw new WireVizModelError(`${label}: expected a list`);
+  }
+  assertCollectionLimit(raw.length, limit, label, kind);
+  return raw.length;
+}
+
+function assertCollectionLimit(length: number, limit: number, label: string, kind: string): void {
+  if (length > limit) {
+    throw new WireVizModelError(
+      `${label}: ${kind} ${length} exceeds operational limit of ${limit}`,
+    );
+  }
 }
 
 function expectScalarString(raw: YamlValue | undefined, label: string): string {
@@ -870,14 +1142,50 @@ function expectScalarString(raw: YamlValue | undefined, label: string): string {
   return String(raw);
 }
 
-function expectPositiveInteger(raw: YamlValue | undefined, label: string): number {
+function expectBoundedPositiveInteger(
+  raw: YamlValue | undefined,
+  label: string,
+  limit: number,
+  kind: string,
+): number {
   const value = typeof raw === 'number' ? raw : Number(expectScalarString(raw, label));
-  if (!Number.isInteger(value) || value <= 0) {
+  if (!Number.isSafeInteger(value) || value <= 0) {
     throw new WireVizModelError(
-      `${label}: expected a positive integer, got ${JSON.stringify(raw)}`,
+      `${label}: expected a safe positive integer, got ${JSON.stringify(raw)}`,
     );
   }
+  if (value > limit) {
+    throw new WireVizModelError(`${label}: ${kind} ${value} exceeds operational limit of ${limit}`);
+  }
   return value;
+}
+
+class WireVizEntityBudget {
+  private total = 0;
+
+  add(count: number, label: string): void {
+    const next = this.total + count;
+    if (!Number.isSafeInteger(count) || count < 0 || !Number.isSafeInteger(next)) {
+      throw new WireVizModelError(`${label}: total entity count must be a safe integer`);
+    }
+    if (next > OPERATIONAL_LIMITS.maxTotalEntities) {
+      throw new WireVizModelError(
+        `${label}: total entity count ${next} exceeds operational limit of ` +
+          `${OPERATIONAL_LIMITS.maxTotalEntities}`,
+      );
+    }
+    this.total = next;
+  }
+
+  addConductors(count: number, label: string): void {
+    const reserved = count * 2;
+    if (!Number.isSafeInteger(reserved)) {
+      throw new WireVizModelError(`${label}: total entity count must be a safe integer`);
+    }
+    // Every conductor reserves one possible net so the later buildNets
+    // allocation cannot push the canonical result beyond the same budget.
+    this.add(reserved, label);
+  }
 }
 
 function optionalString(raw: YamlValue | undefined, label: string): string | undefined {

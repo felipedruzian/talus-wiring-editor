@@ -51,7 +51,7 @@ export class WireVizExchangeService {
   async importYaml(yaml: string, options?: WireVizImportOptions): Promise<boolean> {
     this.begin('Importando YAML WireViz...');
     try {
-      const current = this.storage.snapshotProject();
+      const current = this.storage.snapshotImportSkeleton();
       const effectiveOptions = options ?? inferImportOptions(current);
       const imported = importWireViz(yaml, effectiveOptions);
       const project = buildImportedProject(imported.electrical, current);

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { OPERATIONAL_LIMITS } from '../diagram/model/operational-limits.mjs';
 import { MINIMAL_TWO_NETS_WIREVIZ_YAML } from './fixtures/minimal-two-nets.fixture';
 import { MULTIDROP_RAIL_WIREVIZ_YAML } from './fixtures/multidrop-rail.fixture';
 import { parseWireVizDocument, WireVizModelError } from './wireviz-model';
@@ -304,4 +305,90 @@ describe('parseWireVizDocument', () => {
     ) as YamlValue;
     expect(() => parseWireVizDocument(raw)).toThrow(/dangerous/);
   });
+
+  it.each([
+    ['below', OPERATIONAL_LIMITS.maxPinsPerComponent - 1, true],
+    ['at', OPERATIONAL_LIMITS.maxPinsPerComponent, true],
+    ['above', OPERATIONAL_LIMITS.maxPinsPerComponent + 1, false],
+  ] as const)('enforces the pin-count limit %s the boundary', (_label, pinCount, accepted) => {
+    const raw: YamlValue = {
+      connectors: { X1: { pincount: pinCount } },
+      connections: [],
+    };
+    const parse = () => parseWireVizDocument(raw);
+    if (accepted) expect(parse).not.toThrow();
+    else expect(parse).toThrow(/pin count.*operational limit/);
+  });
+
+  it.each([
+    ['below', OPERATIONAL_LIMITS.maxWiresPerCable - 1, true],
+    ['at', OPERATIONAL_LIMITS.maxWiresPerCable, true],
+    ['above', OPERATIONAL_LIMITS.maxWiresPerCable + 1, false],
+  ] as const)('enforces the wire-count limit %s the boundary', (_label, wireCount, accepted) => {
+    const raw: YamlValue = {
+      connectors: {},
+      cables: { C: { wirecount: wireCount, colors: ['RD'] } },
+      connections: [],
+    };
+    const parse = () => parseWireVizDocument(raw);
+    if (accepted) expect(parse).not.toThrow();
+    else expect(parse).toThrow(/wire count.*operational limit/);
+  });
+
+  it.each([
+    ['below', OPERATIONAL_LIMITS.maxExpandedRange - 1, true],
+    ['at', OPERATIONAL_LIMITS.maxExpandedRange, true],
+    ['above', OPERATIONAL_LIMITS.maxExpandedRange + 1, false],
+  ] as const)('enforces the range-expansion limit %s the boundary', (_label, width, accepted) => {
+    const pins = Array.from(
+      { length: Math.min(width, OPERATIONAL_LIMITS.maxPinsPerComponent) },
+      (_, i) => i + 1,
+    );
+    const raw: YamlValue = {
+      connectors: { A: { pins }, B: { pins } },
+      connections: [[{ A: [`1-${width}`] }, '--', { B: [`1-${width}`] }]],
+    };
+    const parse = () => parseWireVizDocument(raw);
+    if (accepted) expect(parse).not.toThrow();
+    else expect(parse).toThrow(/range expansion.*operational limit/);
+  });
+
+  it.each([
+    ['below', OPERATIONAL_LIMITS.maxTotalEntities - 1, true],
+    ['at', OPERATIONAL_LIMITS.maxTotalEntities, true],
+    ['above', OPERATIONAL_LIMITS.maxTotalEntities + 1, false],
+  ] as const)('enforces the total-entity limit %s the boundary', (_label, total, accepted) => {
+    const raw = wireVizCableBudgetDocument(total);
+    const parse = () => parseWireVizDocument(raw);
+    if (accepted) expect(parse).not.toThrow();
+    else expect(parse).toThrow(/total entity.*operational limit/);
+  });
+
+  it('rejects unsafe integer counts and range endpoints', () => {
+    expect(() =>
+      parseWireVizDocument({
+        connectors: { X1: { pincount: Number.MAX_SAFE_INTEGER + 1 } },
+        connections: [],
+      }),
+    ).toThrow(/safe positive integer/);
+    expect(() =>
+      parseWireVizDocument({
+        connectors: { A: { pins: [1] }, B: { pins: [1] } },
+        connections: [[{ A: [`1-${Number.MAX_SAFE_INTEGER + 1}`] }, '--', { B: [1] }]],
+      }),
+    ).toThrow(/safe integer/);
+  });
 });
+
+function wireVizCableBudgetDocument(total: number): YamlValue {
+  const cables: Record<string, YamlValue> = {};
+  let remaining = total;
+  let index = 0;
+  while (remaining >= 2) {
+    const wireCount = Math.min(OPERATIONAL_LIMITS.maxWiresPerCable, remaining - 1);
+    cables[`C${index++}`] = { wirecount: wireCount };
+    remaining -= wireCount + 1;
+  }
+  if (remaining === 1) cables[`C${index}`] = { wirecount: 1 };
+  return { connectors: {}, cables, connections: [] };
+}

@@ -93,6 +93,31 @@ Erros estruturais — pino inexistente, índice fora do cabo, larguras paralelas
 divergentes, referências adjacentes que não alternam e tipos inválidos —
 interrompem a importação com um caminho para o campo problemático.
 
+## Limites operacionais
+
+A fonte auditável dos limites é
+[`operational-limits.mjs`](../src/app/av-schematic/diagram/model/operational-limits.mjs).
+O importador WireViz e os validadores canônicos do cliente e do serviço usam
+os mesmos valores:
+
+| Recurso | Limite |
+|---|---:|
+| Pinos por componente | 256 |
+| Condutores por cabo | 256 |
+| Largura paralela ou entradas produzidas por uma expansão de intervalo | 256 |
+| Entradas de entidades e coleções materializadas por documento | 10.000 |
+
+Contagens, índices e extremos de intervalos precisam ser inteiros seguros do
+JavaScript. O limite é conferido antes de `pincount`, `wirecount`, intervalos,
+listas normalizadas ou registros canônicos gerarem novos arrays.
+
+O orçamento total inclui entidades elétricas, posições de cabo, referências
+de conexão e saídas possíveis do agrupamento em nets no importador. No formato
+canônico, inclui também endpoints, registros de layout, posições de pinos e
+pontos de rota. Os limites de pinos e posições de cabo descrevem capacidades
+físicas e ficam no módulo compartilhado para reutilização pela integração
+física sem criar uma segunda política.
+
 ## Limites deliberados
 
 - Autogeração de conectores/cabos e templates não é implementada.

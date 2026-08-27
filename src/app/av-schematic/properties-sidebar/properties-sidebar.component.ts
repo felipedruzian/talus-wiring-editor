@@ -46,7 +46,7 @@ import {
       useFactory: () => {
         const mutation = inject(ElementMutationService);
         return (change: WireFieldChange) => {
-          mutation.handleWireFieldChange(change);
+          void mutation.handleWireFieldChange(change);
         };
       },
     },

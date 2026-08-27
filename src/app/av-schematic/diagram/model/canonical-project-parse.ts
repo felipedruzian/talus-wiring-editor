@@ -29,6 +29,7 @@ import {
   type WireVizLinkStyle,
 } from './interfaces';
 import { groupConductorsIntoNets } from './net-grouping';
+import { OPERATIONAL_LIMITS } from './operational-limits.mjs';
 import {
   isDangerousObjectKey,
   WIREVIZ_CABLE_CANONICAL_KEYS,
@@ -76,6 +77,7 @@ export function parseCanonicalProject(raw: unknown): CanonicalProjectV2 {
 function parseV2(root: Record<string, unknown>): CanonicalProjectV2 {
   const electricalRaw = expectRecord(root['electrical'], 'project.electrical');
   const layoutRaw = expectRecord(root['layout'], 'project.layout');
+  preflightV2(electricalRaw, layoutRaw);
 
   const components = expectArray(electricalRaw['components'], 'project.electrical.components').map(
     (value, i) => parseComponent(value, `project.electrical.components[${i}]`),
@@ -116,6 +118,99 @@ function parseV2(root: Record<string, unknown>): CanonicalProjectV2 {
 
   validateProject(project);
   return project;
+}
+
+/**
+ * Counts every collection entry that the parser will materialize before any
+ * output array is built. Besides electrical identities and cable wire slots,
+ * the budget includes endpoint and layout records plus their nested points.
+ */
+function preflightV2(
+  electricalRaw: Record<string, unknown>,
+  layoutRaw: Record<string, unknown>,
+): void {
+  const components = expectArray(electricalRaw['components'], 'project.electrical.components');
+  const junctions = expectArray(electricalRaw['junctions'], 'project.electrical.junctions');
+  const cables = expectArray(electricalRaw['cables'], 'project.electrical.cables');
+  const nets = expectArray(electricalRaw['nets'], 'project.electrical.nets');
+  const boards = expectArray(layoutRaw['boards'], 'project.layout.boards');
+  const componentLayouts = expectArray(layoutRaw['components'], 'project.layout.components');
+  const junctionLayouts = expectArray(layoutRaw['junctions'], 'project.layout.junctions');
+  const conductorLayouts = expectArray(layoutRaw['conductors'], 'project.layout.conductors');
+  const budget = new CanonicalEntityBudget();
+
+  budget.add(boards.length, 'project.layout.boards');
+  budget.add(components.length, 'project.electrical.components');
+  budget.add(junctions.length, 'project.electrical.junctions');
+  budget.add(cables.length, 'project.electrical.cables');
+  budget.add(nets.length, 'project.electrical.nets');
+  budget.add(componentLayouts.length, 'project.layout.components');
+  budget.add(junctionLayouts.length, 'project.layout.junctions');
+  budget.add(conductorLayouts.length, 'project.layout.conductors');
+
+  components.forEach((raw, index) => {
+    const label = `project.electrical.components[${index}].pins`;
+    const pins = expectArray(
+      expectRecord(raw, `project.electrical.components[${index}]`)['pins'],
+      label,
+    );
+    assertCollectionLimit(pins.length, OPERATIONAL_LIMITS.maxPinsPerComponent, label, 'pin count');
+    budget.add(pins.length, label);
+  });
+
+  cables.forEach((raw, index) => {
+    const label = `project.electrical.cables[${index}].wireCount`;
+    const cable = expectRecord(raw, `project.electrical.cables[${index}]`);
+    const wireCount = expectBoundedPositiveInteger(
+      cable['wireCount'],
+      label,
+      OPERATIONAL_LIMITS.maxWiresPerCable,
+      'wire count',
+    );
+    const colorsLabel = `project.electrical.cables[${index}].colors`;
+    const colors = expectArray(cable['colors'], colorsLabel);
+    if (colors.length > wireCount) {
+      throw new CanonicalProjectError(
+        `${colorsLabel}: has ${colors.length} entries but wireCount is ${wireCount}`,
+      );
+    }
+    const wireLabelsLabel = `project.electrical.cables[${index}].wireLabels`;
+    if (cable['wireLabels'] !== undefined) {
+      const wireLabels = expectArray(cable['wireLabels'], wireLabelsLabel);
+      if (wireLabels.length > wireCount) {
+        throw new CanonicalProjectError(
+          `${wireLabelsLabel}: has ${wireLabels.length} entries but wireCount is ${wireCount}`,
+        );
+      }
+      budget.add(wireLabels.length, wireLabelsLabel);
+    }
+    budget.add(wireCount, label);
+  });
+
+  nets.forEach((raw, index) => {
+    const netLabel = `project.electrical.nets[${index}]`;
+    const net = expectRecord(raw, netLabel);
+    const endpointsLabel = `${netLabel}.endpoints`;
+    const conductorsLabel = `${netLabel}.conductors`;
+    budget.add(expectArray(net['endpoints'], endpointsLabel).length, endpointsLabel);
+    budget.add(expectArray(net['conductors'], conductorsLabel).length, conductorsLabel);
+  });
+
+  componentLayouts.forEach((raw, index) => {
+    const label = `project.layout.components[${index}].pinHoles`;
+    const layout = expectRecord(raw, `project.layout.components[${index}]`);
+    if (layout['pinHoles'] !== undefined) {
+      budget.add(expectArray(layout['pinHoles'], label).length, label);
+    }
+  });
+
+  conductorLayouts.forEach((raw, index) => {
+    const label = `project.layout.conductors[${index}].points`;
+    const layout = expectRecord(raw, `project.layout.conductors[${index}]`);
+    if (layout['points'] !== undefined) {
+      budget.add(expectArray(layout['points'], label).length, label);
+    }
+  });
 }
 
 /**
@@ -536,7 +631,12 @@ function parseJunction(raw: unknown, label: string): CanonicalJunction {
 
 function parseCable(raw: unknown, label: string): CanonicalCable {
   const obj = expectRecord(raw, label);
-  const wireCount = expectPositiveInteger(obj['wireCount'], `${label}.wireCount`);
+  const wireCount = expectBoundedPositiveInteger(
+    obj['wireCount'],
+    `${label}.wireCount`,
+    OPERATIONAL_LIMITS.maxWiresPerCable,
+    'wire count',
+  );
   const colors = expectArray(obj['colors'], `${label}.colors`).map((value, i) =>
     expectString(value, `${label}.colors[${i}]`),
   );
@@ -743,6 +843,7 @@ interface LegacyProject {
 }
 
 function parseV1(root: Record<string, unknown>): LegacyProject {
+  preflightV1(root);
   return {
     boards: expectArray(root['boards'], 'project.boards').map((b, i) =>
       parseBoard(b, `project.boards[${i}]`),
@@ -754,6 +855,44 @@ function parseV1(root: Record<string, unknown>): LegacyProject {
       parseLegacyNet(n, `project.nets[${i}]`),
     ),
   };
+}
+
+function preflightV1(root: Record<string, unknown>): void {
+  const boards = expectArray(root['boards'], 'project.boards');
+  const components = expectArray(root['components'], 'project.components');
+  const nets = expectArray(root['nets'], 'project.nets');
+  const budget = new CanonicalEntityBudget();
+
+  budget.add(boards.length, 'project.boards');
+  // Migration materializes electrical and layout component records.
+  budget.add(components.length * 2, 'project.components');
+  // Worst case per legacy net: conductor, conductor layout, two endpoints,
+  // net, cable and cable wire slot. Shared nets/cables only reduce the total.
+  budget.add(nets.length * 7, 'project.nets');
+
+  components.forEach((raw, index) => {
+    const label = `project.components[${index}].pins`;
+    const pins = expectArray(expectRecord(raw, `project.components[${index}]`)['pins'], label);
+    assertCollectionLimit(pins.length, OPERATIONAL_LIMITS.maxPinsPerComponent, label, 'pin count');
+    budget.add(pins.length, label);
+    let placedPins = 0;
+    pins.forEach((pin, pinIndex) => {
+      if (
+        expectRecord(pin, `project.components[${index}].pins[${pinIndex}]`)['hole'] !== undefined
+      ) {
+        placedPins++;
+      }
+    });
+    budget.add(placedPins, `${label}.holes`);
+  });
+
+  nets.forEach((raw, index) => {
+    const label = `project.nets[${index}].points`;
+    const net = expectRecord(raw, `project.nets[${index}]`);
+    if (net['points'] !== undefined) {
+      budget.add(expectArray(net['points'], label).length, label);
+    }
+  });
 }
 
 function parseLegacyComponent(raw: unknown, label: string): LegacyComponent {
@@ -1041,18 +1180,59 @@ function expectPositiveFiniteNumber(raw: unknown, label: string): number {
 
 function expectPositiveInteger(raw: unknown, label: string): number {
   const value = expectFiniteNumber(raw, label);
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new CanonicalProjectError(`${label}: expected a positive integer, got ${value}`);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new CanonicalProjectError(`${label}: expected a safe positive integer, got ${value}`);
   }
   return value;
 }
 
 function expectNonNegativeInteger(raw: unknown, label: string): number {
   const value = expectFiniteNumber(raw, label);
-  if (!Number.isInteger(value) || value < 0) {
-    throw new CanonicalProjectError(`${label}: expected a non-negative integer, got ${value}`);
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new CanonicalProjectError(`${label}: expected a safe non-negative integer, got ${value}`);
   }
   return value;
+}
+
+function expectBoundedPositiveInteger(
+  raw: unknown,
+  label: string,
+  limit: number,
+  kind: string,
+): number {
+  const value = expectPositiveInteger(raw, label);
+  if (value > limit) {
+    throw new CanonicalProjectError(
+      `${label}: ${kind} ${value} exceeds operational limit of ${limit}`,
+    );
+  }
+  return value;
+}
+
+function assertCollectionLimit(length: number, limit: number, label: string, kind: string): void {
+  if (length > limit) {
+    throw new CanonicalProjectError(
+      `${label}: ${kind} ${length} exceeds operational limit of ${limit}`,
+    );
+  }
+}
+
+class CanonicalEntityBudget {
+  private total = 0;
+
+  add(count: number, label: string): void {
+    const next = this.total + count;
+    if (!Number.isSafeInteger(count) || count < 0 || !Number.isSafeInteger(next)) {
+      throw new CanonicalProjectError(`${label}: total entity count must be a safe integer`);
+    }
+    if (next > OPERATIONAL_LIMITS.maxTotalEntities) {
+      throw new CanonicalProjectError(
+        `${label}: total entity count ${next} exceeds operational limit of ` +
+          `${OPERATIONAL_LIMITS.maxTotalEntities}`,
+      );
+    }
+    this.total = next;
+  }
 }
 
 function expectOneOf<T extends string>(raw: unknown, allowed: readonly T[], label: string): T {
