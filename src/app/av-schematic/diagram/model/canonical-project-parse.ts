@@ -602,10 +602,7 @@ function validateLayout(
         layout.placement,
       );
       const footprintHoles = new Map(
-        footprintPinHoles(layout.footprint, layout.placement).map((pin) => [
-          pin.pinId,
-          pin.hole,
-        ]),
+        footprintPinHoles(layout.footprint, layout.placement).map((pin) => [pin.pinId, pin.hole]),
       );
       layout.pinHoles = component.pins.flatMap((pin) => {
         const hole = footprintHoles.get(pin.id);
@@ -955,13 +952,11 @@ function validatePhysicalBinding(
     );
   }
   const boardPort = boardPortsByJunction.get(junction.junctionId);
-  if (!boardPort || boardPort.portId !== expectedPort) {
+  if (boardPort?.portId !== expectedPort) {
     throw new CanonicalProjectError(`${label}: junction has no matching boardPort layout`);
   }
   const expectedTap = trace
-    ? traceHoles(trace).findIndex(
-        (hole) => hole.row === pinHole.row && hole.col === pinHole.col,
-      )
+    ? traceHoles(trace).findIndex((hole) => hole.row === pinHole.row && hole.col === pinHole.col)
     : undefined;
   const actualTap = conductor.from.kind === 'junction' ? layout.fromTap : layout.toTap;
   if (actualTap !== expectedTap) {
@@ -1410,7 +1405,11 @@ function parseFootprintCell(raw: unknown, label: string): FootprintCell {
 
 function parseFootprintShape(raw: unknown, label: string): FootprintShape {
   const obj = expectRecord(raw, label);
-  const kind = expectOneOf(obj['kind'], ['rect', 'circle', 'line', 'text'] as const, `${label}.kind`);
+  const kind = expectOneOf(
+    obj['kind'],
+    ['rect', 'circle', 'line', 'text'] as const,
+    `${label}.kind`,
+  );
   if (kind === 'rect') {
     return {
       kind,

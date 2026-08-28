@@ -101,16 +101,10 @@ describe('physical component fixtures', () => {
   });
 
   it('stores authored net names without forging canonical net ids or copper shorts', () => {
-    const nodes = [
-      ...PHYSICAL_BOARD_NODES,
-      ...SEATED_COMPONENT_NODES,
-      ...EXTERNAL_COMPONENT_NODES,
-    ];
+    const nodes = [...PHYSICAL_BOARD_NODES, ...SEATED_COMPONENT_NODES, ...EXTERNAL_COMPONENT_NODES];
     expect(PHYSICAL_WIRE_EDGES.every((edge) => edge.data.netName && !edge.data.netId)).toBe(true);
     expect(
-      PHYSICAL_WIRE_EDGES.every(
-        (edge) => physicalEdgeNet(nodes, edge).conflict.length === 0,
-      ),
+      PHYSICAL_WIRE_EDGES.every((edge) => physicalEdgeNet(nodes, edge).conflict.length === 0),
     ).toBe(true);
   });
 });

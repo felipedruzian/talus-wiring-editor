@@ -169,7 +169,16 @@ describe('canonical project round-trip', () => {
 
   it('derives a render color from a known conductor colorCode', () => {
     const project = toCanonicalProject(diagramModel.nodes, diagramModel.edges);
-    const conductor = project.electrical.nets.flatMap((net) => net.conductors)[0];
+    const visibleConductorIds = new Set(
+      project.layout.conductors
+        .filter((layout) => !layout.physicalBinding)
+        .map((layout) => layout.conductorId),
+    );
+    const conductor = must(
+      project.electrical.nets
+        .flatMap((net) => net.conductors)
+        .find((candidate) => visibleConductorIds.has(candidate.id)),
+    );
     conductor.color = undefined;
     conductor.colorCode = 'RD';
 

@@ -8,7 +8,7 @@ import {
   type BoardNodeData,
   type DeviceNodeData,
 } from '../diagram/model/interfaces';
-import { resolveWireEndpointInfo } from './properties-sidebar.service';
+import { describeWireEndpoint } from '../diagram/model/wire-endpoints';
 
 const footprint: Footprint = {
   id: 'inline-part',
@@ -57,26 +57,26 @@ const component: Node<DeviceNodeData> = {
   },
 };
 
-describe('resolveWireEndpointInfo', () => {
+describe('physical wire endpoint inspection', () => {
   const nodes: Node<AvSchematicNodeData>[] = [board, component];
 
   it('inspects a board hole with its physical address, trace, and net', () => {
-    expect(resolveWireEndpointInfo(nodes, board.id, 'hole:0:2')).toEqual({
-      nodeLabel: 'Physical board',
+    expect(describeWireEndpoint(nodes, board.id, 'hole:0:2')).toEqual({
+      deviceId: 'Physical board',
       portLabel: 'L1-C3 · L1 (VCC)',
     });
   });
 
   it('inspects a board trace endpoint', () => {
-    expect(resolveWireEndpointInfo(nodes, board.id, 'trace:vcc')).toEqual({
-      nodeLabel: 'Physical board',
+    expect(describeWireEndpoint(nodes, board.id, 'trace:vcc')).toEqual({
+      deviceId: 'Physical board',
       portLabel: 'L1 (VCC)',
     });
   });
 
   it('inspects a placed component pin through its board hole', () => {
-    expect(resolveWireEndpointInfo(nodes, component.id, 'a')).toEqual({
-      nodeLabel: 'R1',
+    expect(describeWireEndpoint(nodes, component.id, 'a')).toEqual({
+      deviceId: 'R1',
       portLabel: 'A · L1-C1 (VCC)',
     });
   });

@@ -271,9 +271,9 @@ export class ElementMutationService {
         },
         { waitForMeasurements: true },
       )
-      .then(() => {
-        applyEdgeStretchOnSelectionMoved(this.modelService, new Set([change.nodeId]), true);
-      });
+      .then(() =>
+        applyEdgeStretchOnSelectionMoved(this.modelService, new Set([change.nodeId]), true),
+      );
   }
 
   resetEdgeRouting(edgeId: string): void {

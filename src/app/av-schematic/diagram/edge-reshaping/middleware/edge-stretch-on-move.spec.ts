@@ -9,7 +9,7 @@ interface EdgePointsPatch {
 }
 
 describe('applyEdgeStretchOnSelectionMoved', () => {
-  it('re-anchors only incident manual wires and preserves their internal route', () => {
+  it('re-anchors only incident manual wires and preserves their internal route', async () => {
     const route = [
       { x: 0, y: 0 },
       { x: 40, y: 0 },
@@ -73,7 +73,7 @@ describe('applyEdgeStretchOnSelectionMoved', () => {
       updateEdges,
     };
 
-    applyEdgeStretchOnSelectionMoved(
+    await applyEdgeStretchOnSelectionMoved(
       model as unknown as NgDiagramModelService,
       new Set(['source']),
       false,

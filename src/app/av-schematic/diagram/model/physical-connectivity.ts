@@ -110,6 +110,25 @@ export function physicalEdgeNet(
   return unique.length > 1 ? { conflict: unique } : { netLabel: unique[0], conflict: [] };
 }
 
+/**
+ * Whether both diagram endpoints are board ports that canonicalize to the same
+ * copper junction. Device pins deliberately do not participate: even when a
+ * seated pin touches that copper, its canonical endpoint remains the pin.
+ */
+export function boardPortsResolveToSameCopper(
+  nodes: readonly Node[],
+  edge: PhysicalEdgeLike,
+): boolean {
+  const sourceNode = nodes.find((candidate) => candidate.id === edge.source);
+  const targetNode = nodes.find((candidate) => candidate.id === edge.target);
+  if (!sourceNode || !targetNode || !isBoardNode(sourceNode) || !isBoardNode(targetNode)) {
+    return false;
+  }
+  const source = physicalEndpoint(nodes, edge.source, edge.sourcePort);
+  const target = physicalEndpoint(nodes, edge.target, edge.targetPort);
+  return !!source && !!target && physicalCopperKey(source) === physicalCopperKey(target);
+}
+
 /** Finds every connected conductor group that spans incompatible named copper. */
 export function physicalGraphConflicts(
   nodes: readonly Node[],

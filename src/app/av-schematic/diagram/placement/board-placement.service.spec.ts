@@ -72,13 +72,13 @@ class ModelStub {
   );
   readonly updateNode = vi.fn((id: string, patch: Partial<Node>) => {
     const index = this.nodes.findIndex((node) => node.id === id);
-    if (index >= 0) this.nodes[index] = { ...this.nodes[index], ...patch } as Node;
+    if (index >= 0) this.nodes[index] = { ...this.nodes[index], ...patch };
     return Promise.resolve();
   });
   readonly updateEdges = vi.fn((patches: readonly ({ id: string } & Partial<Edge>)[]) => {
     for (const patch of patches) {
       const index = this.edges.findIndex((edge) => edge.id === patch.id);
-      if (index >= 0) this.edges[index] = { ...this.edges[index], ...patch } as Edge;
+      if (index >= 0) this.edges[index] = { ...this.edges[index], ...patch };
     }
     return Promise.resolve();
   });

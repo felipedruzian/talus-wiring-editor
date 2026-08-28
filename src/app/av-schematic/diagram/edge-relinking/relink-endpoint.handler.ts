@@ -15,7 +15,7 @@ import {
   snapPointToGrid,
   type EdgeEndpointSide,
 } from '../edge-reshaping/logic';
-import { physicalEdgeNet } from '../model/physical-connectivity';
+import { boardPortsResolveToSameCopper, physicalEdgeNet } from '../model/physical-connectivity';
 import { RelinkTargetHighlightService } from './relink-target-highlight.service';
 
 interface RelinkState {
@@ -153,28 +153,23 @@ export class RelinkEndpointHandler {
             sourcePort: hit.portId,
             sourcePosition: undefined,
           };
-    if (this.wouldShortPhysicalCopper(drag.edgeId, patch)) {
-      // Refuse a physical short and leave the dragged end visibly dangling at
-      // the attempted port instead of committing incompatible copper nets.
+    if (this.wouldRejectPhysicalConnection(drag.edgeId, patch)) {
+      // Refuse a physical short or a conductor whose board ports canonicalize
+      // to one copper junction, leaving the attempted end visibly dangling.
       if (portPos) this.leaveDangling(drag, portPos, true);
       return;
     }
     void this.modelService.updateEdge(drag.edgeId, patch);
   }
 
-  private wouldShortPhysicalCopper(edgeId: string, patch: Partial<Edge>): boolean {
+  private wouldRejectPhysicalConnection(edgeId: string, patch: Partial<Edge>): boolean {
     const edge = this.modelService.getEdgeById(edgeId);
     if (!edge) return false;
     const model = this.modelService.getModel();
+    const candidate = { ...edge, ...patch };
     return (
-      physicalEdgeNet(
-      model.getNodes(),
-      {
-        ...edge,
-        ...patch,
-      },
-      model.getEdges(),
-      ).conflict.length > 0
+      boardPortsResolveToSameCopper(model.getNodes(), candidate) ||
+      physicalEdgeNet(model.getNodes(), candidate, model.getEdges()).conflict.length > 0
     );
   }
 

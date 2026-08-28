@@ -123,11 +123,7 @@ export class ProjectStorageService {
     const committedModel = this.modelService.getModel();
     this.refreshPhysicalDiagnostics();
     const project = parseCanonicalProject(
-      toCanonicalProject(
-        committedModel.getNodes(),
-        committedModel.getEdges(),
-        this.cableInventory,
-      ),
+      toCanonicalProject(committedModel.getNodes(), committedModel.getEdges(), this.cableInventory),
     );
     this.cableInventory = project.electrical.cables.map(cloneCable);
     return project;

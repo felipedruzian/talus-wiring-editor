@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { rowTrace } from './board-trace';
 import { type Footprint } from './footprint';
 import {
+  boardPortsResolveToSameCopper,
   initialNetNameFromCopper,
   physicalEdgeNet,
   physicalEndpoint,
@@ -145,6 +146,27 @@ describe('physical connectivity', () => {
     expect(physicalEdgeNet(nodes, edgeTo('trace:gnd'))).toEqual({
       conflict: ['GND', 'VCC'],
     });
+  });
+
+  it('recognizes only board ports that canonicalize to the same copper junction', () => {
+    const sameTrace: Edge<WireEdgeData> = {
+      id: 'same-trace',
+      type: EdgeTemplateType.WireEdge,
+      source: board.id,
+      sourcePort: 'hole:0:1',
+      target: board.id,
+      targetPort: 'trace:vcc',
+      data: { type: 'wire', wireId: 'W2' },
+    };
+    const pinToTrace: Edge<WireEdgeData> = {
+      ...sameTrace,
+      id: 'pin-to-trace',
+      source: component.id,
+      sourcePort: 'a',
+    };
+
+    expect(boardPortsResolveToSameCopper(nodes, sameTrace)).toBe(true);
+    expect(boardPortsResolveToSameCopper(nodes, pinToTrace)).toBe(false);
   });
 
   it('detects copper conflicts inherited through an existing multi-drop graph', () => {

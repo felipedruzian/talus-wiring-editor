@@ -137,17 +137,11 @@ export class BoardNodeComponent implements NgDiagramNodeTemplate<BoardNodeData> 
    * wires land on the hole centre without any correction elsewhere.
    */
   protected tracePortLeft(trace: TraceView): number {
-    return centerLeftPortBoxPosition(
-      { x: trace.portX, y: trace.portY },
-      this.holePortSize(),
-    ).x;
+    return centerLeftPortBoxPosition({ x: trace.portX, y: trace.portY }, this.holePortSize()).x;
   }
 
   protected tracePortTop(trace: TraceView): number {
-    return centerLeftPortBoxPosition(
-      { x: trace.portX, y: trace.portY },
-      this.holePortSize(),
-    ).y;
+    return centerLeftPortBoxPosition({ x: trace.portX, y: trace.portY }, this.holePortSize()).y;
   }
 
   private toTraceView(trace: BoardTrace): TraceView {

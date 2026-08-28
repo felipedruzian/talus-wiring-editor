@@ -269,12 +269,12 @@ describe('buildImportedProject junction taps', () => {
     const reconciled = buildImportedProject(imported, previous).electrical;
     expect(reconciled.nets).toHaveLength(1);
     expect(reconciled.nets[0].name).toBe('ALPHA');
-    expect(physicalNetReconciliationEntries(imported, reconciled)).toEqual([
-      expect.objectContaining({
-        severity: 'warning',
-        code: 'physical-net-reconciled',
-        message: expect.stringContaining('ALPHA'),
-      }),
-    ]);
+    const entries = physicalNetReconciliationEntries(imported, reconciled);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      severity: 'warning',
+      code: 'physical-net-reconciled',
+    });
+    expect(entries[0]?.message).toContain('ALPHA');
   });
 });

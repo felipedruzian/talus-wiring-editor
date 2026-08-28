@@ -26,7 +26,11 @@ import { PropertiesSidebarService } from '../properties-sidebar/properties-sideb
 import { randomShortId } from '../shared/utils/random-short-id';
 import { generateDeviceId } from './model/auto-device-id';
 import { isDeviceNode, isJunctionNode, isWireEdge } from './model/guards';
-import { initialNetNameFromCopper, physicalEdgeNet } from './model/physical-connectivity';
+import {
+  boardPortsResolveToSameCopper,
+  initialNetNameFromCopper,
+  physicalEdgeNet,
+} from './model/physical-connectivity';
 import { snapForNode } from './model/physical-snap';
 import {
   EdgeTemplateType,
@@ -203,16 +207,14 @@ export class DiagramComponent {
     targetPort: Port | null,
   ): boolean {
     const model = this.modelService.getModel();
-    const result = physicalEdgeNet(
-      model.getNodes(),
-      {
-        source: source?.id ?? '',
-        sourcePort: sourcePort?.id,
-        target: target?.id ?? '',
-        targetPort: targetPort?.id,
-      },
-      model.getEdges(),
-    );
+    const candidate = {
+      source: source?.id ?? '',
+      sourcePort: sourcePort?.id,
+      target: target?.id ?? '',
+      targetPort: targetPort?.id,
+    };
+    if (boardPortsResolveToSameCopper(model.getNodes(), candidate)) return false;
+    const result = physicalEdgeNet(model.getNodes(), candidate, model.getEdges());
     return result.conflict.length === 0;
   }
 
