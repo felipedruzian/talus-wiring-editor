@@ -21,7 +21,7 @@ const board: Node<BoardNodeData> = {
     rows: 2,
     cols: 3,
     pitch: 17,
-    traces: [rowTrace('vcc', 'VCC rail', 0, 3, 'VCC')],
+    traces: [rowTrace('vcc', 'VCC rail', 0, 3, 'VCC'), rowTrace('gnd', 'GND rail', 1, 3, 'GND')],
   },
 };
 
@@ -67,6 +67,34 @@ describe('inspectPhysicalLayout', () => {
     expect(inspectPhysicalLayout([board, device], [first, second])).toContainEqual(
       expect.objectContaining({ severity: 'warning', code: 'authored-net-merge' }),
     );
+  });
+
+  it('reports copper labels joined indirectly through a multi-drop graph', () => {
+    const peer: Node<DeviceNodeData> = {
+      ...device,
+      id: 'peer',
+      data: { ...device.data, deviceId: 'D2' },
+    };
+    const toVcc = edge('VCC');
+    const toGnd: Edge<WireEdgeData> = {
+      ...edge('GND'),
+      id: 'wire-gnd',
+      source: peer.id,
+      targetPort: 'trace:gnd',
+    };
+    const bridge: Edge<WireEdgeData> = {
+      ...edge('AUTHORED'),
+      id: 'wire-bridge',
+      source: device.id,
+      sourcePort: 'p',
+      target: peer.id,
+      targetPort: 'p',
+    };
+
+    const shorts = inspectPhysicalLayout([board, device, peer], [toVcc, toGnd, bridge]).filter(
+      (entry) => entry.code === 'copper-short',
+    );
+    expect(shorts).toEqual([expect.objectContaining({ severity: 'error', code: 'copper-short' })]);
   });
 
   it('reports overlapping copper as an error with a board path', () => {

@@ -3,6 +3,7 @@ import { NgDiagramModelService, type Edge, type Node } from 'ng-diagram';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { placementNodePosition, syncPortHolesToPlacement } from '../model/footprint-geometry';
 import { type Footprint } from '../model/footprint';
+import { rowTrace } from '../model/board-trace';
 import {
   EdgeTemplateType,
   NodeTemplateType,
@@ -90,10 +91,7 @@ describe('BoardPlacementService', () => {
   beforeEach(() => {
     model = new ModelStub();
     TestBed.configureTestingModule({
-      providers: [
-        BoardPlacementService,
-        { provide: NgDiagramModelService, useValue: model },
-      ],
+      providers: [BoardPlacementService, { provide: NgDiagramModelService, useValue: model }],
     });
     service = TestBed.inject(BoardPlacementService);
   });
@@ -103,7 +101,10 @@ describe('BoardPlacementService', () => {
   it('snaps a dropped footprint and derives its pin holes', async () => {
     const boardNode = board();
     const placement = { boardId: 'board', anchor: { row: 1, col: 1 }, rotation: 0 as const };
-    const part = device('part', placementNodePosition({ board: boardNode.data, position: boardNode.position }, placement));
+    const part = device(
+      'part',
+      placementNodePosition({ board: boardNode.data, position: boardNode.position }, placement),
+    );
     model.nodes = [boardNode, part];
 
     await service.settleDrag(new Set(['part']));
@@ -123,7 +124,10 @@ describe('BoardPlacementService', () => {
     const fixed = device('fixed', { x: 0, y: 0 });
     fixed.type = NodeTemplateType.FootprintNode;
     fixed.data = syncPortHolesToPlacement({ ...fixed.data, boardId: 'board', placement });
-    fixed.position = placementNodePosition({ board: boardNode.data, position: boardNode.position }, placement);
+    fixed.position = placementNodePosition(
+      { board: boardNode.data, position: boardNode.position },
+      placement,
+    );
     const moving = device('moving', { ...fixed.position });
     model.nodes = [boardNode, fixed, moving];
 
@@ -204,6 +208,57 @@ describe('BoardPlacementService', () => {
       holes: [],
       blockedBy: [],
     });
+  });
+
+  it('rejects a seat that would join incompatible copper through a multi-drop graph', async () => {
+    const boardNode = board();
+    boardNode.data = {
+      ...boardNode.data,
+      traces: [
+        rowTrace('vcc', 'VCC rail', 0, boardNode.data.cols, 'VCC'),
+        rowTrace('gnd', 'GND rail', 2, boardNode.data.cols, 'GND'),
+      ],
+    };
+    const placement = { boardId: 'board', anchor: { row: 0, col: 0 }, rotation: 0 as const };
+    const part = device(
+      'part',
+      placementNodePosition({ board: boardNode.data, position: boardNode.position }, placement),
+    );
+    const hub = device('hub', { x: 300, y: 0 });
+    hub.data = {
+      ...hub.data,
+      footprintId: undefined,
+      footprint: undefined,
+      ports: [{ id: 'p', label: 'P', direction: 'output' }],
+    };
+    const wire = (
+      id: string,
+      source: string,
+      sourcePort: string,
+      target: string,
+      targetPort: string,
+    ): Edge<WireEdgeData> => ({
+      id,
+      type: EdgeTemplateType.WireEdge,
+      source,
+      sourcePort,
+      target,
+      targetPort,
+      data: { type: 'wire', wireId: id },
+    });
+    model.nodes = [boardNode, part, hub];
+    model.edges = [
+      wire('part-to-hub', part.id, 'a', hub.id, 'p'),
+      wire('hub-to-gnd', hub.id, 'p', boardNode.id, 'trace:gnd'),
+    ];
+
+    await service.settleDrag(new Set([part.id]));
+
+    expect(service.conflict()).toMatchObject({
+      kind: 'net-conflict',
+      blockedBy: ['GND', 'VCC'],
+    });
+    expect(model.nodes.find((node) => node.id === part.id)?.type).toBe(NodeTemplateType.DeviceNode);
   });
 
   it('rotates a legal seat and keeps pin 1 on the same hole', async () => {

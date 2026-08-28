@@ -143,7 +143,48 @@ describe('physical connectivity', () => {
       conflict: [],
     });
     expect(physicalEdgeNet(nodes, edgeTo('trace:gnd'))).toEqual({
-      conflict: ['VCC', 'GND'],
+      conflict: ['GND', 'VCC'],
+    });
+  });
+
+  it('detects copper conflicts inherited through an existing multi-drop graph', () => {
+    const external = (id: string): Node<DeviceNodeData> => ({
+      id,
+      type: NodeTemplateType.DeviceNode,
+      position: { x: 200, y: 0 },
+      data: {
+        type: 'device',
+        deviceId: id,
+        manufacturer: '',
+        model: '',
+        ports: [{ id: 'p', label: 'P', direction: 'output' }],
+      },
+    });
+    const left = external('left');
+    const right = external('right');
+    const edge = (
+      id: string,
+      source: string,
+      sourcePort: string,
+      target: string,
+      targetPort: string,
+    ): Edge<WireEdgeData> => ({
+      id,
+      type: EdgeTemplateType.WireEdge,
+      source,
+      sourcePort,
+      target,
+      targetPort,
+      data: { type: 'wire', wireId: id },
+    });
+    const existing = [
+      edge('to-vcc', left.id, 'p', board.id, 'trace:vcc'),
+      edge('to-gnd', right.id, 'p', board.id, 'trace:gnd'),
+    ];
+    const bridge = edge('bridge', left.id, 'p', right.id, 'p');
+
+    expect(physicalEdgeNet([...nodes, left, right], bridge, existing)).toEqual({
+      conflict: ['GND', 'VCC'],
     });
   });
 

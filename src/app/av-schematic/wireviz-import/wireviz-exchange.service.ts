@@ -87,7 +87,12 @@ export class WireVizExchangeService {
   exportYaml(): WireVizExportResult | null {
     this.begin('Exportando YAML WireViz...');
     try {
-      const result = exportWireViz(this.storage.snapshotProject().electrical);
+      const project = this.storage.snapshotProject();
+      const bindingCount = project.layout.conductors.filter(
+        (layout) => layout.physicalBinding,
+      ).length;
+      const exported = exportWireViz(wireVizElectrical(project));
+      const result = withPhysicalBindingReport(exported, bindingCount);
       this._report.set(result.report);
       this.succeed(`WireViz exportado com ${result.report.entries.length} item(ns) no relatório.`);
       return result;
@@ -121,6 +126,81 @@ export class WireVizExchangeService {
       entries: [{ severity: 'error', code: 'operation-failed', path, message }],
     });
   }
+}
+
+/**
+ * Removes generated pin-to-copper bindings before producing WireViz YAML.
+ *
+ * Those conductors describe soldered placement, not authored wires. Exporting
+ * them as ordinary WireViz connections would make the next replacement import
+ * duplicate them before `withPhysicalBindings` restores the project-owned
+ * associations. A copper junction is retained when a visible conductor still
+ * targets it; otherwise it is restored from the import skeleton together with
+ * the hidden bindings.
+ */
+export function wireVizElectrical(project: CanonicalProjectV2): CanonicalElectrical {
+  const hiddenConductorIds = new Set(
+    project.layout.conductors
+      .filter((layout) => layout.physicalBinding)
+      .map((layout) => layout.conductorId),
+  );
+  if (hiddenConductorIds.size === 0) return project.electrical;
+
+  const conductors: CanonicalConductor[] = [];
+  const nameHints = new Map<string, string>();
+  for (const net of project.electrical.nets) {
+    for (const conductor of net.conductors) {
+      if (hiddenConductorIds.has(conductor.id)) continue;
+      conductors.push(conductor);
+      nameHints.set(conductor.id, net.name);
+    }
+  }
+
+  const referencedJunctionIds = new Set<string>();
+  for (const conductor of conductors) {
+    if (conductor.from.kind === 'junction') {
+      referencedJunctionIds.add(conductor.from.junctionId);
+    }
+    if (conductor.to.kind === 'junction') {
+      referencedJunctionIds.add(conductor.to.junctionId);
+    }
+  }
+  const copperJunctionIds = new Set(
+    project.layout.junctions
+      .filter((layout) => layout.boardPort !== undefined)
+      .map((layout) => layout.junctionId),
+  );
+
+  return {
+    ...project.electrical,
+    junctions: project.electrical.junctions.filter(
+      (junction) => !copperJunctionIds.has(junction.id) || referencedJunctionIds.has(junction.id),
+    ),
+    nets: buildNets(conductors, nameHints),
+  };
+}
+
+function withPhysicalBindingReport(
+  result: WireVizExportResult,
+  bindingCount: number,
+): WireVizExportResult {
+  if (bindingCount === 0) return result;
+  const bindingEntry: WireVizReportEntry = {
+    severity: 'info',
+    code: 'field-not-representable',
+    path: 'layout.conductors.physicalBinding',
+    message:
+      `${bindingCount} associação(ões) física(s) entre pino e cobre permanecem apenas ` +
+      'no projeto e serão restauradas em uma reimportação de substituição.',
+  };
+  return {
+    ...result,
+    report: {
+      entries: [...result.report.entries, bindingEntry].sort(
+        (a, b) => a.path.localeCompare(b.path) || a.code.localeCompare(b.code),
+      ),
+    },
+  };
 }
 
 /**
@@ -324,9 +404,7 @@ function withPhysicalBindings(
 
   return {
     ...imported,
-    junctions: [...junctions.values()].sort((a, b) =>
-      a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
-    ),
+    junctions: [...junctions.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     nets: buildNets(conductors, authoredNames, fallbackNames),
   };
 }

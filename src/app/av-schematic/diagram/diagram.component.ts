@@ -104,7 +104,11 @@ export class DiagramComponent {
           wireId: '',
           netName: initialNetNameFromCopper(
             undefined,
-            physicalEdgeNet(this.modelService.getModel().getNodes(), edge),
+            physicalEdgeNet(
+              this.modelService.getModel().getNodes(),
+              edge,
+              this.modelService.getModel().getEdges(),
+            ),
           ),
         },
       }),
@@ -119,7 +123,11 @@ export class DiagramComponent {
           wireId: generateWireId(),
           netName: initialNetNameFromCopper(
             undefined,
-            physicalEdgeNet(this.modelService.getModel().getNodes(), edge),
+            physicalEdgeNet(
+              this.modelService.getModel().getNodes(),
+              edge,
+              this.modelService.getModel().getEdges(),
+            ),
           ),
         },
       }),
@@ -194,12 +202,17 @@ export class DiagramComponent {
     target: Node | null,
     targetPort: Port | null,
   ): boolean {
-    const result = physicalEdgeNet(this.modelService.getModel().getNodes(), {
-      source: source?.id ?? '',
-      sourcePort: sourcePort?.id,
-      target: target?.id ?? '',
-      targetPort: targetPort?.id,
-    });
+    const model = this.modelService.getModel();
+    const result = physicalEdgeNet(
+      model.getNodes(),
+      {
+        source: source?.id ?? '',
+        sourcePort: sourcePort?.id,
+        target: target?.id ?? '',
+        targetPort: targetPort?.id,
+      },
+      model.getEdges(),
+    );
     return result.conflict.length === 0;
   }
 

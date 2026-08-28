@@ -126,6 +126,31 @@ describe('WireVizExchangeService', () => {
     expect(electricallyEquivalent(before, storage.project.electrical)).toBe(true);
   });
 
+  it('omits hidden pin-to-copper bindings from WireViz and restores them on reimport', async () => {
+    storage.project = parseCanonicalProject(basePhysicalProject());
+    const before = structuredClone(storage.project.electrical);
+
+    const exported = service.exportYaml();
+    if (!exported) throw new Error('physical export failed');
+    const document = exported.document as Record<string, unknown>;
+
+    expect(document['connections']).toBeUndefined();
+    expect(exported.report.entries).toContainEqual(
+      expect.objectContaining({
+        code: 'field-not-representable',
+        path: 'layout.conductors.physicalBinding',
+      }),
+    );
+    expect(await service.importYaml(exported.yaml)).toBe(true);
+    expect(storage.project.electrical.nets).toHaveLength(1);
+    expect(storage.project.electrical.nets[0]).toMatchObject({ name: before.nets[0].name });
+    expect(
+      storage.project.electrical.nets.flatMap((net) =>
+        net.conductors.map((conductor) => conductor.id),
+      ),
+    ).toEqual(['binding:link-1/a', 'binding:link-1/b']);
+  });
+
   it('keeps the live project unchanged and exposes a global error report state on invalid YAML', async () => {
     const before = structuredClone(storage.project);
 

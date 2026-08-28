@@ -15,7 +15,7 @@ import {
   type PlacementConflict,
 } from '../model/footprint-geometry';
 import { isBoardNode, isDeviceNode, isWireEdge } from '../model/guards';
-import { physicalEdgeNet } from '../model/physical-connectivity';
+import { physicalGraphConflicts } from '../model/physical-connectivity';
 import {
   NodeTemplateType,
   type BoardNodeData,
@@ -244,12 +244,18 @@ export class BoardPlacementService {
     const data = syncPortHolesToPlacement({ ...node.data, placement, boardId: placement.boardId });
     const previousNodes = this.modelService.getModel().getNodes();
     const connectedEdges = this.modelService.getConnectedEdges(node.id).filter(isWireEdge);
+    const modelEdges = this.modelService.getModel().getEdges().filter(isWireEdge);
     const candidateNodes = previousNodes.map((candidate) =>
       candidate.id === node.id ? { ...candidate, data } : candidate,
     );
+    const connectedEdgeIds = new Set(connectedEdges.map((edge) => edge.id));
     const conflictingNets = [
-      ...new Set(connectedEdges.flatMap((edge) => physicalEdgeNet(candidateNodes, edge).conflict)),
-    ];
+      ...new Set(
+        physicalGraphConflicts(candidateNodes, modelEdges)
+          .filter((entry) => entry.conductorIds.some((id) => connectedEdgeIds.has(id)))
+          .flatMap((entry) => entry.conflict),
+      ),
+    ].sort();
     if (conflictingNets.length > 0) {
       this._conflict.set({
         kind: 'net-conflict',

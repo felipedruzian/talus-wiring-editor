@@ -33,6 +33,14 @@ export interface PhysicalEdgeNet {
   conflict: string[];
 }
 
+export interface PhysicalGraphConflict {
+  conflict: string[];
+  conductorIds: string[];
+}
+
+type PhysicalEdgeLike = Pick<Edge, 'source' | 'sourcePort' | 'target' | 'targetPort'> &
+  Partial<Pick<Edge, 'id'>>;
+
 /** Resolve a live diagram endpoint through pin -> hole -> trace -> copper label. */
 export function physicalEndpoint(
   nodes: readonly Node[],
@@ -66,9 +74,7 @@ export function physicalEndpoint(
   if (!isDeviceNode(node)) return null;
   const boardId = node.data.placement?.boardId ?? node.data.boardId;
   if (!boardId) return null;
-  const board = nodes
-    .filter(isBoardNode)
-    .find((candidate) => candidate.data.boardId === boardId);
+  const board = nodes.filter(isBoardNode).find((candidate) => candidate.data.boardId === boardId);
   const hole = devicePortHoles(node.data).get(portId);
   if (!board || !hole) return null;
   return endpointAtHole(board.data.boardId, hole, traceForHole(board.data, hole));
@@ -91,14 +97,113 @@ export function physicalNetLabelForEndpoint(
  */
 export function physicalEdgeNet(
   nodes: readonly Node[],
-  edge: Pick<Edge, 'source' | 'sourcePort' | 'target' | 'targetPort'>,
+  edge: PhysicalEdgeLike,
+  contextEdges: readonly PhysicalEdgeLike[] = [],
 ): PhysicalEdgeNet {
-  const values = [
-    physicalNetLabelForEndpoint(nodes, edge.source, edge.sourcePort),
-    physicalNetLabelForEndpoint(nodes, edge.target, edge.targetPort),
-  ].filter((value): value is string => value !== undefined);
-  const unique = [...new Set(values)];
+  const graph = createPhysicalGraph(nodes);
+  for (const candidate of contextEdges) {
+    if (edge.id !== undefined && candidate.id === edge.id) continue;
+    graph.registerEdge(candidate);
+  }
+  const starts = graph.registerEdge(edge);
+  const unique = labelsForComponent(graph, collectComponent(graph, starts));
   return unique.length > 1 ? { conflict: unique } : { netLabel: unique[0], conflict: [] };
+}
+
+/** Finds every connected conductor group that spans incompatible named copper. */
+export function physicalGraphConflicts(
+  nodes: readonly Node[],
+  edges: readonly PhysicalEdgeLike[],
+): PhysicalGraphConflict[] {
+  const graph = createPhysicalGraph(nodes);
+  for (const edge of edges) graph.registerEdge(edge);
+
+  const visited = new Set<string>();
+  const conflicts: PhysicalGraphConflict[] = [];
+  for (const start of [...graph.adjacency.keys()].sort()) {
+    if (visited.has(start)) continue;
+    const component = collectComponent(graph, [start]);
+    for (const key of component) visited.add(key);
+    const conflict = labelsForComponent(graph, component);
+    if (conflict.length < 2) continue;
+    const conductorIds = [
+      ...new Set([...component].flatMap((key) => [...(graph.conductorIdsByKey.get(key) ?? [])])),
+    ].sort();
+    conflicts.push({ conflict, conductorIds });
+  }
+  return conflicts.sort((left, right) =>
+    (left.conductorIds[0] ?? '').localeCompare(right.conductorIds[0] ?? ''),
+  );
+}
+
+interface PhysicalGraph {
+  adjacency: Map<string, Set<string>>;
+  labels: Map<string, string>;
+  conductorIdsByKey: Map<string, Set<string>>;
+  registerEdge: (edge: PhysicalEdgeLike) => string[];
+}
+
+function createPhysicalGraph(nodes: readonly Node[]): PhysicalGraph {
+  const adjacency = new Map<string, Set<string>>();
+  const labels = new Map<string, string>();
+  const conductorIdsByKey = new Map<string, Set<string>>();
+
+  const connect = (left: string, right: string): void => {
+    const leftNeighbors = adjacency.get(left) ?? new Set<string>();
+    const rightNeighbors = adjacency.get(right) ?? new Set<string>();
+    leftNeighbors.add(right);
+    rightNeighbors.add(left);
+    adjacency.set(left, leftNeighbors);
+    adjacency.set(right, rightNeighbors);
+  };
+
+  const registerEndpoint = (
+    nodeId: string | undefined,
+    portId: string | undefined,
+  ): string | undefined => {
+    if (!nodeId || !portId) return undefined;
+    const key = diagramEndpointKey(nodeId, portId);
+    adjacency.set(key, adjacency.get(key) ?? new Set<string>());
+    const endpoint = physicalEndpoint(nodes, nodeId, portId);
+    if (!endpoint) return key;
+    const copperKey = physicalCopperKey(endpoint);
+    connect(key, copperKey);
+    if (endpoint.netLabel) labels.set(copperKey, endpoint.netLabel);
+    return key;
+  };
+
+  const registerEdge = (candidate: PhysicalEdgeLike): string[] => {
+    const from = registerEndpoint(candidate.source, candidate.sourcePort);
+    const to = registerEndpoint(candidate.target, candidate.targetPort);
+    if (from && to) connect(from, to);
+    const keys = [from, to].filter((key): key is string => key !== undefined);
+    if (candidate.id !== undefined) {
+      for (const key of keys) {
+        const conductorIds = conductorIdsByKey.get(key) ?? new Set<string>();
+        conductorIds.add(candidate.id);
+        conductorIdsByKey.set(key, conductorIds);
+      }
+    }
+    return keys;
+  };
+
+  return { adjacency, labels, conductorIdsByKey, registerEdge };
+}
+
+function collectComponent(graph: PhysicalGraph, starts: readonly string[]): Set<string> {
+  const visited = new Set<string>();
+  const pending = [...starts];
+  while (pending.length > 0) {
+    const key = pending.pop();
+    if (!key || visited.has(key)) continue;
+    visited.add(key);
+    for (const neighbor of graph.adjacency.get(key) ?? []) pending.push(neighbor);
+  }
+  return visited;
+}
+
+function labelsForComponent(graph: PhysicalGraph, component: ReadonlySet<string>): string[] {
+  return [...new Set([...component].map((key) => graph.labels.get(key)).filter(isString))].sort();
 }
 
 /**
@@ -128,4 +233,18 @@ function endpointAtHole(
     traceLabel: trace?.label,
     netLabel: trace?.net,
   };
+}
+
+function diagramEndpointKey(nodeId: string, portId: string): string {
+  return `endpoint:${JSON.stringify([nodeId, portId])}`;
+}
+
+function physicalCopperKey(endpoint: PhysicalEndpoint): string {
+  return endpoint.traceId
+    ? `copper:${JSON.stringify([endpoint.boardId, 'trace', endpoint.traceId])}`
+    : `copper:${JSON.stringify([endpoint.boardId, 'hole', endpoint.hole.row, endpoint.hole.col])}`;
+}
+
+function isString(value: string | undefined): value is string {
+  return value !== undefined;
 }

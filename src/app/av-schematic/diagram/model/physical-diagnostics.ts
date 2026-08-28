@@ -9,7 +9,7 @@ import { deviceHoleClaims } from './footprint-geometry';
 import { resolveFootprint } from './footprint';
 import { isBoardNode, isDeviceNode, isWireEdge } from './guards';
 import { OPERATIONAL_LIMITS } from './operational-limits.mjs';
-import { physicalEdgeNet, physicalEndpoint } from './physical-connectivity';
+import { physicalEdgeNet, physicalEndpoint, physicalGraphConflicts } from './physical-connectivity';
 
 export type PhysicalDiagnosticSeverity = 'error' | 'warning';
 
@@ -158,15 +158,20 @@ export function inspectPhysicalLayout(
     }
   }
 
-  for (const edge of edges.filter(isWireEdge)) {
+  const wireEdges = edges.filter(isWireEdge);
+  for (const conflict of physicalGraphConflicts(nodes, wireEdges)) {
+    const conductorId = conflict.conductorIds[0] ?? 'unknown';
+    diagnostics.push({
+      severity: 'error',
+      code: 'copper-short',
+      path: `layout.conductors.${conductorId}`,
+      message: `Os condutores ${conflict.conductorIds.join(', ')} unem cobres incompatíveis: ${conflict.conflict.join(', ')}.`,
+    });
+  }
+
+  for (const edge of wireEdges) {
     const physical = physicalEdgeNet(nodes, edge);
     if (physical.conflict.length > 0) {
-      diagnostics.push({
-        severity: 'error',
-        code: 'copper-short',
-        path: `layout.conductors.${edge.id}`,
-        message: `O condutor "${edge.id}" une cobres incompatíveis: ${physical.conflict.join(', ')}.`,
-      });
       continue;
     }
     if (edge.data.netName && physical.netLabel && edge.data.netName !== physical.netLabel) {
@@ -183,7 +188,7 @@ export function inspectPhysicalLayout(
     string,
     { path: string; label: string; names: Set<string>; conductorIds: Set<string> }
   >();
-  for (const edge of edges.filter(isWireEdge)) {
+  for (const edge of wireEdges) {
     if (!edge.data.netName) continue;
     for (const [nodeId, portId] of [
       [edge.source, edge.sourcePort],

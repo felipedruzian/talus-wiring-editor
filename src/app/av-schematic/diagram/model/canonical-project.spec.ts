@@ -113,15 +113,9 @@ describe('canonical project round-trip', () => {
       to: { kind: 'pin' as const, componentId: 'b', pinId: 'p' },
     };
     expect(
-      buildNets(
-        [conductor],
-        new Map([['c1', 'AUTHORED']]),
-        new Map([['c1', 'COPPER']]),
-      )[0]?.name,
+      buildNets([conductor], new Map([['c1', 'AUTHORED']]), new Map([['c1', 'COPPER']]))[0]?.name,
     ).toBe('AUTHORED');
-    expect(buildNets([conductor], undefined, new Map([['c1', 'COPPER']]))[0]?.name).toBe(
-      'COPPER',
-    );
+    expect(buildNets([conductor], undefined, new Map([['c1', 'COPPER']]))[0]?.name).toBe('COPPER');
   });
 
   it('keeps electrical semantics separate from complementary visual geometry', () => {
@@ -255,6 +249,26 @@ describe('canonical project round-trip', () => {
   it('survives JSON stringify/parse without change', () => {
     const project = toCanonicalProject(diagramModel.nodes, diagramModel.edges);
     expect(JSON.parse(JSON.stringify(project))).toEqual(project);
+  });
+
+  it('embeds a catalog footprint when the live legacy node only stores its id', () => {
+    const nodes = clone(diagramModel.nodes);
+    const catalogOnly = nodes.find(
+      (node) => isDeviceNode(node) && node.data.footprintId !== undefined,
+    );
+    if (!catalogOnly || !isDeviceNode(catalogOnly) || !catalogOnly.data.footprintId) {
+      throw new Error('fixture has no catalog-backed physical component');
+    }
+    const footprintId = catalogOnly.data.footprintId;
+    catalogOnly.data = { ...catalogOnly.data, footprint: undefined };
+
+    const project = toCanonicalProject(nodes, []);
+    const layout = must(
+      project.layout.components.find((candidate) => candidate.componentId === catalogOnly.id),
+    );
+
+    expect(layout.footprint).toMatchObject({ id: footprintId });
+    expect(() => parseCanonicalProject(project)).not.toThrow();
   });
 
   it('rejects exporting a dangling edge', () => {

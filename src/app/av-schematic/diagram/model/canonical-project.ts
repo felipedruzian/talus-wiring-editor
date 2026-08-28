@@ -11,7 +11,7 @@ import {
   tracePortId,
 } from './board-ports';
 import { traceForHole, traceHoles } from './board-trace';
-import { cloneFootprint, type Footprint } from './footprint';
+import { cloneFootprint, resolveFootprint, type Footprint } from './footprint';
 import {
   devicePortHoles,
   placementNodePosition,
@@ -621,10 +621,7 @@ class BoardCopperJunctions {
 }
 
 /** The hole a board port addresses: itself for a hole, the first hole for a trace. */
-export function resolveBoardPortHole(
-  board: BoardNodeData,
-  portId: string,
-): BoardHole | undefined {
+export function resolveBoardPortHole(board: BoardNodeData, portId: string): BoardHole | undefined {
   const hole = parseHolePortId(portId);
   if (hole) return isBoardHoleAvailable(board, hole) ? hole : undefined;
   const traceId = parseTracePortId(portId);
@@ -1099,13 +1096,14 @@ function toComponentLayout(node: Node<DeviceNodeData>): CanonicalComponentLayout
   for (const port of node.data.ports) {
     if (port.hole !== undefined) pinHoles.push({ pinId: port.id, hole: { ...port.hole } });
   }
+  const footprint = resolveFootprint(node.data);
 
   return {
     componentId: node.id,
     position: toCanonicalPoint(node.position),
     boardId: node.data.boardId,
     footprintId: node.data.footprintId,
-    footprint: node.data.footprint ? cloneFootprint(node.data.footprint) : undefined,
+    footprint: footprint ? cloneFootprint(footprint) : undefined,
     placement: node.data.placement ? clonePlacement(node.data.placement) : undefined,
     pinHoles: pinHoles.length > 0 ? pinHoles : undefined,
   };

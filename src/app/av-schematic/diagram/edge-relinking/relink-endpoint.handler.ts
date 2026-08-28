@@ -165,10 +165,17 @@ export class RelinkEndpointHandler {
   private wouldShortPhysicalCopper(edgeId: string, patch: Partial<Edge>): boolean {
     const edge = this.modelService.getEdgeById(edgeId);
     if (!edge) return false;
-    return physicalEdgeNet(this.modelService.getModel().getNodes(), {
-      ...edge,
-      ...patch,
-    }).conflict.length > 0;
+    const model = this.modelService.getModel();
+    return (
+      physicalEdgeNet(
+      model.getNodes(),
+      {
+        ...edge,
+        ...patch,
+      },
+      model.getEdges(),
+      ).conflict.length > 0
+    );
   }
 
   /**
