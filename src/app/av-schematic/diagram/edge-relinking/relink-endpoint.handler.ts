@@ -7,12 +7,10 @@ import {
   type Point,
 } from 'ng-diagram';
 import {
-  ALIGNMENT_TOLERANCE,
   PORT_SNAP_PX,
   edgeGridReferenceNode,
-  orthogonalizePolyline,
   portFlowPosition,
-  removeStraightSegments,
+  rebuildEndpointPath,
   resolveEdgeGrid,
   snapPointToGrid,
   type EdgeEndpointSide,
@@ -75,7 +73,7 @@ export class RelinkEndpointHandler {
     const hit = this.portHitAt(clientX, clientY);
     if (hit) {
       // Latch the preview onto the port and highlight it, mirroring the hover
-      // feedback ng-diagram shows while drawing a new edge. Preview only —
+      // feedback ng-diagram shows while drawing a new edge. Preview only --
       // never connect or merge mid-drag (point #4: no early simplification).
       this.highlight.set(hit.nodeId, hit.portId);
       const portPos = this.portPosition(hit);
@@ -91,7 +89,7 @@ export class RelinkEndpointHandler {
     const drag = this.state;
     this.highlight.clear();
     const hit = this.portHitAt(clientX, clientY);
-    // Merge only now, on drop — folding collinear points is invisible, so the
+    // Merge only now, on drop -- folding collinear points is invisible, so the
     // committed route matches the preview the user just saw.
     if (hit) {
       this.connect(drag, hit);
@@ -137,18 +135,19 @@ export class RelinkEndpointHandler {
   private connect(drag: RelinkState, hit: PortHit): void {
     const portPos = this.portPosition(hit);
     const points = portPos ? this.pathWithEndpointAt(drag, portPos, true) : undefined;
+    const routingMode = points ? 'manual' : 'auto';
     const patch: Partial<Edge> =
       drag.side === 'target'
         ? {
             points,
-            routingMode: 'manual',
+            routingMode,
             target: hit.nodeId,
             targetPort: hit.portId,
             targetPosition: undefined,
           }
         : {
             points,
-            routingMode: 'manual',
+            routingMode,
             source: hit.nodeId,
             sourcePort: hit.portId,
             sourcePosition: undefined,
@@ -160,12 +159,11 @@ export class RelinkEndpointHandler {
    * Original path with the dragged endpoint moved to `position`, re-orthogonalised.
    * Recomputed from `originalPoints` each call so bends never accumulate across
    * moves. `merge` (drop only) folds the collinear L-bend orthogonalize adds.
+   * The geometry itself lives in `logic/relink-path.ts` so it is unit-testable
+   * without a diagram.
    */
   private pathWithEndpointAt(drag: RelinkState, position: Point, merge: boolean): Point[] {
-    const next = drag.originalPoints.map((p) => ({ x: p.x, y: p.y }));
-    next[drag.side === 'source' ? 0 : next.length - 1] = { x: position.x, y: position.y };
-    const ortho = orthogonalizePolyline(next);
-    return merge ? removeStraightSegments(ortho, ALIGNMENT_TOLERANCE) : ortho;
+    return rebuildEndpointPath(drag.originalPoints, drag.side, position, merge);
   }
 
   private portHitAt(clientX: number, clientY: number): PortHit | null {

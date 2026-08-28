@@ -12,9 +12,10 @@
 > [`docs/local-service.md`](local-service.md) para o serviço local e sua
 > API.
 
-## Service Hierarchy
+## Hierarquia de serviços
 
-All services are provided at the page component level (`AvSchematicPageComponent`), no `providedIn: 'root'`.
+Os serviços do editor são fornecidos no escopo de `AvSchematicPageComponent`,
+sem `providedIn: 'root'`.
 
 ```
 AvSchematicPageComponent (providers)
@@ -26,19 +27,12 @@ AvSchematicPageComponent (providers)
   ├── Export: DiagramExportService
   ├── Persistência de projeto: ProjectStorageService
   ├── Intercâmbio WireViz: WireVizExchangeService
-  ├── Edge reshaping:
-  │     ├── EdgeReshapeLifecycleEmitter   (subscribe for toolbar / telemetry hooks)
-  │     ├── EdgeReshapeCommandDispatcher  (routes commands to executors)
-  │     ├── EdgeReshapeEventHandler       (gesture → command translation)
-  │     └── EdgeEndpointSyncService       (reflows endpoints on node moves)
+  ├── Edição de rota: EdgeCommandDispatcher → EdgeReshapeHandler + EdgeBendHandler
+  ├── Relink: RelinkEndpointHandler → RelinkTargetHighlightService
+  ├── Destaque de net: NetHighlightService
+  ├── Ligação solta: DanglingEdgeService + TempEdgePointsService
   └── DiagramComponent
 ```
-
-The page constructor calls `bootstrapEdgeEndpointSync()` to eagerly instantiate `EdgeEndpointSyncService` — its constructor sets up the `effect()`s that watch the model, so the service has to be alive even though nothing reads it directly. The bootstrap helper is exported from the service file to keep the wiring next to the code that needs it.
-
-The page component subscribes to `EdgeReshapeLifecycleEmitter` and `console.log`s
-`edgeReshapeStarted` / `edgeReshapeEnded` as a wiring example — replace the
-log with a toolbar status, telemetry call, or undo-stack push as needed.
 
 ## Key Patterns
 
@@ -49,6 +43,11 @@ log with a toolbar status, telemetry call, or undo-stack push as needed.
 - **Library save-or-discard buffer** — `LibraryDraftService` is provided per `LibraryDetailComponent` instance and holds the in-progress edit. Clicking **Save** commits via `LibraryService.commitDraft` (append for create, replace for edit). Clicking **Back** just closes the detail; the component (and its draft) is destroyed. No live writes to the library while editing.
 - **Palette → diagram via `paletteItemDropped`** — `<ng-diagram>` auto-instantiates the dropped node from the palette item's `data`. The diagram listens to the event only to fill in a missing `deviceId` based on the dropped category and the IDs already in use.
 - **Canvas + inventário como modelo vivo** — nodes e edges do `ng-diagram` são a fonte dos elementos visuais e condutores conectados. `ProjectStorageService` mantém, no mesmo escopo da página, o inventário de cabos sem aresta para que cabos desconectados e posições não usadas não desapareçam ao salvar.
+- **Inspeção por condutor** — rota, cor, bitola, comprimento e observação são
+  persistidos no condutor correspondente. A net continua derivada da
+  conectividade, e o destaque é apenas estado de visualização. Valores de
+  cabo são usados no WireViz somente quando todos os condutores envolvidos
+  podem compartilhá-los sem perda.
 - **Viewport overlays** — `appViewportBounds` / `appViewportOverlay` directives register UI elements that obscure the diagram so visibility / zoom-to-fit calculations account for them.
 - **Per-row port positioning** — each `.port-row` is `position: relative`, so each `<ng-diagram-port>`'s absolute positioning anchors to its own row, not the whole node. Side-specific transforms push the port shape entirely outside the card edge.
 
@@ -73,10 +72,11 @@ src/app/av-schematic/
 │   │   ├── net-grouping.ts               # Nets determinísticas derivadas da conectividade
 │   │   ├── electrical-equivalence.ts     # Comparação elétrica independente da ordem textual
 │   │   ├── wire-colors.ts                # Códigos WireViz e RGB exato para modelo/renderização
+│   │   ├── persisted-wire-route.mjs      # Tolerância/normalização de rota compartilhada com o serviço
 │   │   ├── wireviz-schema-keys.ts        # Chaves canônicas/perigosas compartilhadas por import/export
 │   │   ├── device-categories.ts          # Category → ID-prefix dictionary, used by combobox + auto-id
 │   │   └── auto-device-id.ts             # generateDeviceId(category, existingNodes) → <PREFIX>-<N>
-│   ├── edge-reshaping/                   # Manual edge routing — three layers, designed to port into ng-diagram
+│   ├── edge-reshaping/                   # Rota manual: segmentos, dobras e reancoragem
 │   │   ├── directives/                   # UI / gesture detection (per-handle pointer state machine)
 │   │   ├── handlers/                     # Gesture → command translation (holds in-flight drag state)
 │   │   ├── commands/                     # reshapeEdge data + lifecycle signals + dispatcher
@@ -104,7 +104,7 @@ src/app/av-schematic/
 │       ├── sidebar-header/               # Generic toggle header (title/icon inputs — reused by library)
 │       ├── sidebar-placeholder/          # Empty / multi states
 │       ├── junction-form/                # Nome, tipo, taps, notas e inspeção elétrica
-│       └── wire-form/                    # Wire fields (signals form)
+│       └── wire-form/                    # Cor/metadados por condutor + net derivada e destaque
 ├── export/                               # PNG + DXF export (see docs/export.md)
 │   ├── diagram-export.service.ts         # exportPng() + exportDxf() entry points
 │   ├── dxf/                              # Generic, domain-free DXF library

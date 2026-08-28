@@ -4,7 +4,7 @@
  * them (a PWM speed line and a direction line), one wire color each.
  *
  * Written by hand for this slice, in the WireViz `connectors` / `cables` /
- * `connections` shape — not copied from any WireForm/WireViz fixture or
+ * `connections` shape -- not copied from any WireForm/WireViz fixture or
  * example. See docs/wireviz-import-limits.md for what this parser accepts.
  */
 export const MINIMAL_TWO_NETS_WIREVIZ_YAML = `
@@ -22,7 +22,7 @@ cables:
   W1:
     colors: [YE]
   W2:
-    colors: [OR]
+    colors: [OG]
 
 connections:
   - - NANO: [D9]

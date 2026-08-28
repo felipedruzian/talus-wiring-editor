@@ -1,6 +1,6 @@
 // Server tests for the tracer-bullet local persistence service (issue #1).
 //
-// Uses the project's existing vitest devDependency directly — this file is
+// Uses the project's existing vitest devDependency directly -- this file is
 // NOT wired into `ng test` (Angular's unit-test builder only discovers
 // specs under src/), so run it through the dedicated package script:
 //
@@ -27,7 +27,7 @@ const HOST = '127.0.0.1';
  * Host/Origin/Sec-Fetch-Site tests: those are all on the Fetch spec's
  * "forbidden header name" list (Host, Origin, and any `Sec-*` header), so
  * fetch() silently drops them and can't actually exercise this server's
- * header checks — node:http has no such restriction.
+ * header checks -- node:http has no such restriction.
  */
 function rawRequest(baseUrl, path, { method = 'GET', headers = {}, body } = {}) {
   return new Promise((resolvePromise, reject) => {
@@ -305,6 +305,51 @@ describe('wiring-editor-server', () => {
       expect(res.status).toBe(200);
     });
 
+    it('recovers legacy points without routingMode and drops only malformed geometry', async () => {
+      const recoverable = legacyConnectedProjectPayload();
+      recoverable.nets[0].points = [
+        { x: 0, y: 0 },
+        { x: 0.5, y: 20 },
+        { x: 100, y: 20 },
+      ];
+      recoverable.nets[0].gauge = '22 AWG';
+      recoverable.nets[0].length = '120 mm';
+      recoverable.nets[0].note = 'Rota legada';
+
+      const recoveredRes = await fetch(`${server.baseUrl}/api/projects/legacy-route`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(recoverable),
+      });
+      expect(recoveredRes.status).toBe(200);
+      const recovered = await (await fetch(`${server.baseUrl}/api/projects/legacy-route`)).json();
+      expect(recovered.nets[0]).toMatchObject({
+        routingMode: 'manual',
+        points: recoverable.nets[0].points,
+        gauge: '22 AWG',
+        length: '120 mm',
+        note: 'Rota legada',
+      });
+
+      const malformed = legacyConnectedProjectPayload();
+      malformed.nets[0].routingMode = 'manual';
+      malformed.nets[0].points = [
+        { x: 0, y: 0 },
+        { x: 10, y: 10 },
+      ];
+      const malformedRes = await fetch(`${server.baseUrl}/api/projects/legacy-malformed-route`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(malformed),
+      });
+      expect(malformedRes.status).toBe(200);
+      const stored = await (
+        await fetch(`${server.baseUrl}/api/projects/legacy-malformed-route`)
+      ).json();
+      expect(stored.nets[0].routingMode).toBeUndefined();
+      expect(stored.nets[0].points).toBeUndefined();
+    });
+
     it('returns 404 for GET of a project id that was never saved', async () => {
       const res = await fetch(`${server.baseUrl}/api/projects/does-not-exist`);
       expect(res.status).toBe(404);
@@ -334,7 +379,7 @@ describe('wiring-editor-server', () => {
     it('normalizes ".." out of the URL before routing sees it, landing on the static 404 fallback', async () => {
       // WHATWG URL parsing (new URL(req.url, base) in handleRequest) collapses
       // "/api/projects/.." to "/api/" before segment-based routing runs, so
-      // this never reaches the :id validation at all — it's not a bypass,
+      // this never reaches the :id validation at all -- it's not a bypass,
       // just a different (still safe) code path.
       const res = await fetch(`${server.baseUrl}/api/projects/..`);
       expect(res.status).toBe(404);
@@ -410,6 +455,74 @@ describe('wiring-editor-server', () => {
   });
 
   describe('canonical v1/v2 validation parity', () => {
+    it('stores per-conductor metadata with a tolerant orthogonal manual route', async () => {
+      const project = validProjectPayload();
+      Object.assign(project.electrical.nets[0].conductors[0], {
+        colorCode: 'YE',
+        gauge: '22 AWG',
+        length: '120 mm',
+        notes: 'Rota principal',
+      });
+      Object.assign(project.layout.conductors[0], {
+        routingMode: 'manual',
+        points: [
+          { x: 0, y: 0 },
+          { x: 0.5, y: 20 },
+          { x: 100, y: 20 },
+        ],
+      });
+
+      const res = await fetch(`${server.baseUrl}/api/projects/manual-route`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(res.status).toBe(200);
+      const stored = await (await fetch(`${server.baseUrl}/api/projects/manual-route`)).json();
+      expect(stored.electrical.nets[0].conductors[0]).toMatchObject({
+        colorCode: 'YE',
+        gauge: '22 AWG',
+        length: '120 mm',
+        notes: 'Rota principal',
+      });
+      expect(stored.layout.conductors[0]).toMatchObject({
+        routingMode: 'manual',
+        points: project.layout.conductors[0].points,
+      });
+    });
+
+    it('rejects a deterministic conductor color/colorCode conflict', async () => {
+      const project = validProjectPayload();
+      Object.assign(project.electrical.nets[0].conductors[0], {
+        color: '#e2231a',
+        colorCode: 'YE',
+      });
+      const res = await fetch(`${server.baseUrl}/api/projects/color-conflict`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it.each([
+      ['points without manual mode', { points: [{ x: 0, y: 0 }, { x: 0, y: 20 }] }],
+      ['manual without points', { routingMode: 'manual' }],
+      [
+        'diagonal manual route',
+        { routingMode: 'manual', points: [{ x: 0, y: 0 }, { x: 10, y: 10 }] },
+      ],
+    ])('rejects %s', async (_label, route) => {
+      const project = validProjectPayload();
+      Object.assign(project.layout.conductors[0], route);
+      const res = await fetch(`${server.baseUrl}/api/projects/invalid-route`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(res.status).toBe(400);
+    });
+
     it.each([
       ['below', OPERATIONAL_LIMITS.maxPinsPerComponent - 1, 200],
       ['at', OPERATIONAL_LIMITS.maxPinsPerComponent, 200],

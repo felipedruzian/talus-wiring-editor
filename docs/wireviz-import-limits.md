@@ -56,7 +56,8 @@ Cabos:
 - índices de condutor são baseados em 1 e validados contra `wirecount`.
 - uma cor RGB WireViz com seis dígitos, como `"#a1b2c3"`, é preservada e
   reemitida exatamente, sem aproximação. Outros formatos CSS hexadecimais
-  permanecem no projeto e geram `color-not-representable` na exportação.
+  e cores CSS personalizadas permanecem no projeto e geram
+  `color-not-representable` na exportação.
 
 Conexões:
 
@@ -73,6 +74,13 @@ Conexões:
   nunca resolvidas escolhendo a primeira ocorrência.
 
 ## Preservação e relatório
+
+No projeto v2, cor, bitola, comprimento e observação também ficam no condutor
+que representa a ligação física. Na importação, atributos de cabo são
+materializados nos condutores correspondentes para que cada fio possa ser
+editado de forma independente. Na exportação, valores iguais podem voltar ao
+campo compartilhado do cabo; valores divergentes são omitidos e registrados
+como `field-not-representable`, sem escolher um condutor arbitrariamente.
 
 Campos desconhecidos de conectores e cabos são guardados como valores JSON,
 aparecem no relatório e são reemitidos sem interpretação. Campos reconhecidos

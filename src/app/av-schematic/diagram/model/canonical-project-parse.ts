@@ -30,24 +30,26 @@ import {
 } from './interfaces';
 import { groupConductorsIntoNets } from './net-grouping';
 import { OPERATIONAL_LIMITS } from './operational-limits.mjs';
+import { normalizeOrthogonalPersistedRoute } from './persisted-wire-route.mjs';
 import {
   isDangerousObjectKey,
   WIREVIZ_CABLE_CANONICAL_KEYS,
   WIREVIZ_CONNECTOR_CANONICAL_KEYS,
 } from './wireviz-schema-keys';
+import { isWireColorPairCoherent } from './wire-colors';
 
 /**
  * Untrusted JSON (disk, network) -> `CanonicalProjectV2`.
  *
  * Every field is checked explicitly, every failure throws a labeled
- * `CanonicalProjectError`, no blind casts — the same discipline as
+ * `CanonicalProjectError`, no blind casts -- the same discipline as
  * `wireviz-import/wireviz-model.ts`. Used by the storage client after a GET
  * and mirrored by the local service before a PUT reaches disk
  * (`server/canonical-project-validate.mjs`).
  *
  * A stored **v1** project is accepted and migrated rather than rejected:
  * that is the point of having a version in the format. The migration is also
- * where the issue #2 fix becomes visible on old data — v1 stored one entry
+ * where the issue #2 fix becomes visible on old data -- v1 stored one entry
  * per wire, so several v1 "nets" sharing a pin were really one multi-drop
  * net, and grouping them by connectivity is exactly what recovers it.
  */
@@ -227,8 +229,8 @@ function preflightV2(
 /**
  * Cross-checks everything that a single-entry parse cannot: id uniqueness
  * across sections, references that must resolve, holes that must fit their
- * board, taps that must exist, and — the invariant the whole net model rests
- * on — that each declared net really is one connected group and that no
+ * board, taps that must exist, and -- the invariant the whole net model rests
+ * on -- that each declared net really is one connected group and that no
  * endpoint belongs to two nets at once.
  */
 function validateProject(project: CanonicalProjectV2): void {
@@ -493,7 +495,7 @@ function validateLayout(
 
 /**
  * A hole address is only meaningful relative to one specific board, so
- * anything carrying a hole must declare which board — this checks the
+ * anything carrying a hole must declare which board -- this checks the
  * address fits *that* board's grid, not merely some board in the project.
  */
 function validateHole(
@@ -720,6 +722,11 @@ function parseEndpoint(raw: unknown, label: string): CanonicalNetEndpoint {
 function parseConductor(raw: unknown, label: string): CanonicalConductor {
   const obj = expectRecord(raw, label);
   const cableRaw = obj['cable'];
+  const color = expectOptionalString(obj['color'], `${label}.color`);
+  const colorCode = expectOptionalString(obj['colorCode'], `${label}.colorCode`);
+  if (!isWireColorPairCoherent(color, colorCode)) {
+    throw new CanonicalProjectError(`${label}: color does not match colorCode`);
+  }
   return {
     id: expectNonEmptyString(obj['id'], `${label}.id`),
     from: parseEndpoint(obj['from'], `${label}.from`),
@@ -735,6 +742,11 @@ function parseConductor(raw: unknown, label: string): CanonicalConductor {
             };
           })(),
     wireType: expectOptionalString(obj['wireType'], `${label}.wireType`),
+    color,
+    colorCode,
+    gauge: expectOptionalString(obj['gauge'], `${label}.gauge`),
+    length: expectOptionalString(obj['length'], `${label}.length`),
+    notes: expectOptionalString(obj['notes'], `${label}.notes`),
     wirevizLink:
       obj['wirevizLink'] === undefined
         ? undefined
@@ -796,18 +808,22 @@ function parseJunctionLayout(raw: unknown, label: string): CanonicalJunctionLayo
 
 function parseConductorLayout(raw: unknown, label: string): CanonicalConductorLayout {
   const obj = expectRecord(raw, label);
+  const routingMode =
+    obj['routingMode'] === undefined
+      ? undefined
+      : expectOneOf(obj['routingMode'], ALLOWED_ROUTING_MODES, `${label}.routingMode`);
+  const parsedPoints =
+    obj['points'] === undefined
+      ? undefined
+      : expectArray(obj['points'], `${label}.points`).map((p, i) =>
+          expectPoint(p, `${label}.points[${i}]`),
+        );
+  const points = validateManualRoute(routingMode, parsedPoints, label);
+
   return {
     conductorId: expectNonEmptyString(obj['conductorId'], `${label}.conductorId`),
-    routingMode:
-      obj['routingMode'] === undefined
-        ? undefined
-        : expectOneOf(obj['routingMode'], ALLOWED_ROUTING_MODES, `${label}.routingMode`),
-    points:
-      obj['points'] === undefined
-        ? undefined
-        : expectArray(obj['points'], `${label}.points`).map((p, i) =>
-            expectPoint(p, `${label}.points[${i}]`),
-          ),
+    routingMode,
+    points,
     fromTap:
       obj['fromTap'] === undefined
         ? undefined
@@ -817,6 +833,27 @@ function parseConductorLayout(raw: unknown, label: string): CanonicalConductorLa
         ? undefined
         : expectNonNegativeInteger(obj['toTap'], `${label}.toTap`),
   };
+}
+
+function validateManualRoute(
+  routingMode: CanonicalRoutingMode | undefined,
+  points: readonly CanonicalPoint[] | undefined,
+  label: string,
+): CanonicalPoint[] | undefined {
+  if (routingMode === undefined) {
+    if (points !== undefined) {
+      throw new CanonicalProjectError(`${label}.points: points require routingMode "manual"`);
+    }
+    return undefined;
+  }
+  if (!points || points.length < 2) {
+    throw new CanonicalProjectError(`${label}: manual routing requires at least 2 points`);
+  }
+  const normalized = normalizeOrthogonalPersistedRoute(points);
+  if (!normalized || normalized.length < 2) {
+    throw new CanonicalProjectError(`${label}.points: route is not orthogonal`);
+  }
+  return normalized;
 }
 
 // ---------------------------------------------------------------------------
@@ -846,6 +883,9 @@ interface LegacyNet {
   netId?: string;
   color?: string;
   colorCode?: string;
+  gauge?: string;
+  length?: string;
+  note?: string;
   source: { componentId: string; pinId: string };
   target: { componentId: string; pinId: string };
   routingMode?: CanonicalRoutingMode;
@@ -936,6 +976,11 @@ function parseLegacyComponent(raw: unknown, label: string): LegacyComponent {
 
 function parseLegacyNet(raw: unknown, label: string): LegacyNet {
   const obj = expectRecord(raw, label);
+  const color = expectOptionalString(obj['color'], `${label}.color`);
+  const colorCode = expectOptionalString(obj['colorCode'], `${label}.colorCode`);
+  if (!isWireColorPairCoherent(color, colorCode)) {
+    throw new CanonicalProjectError(`${label}: color does not match colorCode`);
+  }
   const endpoint = (value: unknown, endpointLabel: string) => {
     const e = expectRecord(value, endpointLabel);
     return {
@@ -949,8 +994,11 @@ function parseLegacyNet(raw: unknown, label: string): LegacyNet {
     wireId: expectString(obj['wireId'], `${label}.wireId`),
     wireType: expectOptionalString(obj['wireType'], `${label}.wireType`),
     netId: expectOptionalString(obj['netId'], `${label}.netId`),
-    color: expectOptionalString(obj['color'], `${label}.color`),
-    colorCode: expectOptionalString(obj['colorCode'], `${label}.colorCode`),
+    color,
+    colorCode,
+    gauge: expectOptionalString(obj['gauge'], `${label}.gauge`),
+    length: expectOptionalString(obj['length'], `${label}.length`),
+    note: expectOptionalString(obj['note'], `${label}.note`),
     source: endpoint(obj['source'], `${label}.source`),
     target: endpoint(obj['target'], `${label}.target`),
     routingMode:
@@ -1010,13 +1058,26 @@ function migrateV1(legacy: LegacyProject): CanonicalProjectV2 {
     to: { kind: 'pin', componentId: net.target.componentId, pinId: net.target.pinId },
     cable: net.wireId ? { name: net.wireId, wireIndex: 1 } : undefined,
     wireType: net.wireType,
+    color: net.color,
+    colorCode: net.colorCode,
+    gauge: net.gauge,
+    length: net.length,
+    notes: net.note,
   }));
 
-  const conductorLayouts: CanonicalConductorLayout[] = legacy.nets.map((net) => ({
-    conductorId: net.id,
-    routingMode: net.routingMode,
-    points: net.points,
-  }));
+  const conductorLayouts: CanonicalConductorLayout[] = legacy.nets.map((net) => {
+    // Early v1 snapshots wrote rendered/manual points before routingMode was
+    // consistently persisted. Recover a valid orthogonal route when possible;
+    // a malformed legacy route falls back to automatic routing without
+    // rejecting the rest of the project.
+    const normalized = net.points ? normalizeOrthogonalPersistedRoute(net.points) : null;
+    const points = normalized && normalized.length >= 2 ? normalized : undefined;
+    return {
+      conductorId: net.id,
+      routingMode: points ? 'manual' : undefined,
+      points,
+    };
+  });
 
   // v1 had no cable registry: each wire carried its own color inline, and
   // `wireId` was the cable name. One cable per distinct wireId, single wire.

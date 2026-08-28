@@ -859,6 +859,8 @@ html[data-theme='dark'] {
   --av-port-width: 8px;
   --av-port-height: 13px;
   --av-color-wire-stroke: var(--ngd-edge-primary-default);
+  /* Stroke for a wire attenuated while another net is highlighted. */
+  --av-color-wire-dimmed: #b8b8b8;
   --av-color-accent: var(--ngd-ui-stroke-primary-highlight);
   --av-color-selection-border: #7938d3;
   --av-color-selection-halo: #482674;
@@ -868,6 +870,7 @@ html[data-theme='dark'] {
 }
 
 html[data-theme='dark'] {
+  --av-color-wire-dimmed: #4a4a4a;
   --av-list-item-bg: var(--ngd-colors-gray-750);
   --av-color-board-surface: #8a6a42;
   --av-color-board-hole: #16110b;

@@ -15,7 +15,8 @@ import {
   type WireVizLinkStyle,
 } from './interfaces';
 import { endpointKeysOf, groupConductorsIntoNets } from './net-grouping';
-import { canonicalColorValue, resolveWireColor } from './wire-colors';
+import { normalizeOrthogonalPersistedRoute } from './persisted-wire-route.mjs';
+import { canonicalColorValue, isWireColorPairCoherent, resolveWireColor } from './wire-colors';
 
 /**
  * Canonical, serializable project format (v2).
@@ -25,16 +26,16 @@ import { canonicalColorValue, resolveWireColor } from './wire-colors';
  *
  * 1. **A net is no longer a wire.** v1's `nets[]` was really a list of
  *    two-endpoint edges, so a net touching three pins could only be
- *    expressed as several unrelated entries — and a pin appearing in two of
+ *    expressed as several unrelated entries -- and a pin appearing in two of
  *    them looked like an invalid reuse. v2 has real nets: `endpoints[]` (two
  *    or more) plus the `conductors[]` that join them, with junctions and
  *    rails as first-class electrical elements.
  *
  * 2. **Electrical semantics and visual geometry are separate sections.**
- *    `electrical` holds only what a WireViz document can express — which
- *    pins exist, what is connected to what, and the cable attributes
- *    (gauge, length, colors, notes). `layout` holds everything WireViz has
- *    no vocabulary for — board grids, node positions, which board hole a pin
+ *    `electrical` holds pins, connectivity, the WireViz cable representation,
+ *    and conductor-owned inspection values that must survive project
+ *    save/reload. `layout` holds everything WireViz has no vocabulary for --
+ *    board grids, node positions, which board hole a pin
  *    occupies, which visual tap of a rail a conductor lands on, and manual
  *    wire routing points. A WireViz export reads `electrical` and never
  *    needs to discard geometry, because geometry was never mixed in.
@@ -52,7 +53,7 @@ export interface CanonicalProjectV2 {
 }
 
 // ---------------------------------------------------------------------------
-// Electrical section — everything WireViz can express
+// Electrical section -- everything WireViz can express
 // ---------------------------------------------------------------------------
 
 export interface CanonicalElectrical {
@@ -68,7 +69,7 @@ export interface CanonicalElectrical {
  * extras have a home because a component/junction/cable record exists to hang
  * them on; a document-level key has no counterpart in a canvas that can hold
  * several imports at once, and inventing a project-wide bag that only one
- * import path could ever fill would preserve them asymmetrically — kept when
+ * import path could ever fill would preserve them asymmetrically -- kept when
  * a project is assembled programmatically, silently dropped the moment the
  * user edits and saves. See docs/wireviz-round-trip.md.
  */
@@ -106,7 +107,7 @@ export interface CanonicalComponent {
 
 /**
  * A splice or rail: one electrical point where conductors of a net meet.
- * How many tap positions it is *drawn* with lives in `layout`, never here —
+ * How many tap positions it is *drawn* with lives in `layout`, never here --
  * see `JunctionNodeData` for why that separation is what makes a rail
  * survive a WireViz round-trip intact.
  */
@@ -127,14 +128,15 @@ export interface CanonicalJunction {
 }
 
 /**
- * A cable, shaped like WireViz's own `cables.<name>` entry: attributes such
- * as gauge, length and notes belong to the cable, and `colors[i]` describes
- * wire `i + 1`.
+ * A cable shaped like WireViz's own `cables.<name>` entry. Gauge, length and
+ * notes here are the shared/export representation; editable values also live
+ * on each conductor so a dense harness is not flattened. `colors[i]`
+ * describes WireViz wire `i + 1`; conductor color keeps the local intent.
  *
  * A color entry is either a WireViz abbreviation (`"YE"`) or a CSS hex value.
  * WireViz's exact six-digit RGB form (`"#ff00aa"`) is re-emitted byte for
- * byte. Other hex shapes are kept here verbatim and reported — never silently
- * swapped for the nearest standard code — see
+ * byte. Other hex shapes are kept here verbatim and reported -- never silently
+ * swapped for the nearest standard code -- see
  * `wireviz-import/export-wireviz.ts`.
  */
 export interface CanonicalCable {
@@ -172,6 +174,14 @@ export interface CanonicalConductor {
   cable?: CanonicalConductorCableRef;
   /** App-level classification (audio/power/control/...). No WireViz equivalent. */
   wireType?: string;
+  /** Effective render color owned by this physical conductor. */
+  color?: string;
+  /** Lossless WireViz token (palette, RGB or imported opaque token), when present. */
+  colorCode?: string;
+  /** Per-conductor inspection metadata owned by this physical connection. */
+  gauge?: string;
+  length?: string;
+  notes?: string;
   /** WireViz pin-level arrow for a direct link. Absent direct links export as `--`. */
   wirevizLink?: WireVizLinkStyle;
   /** Internal short declared by WireViz `connectors.<name>.loops`. */
@@ -187,7 +197,7 @@ export interface CanonicalNet {
 }
 
 // ---------------------------------------------------------------------------
-// Layout section — everything WireViz has no vocabulary for
+// Layout section -- everything WireViz has no vocabulary for
 // ---------------------------------------------------------------------------
 
 export interface CanonicalPoint {
@@ -219,7 +229,7 @@ export interface CanonicalPinPlacement {
 export interface CanonicalComponentLayout {
   componentId: string;
   position: CanonicalPoint;
-  /** See `DeviceNodeData.boardId` — required iff any `pinHoles` entry is present. */
+  /** See `DeviceNodeData.boardId` -- required iff any `pinHoles` entry is present. */
   boardId?: string;
   pinHoles?: CanonicalPinPlacement[];
 }
@@ -235,7 +245,7 @@ export interface CanonicalJunctionLayout {
 
 /**
  * The only routing mode this project ever persists explicitly. Absence means
- * "auto" (ng-diagram's default router output) — canonicalized as undefined
+ * "auto" (ng-diagram's default router output) -- canonicalized as undefined
  * rather than as an explicit `'auto'` string, so the format has one way to
  * say "no manual points".
  */
@@ -265,7 +275,7 @@ export class CanonicalProjectError extends Error {
  * Stable, comparable key for an endpoint.
  *
  * `encodeURIComponent` escapes `/`, so the separator can never be produced
- * by an id — two different endpoints can never collide onto one key, which
+ * by an id -- two different endpoints can never collide onto one key, which
  * is what makes net grouping and the round-trip comparison trustworthy.
  */
 export function endpointKey(endpoint: CanonicalNetEndpoint): string {
@@ -320,9 +330,9 @@ interface ConductorDraft {
 /**
  * Groups conductors into nets by connectivity.
  *
- * This is the single place nets come into existence — used when serializing
+ * This is the single place nets come into existence -- used when serializing
  * the live model, when migrating a v1 project, and when importing a WireViz
- * document — so all three routes agree by construction on what counts as one
+ * document -- so all three routes agree by construction on what counts as one
  * net.
  *
  * `nameHints` maps a conductor id to a preferred net name; the smallest hint
@@ -448,6 +458,9 @@ function toConductorDraft(
 
   const from = toEndpoint(edge.id, 'source', edge.source, edge.sourcePort, nodeKinds);
   const to = toEndpoint(edge.id, 'target', edge.target, edge.targetPort, nodeKinds);
+  if (!isWireColorPairCoherent(edge.data.color, edge.data.colorCode)) {
+    throw new CanonicalProjectError(`edge "${edge.id}": color does not match colorCode`);
+  }
 
   const conductor: CanonicalConductor = {
     id: edge.id,
@@ -457,22 +470,42 @@ function toConductorDraft(
       ? { name: edge.data.wireId, wireIndex: edge.data.wireIndex ?? 1 }
       : undefined,
     wireType: edge.data.wireType,
+    color: edge.data.color,
+    colorCode: edge.data.colorCode,
+    gauge: edge.data.gauge,
+    length: edge.data.length,
+    notes: edge.data.notes,
     wirevizLink: edge.data.wirevizLink,
     wirevizLoop: edge.data.wirevizLoop,
   };
 
   const manual = edge.routingMode === 'manual';
+  const points = manual ? normalizeManualRoute(edge.id, edge.points) : undefined;
   const layout: CanonicalConductorLayout = {
     conductorId: edge.id,
     // Only 'manual' is a meaningful persisted state; anything else (e.g. the
     // 'auto' ng-diagram sometimes sets explicitly) canonicalizes to absence.
     routingMode: manual ? 'manual' : undefined,
-    points: manual ? edge.points?.map(toCanonicalPoint) : undefined,
+    points,
     fromTap: from.tap,
     toTap: to.tap,
   };
 
   return { conductor, layout, netNameHint: edge.data.netName };
+}
+
+function normalizeManualRoute(
+  edgeId: string,
+  points: readonly Point[] | undefined,
+): CanonicalPoint[] {
+  if (!points || points.length < 2) {
+    throw new CanonicalProjectError(`edge "${edgeId}": manual routing requires at least 2 points`);
+  }
+  const normalized = normalizeOrthogonalPersistedRoute(points);
+  if (!normalized || normalized.length < 2) {
+    throw new CanonicalProjectError(`edge "${edgeId}": manual route is not orthogonal`);
+  }
+  return normalized.map(toCanonicalPoint);
 }
 
 function toEndpoint(
@@ -499,14 +532,16 @@ function toEndpoint(
  * one entry per cable name.
  *
  * Edges are visited in id order, so the result does not depend on model
- * ordering. Imported cable metadata is merged when one edge lacks a value;
- * contradictory values are rejected instead of choosing one silently.
+ * ordering. Imported cable metadata fills inventory fields that are not
+ * editable per conductor. Live edge color and inspection metadata are
+ * reconciled after all conductors are known, so stale edge copies cannot win.
  */
 function buildCables(
   edges: readonly Edge<WireEdgeData>[],
   cableInventory: readonly CanonicalCable[],
 ): CanonicalCable[] {
   const byName = new Map<string, CanonicalCable>();
+  const edgesByName = new Map<string, Edge<WireEdgeData>[]>();
 
   for (const edge of [...edges].sort(byId)) {
     const name = edge.data.wireId;
@@ -528,9 +563,6 @@ function buildCables(
       ),
       colors: importedColors,
       wireLabels: importedWireLabels,
-      gauge: edge.data.gauge,
-      length: edge.data.length,
-      notes: edge.data.notes,
       type: edge.data.cableType,
       manufacturer: edge.data.manufacturer,
       mpn: edge.data.mpn,
@@ -538,9 +570,6 @@ function buildCables(
       wirevizExtras: edge.data.cableExtras,
     };
 
-    mergeCableString(cable, 'gauge', edge.data.gauge, edge.id);
-    mergeCableString(cable, 'length', edge.data.length, edge.id);
-    mergeCableString(cable, 'notes', edge.data.notes, edge.id);
     mergeCableString(cable, 'type', edge.data.cableType, edge.id);
     mergeCableString(cable, 'manufacturer', edge.data.manufacturer, edge.id);
     mergeCableString(cable, 'mpn', edge.data.mpn, edge.id);
@@ -558,24 +587,16 @@ function buildCables(
     for (let i = 0; i < importedColors.length; i++) {
       const incoming = importedColors[i];
       const current = cable.colors[i];
-      if (current && incoming && current !== incoming) {
-        throw new CanonicalProjectError(
-          `cabo "${name}": cores contraditórias no condutor ${i + 1} ("${current}" e "${incoming}")`,
-        );
-      }
+      // Edge copies can be stale after editing one conductor. Treat the full
+      // imported list as fallback inventory; the live color for each used
+      // slot is applied authoritatively after all edges are collected.
       if (!current && incoming) cable.colors[i] = incoming;
     }
-    const color = canonicalColorValue({ color: edge.data.color, colorCode: edge.data.colorCode });
-    const currentColor = cable.colors[wireIndex - 1];
-    if (currentColor && color && currentColor !== color) {
-      throw new CanonicalProjectError(
-        `cabo "${name}": a aresta "${edge.id}" contradiz a cor do condutor ` +
-          `${wireIndex} ("${currentColor}" e "${color}")`,
-      );
-    }
-    if (color !== undefined) cable.colors[wireIndex - 1] = color;
 
     byName.set(name, cable);
+    const cableEdges = edgesByName.get(name) ?? [];
+    cableEdges.push(edge);
+    edgesByName.set(name, cableEdges);
   }
 
   // The diagram has no edge to hang a completely disconnected cable on.
@@ -588,8 +609,33 @@ function buildCables(
     else byName.set(cable.name, cloneCable(cable));
   }
 
+  for (const [name, cableEdges] of edgesByName) {
+    const cable = byName.get(name);
+    if (!cable) continue;
+
+    const colorsByIndex = new Map<number, string>();
+    for (const edge of cableEdges) {
+      const wireIndex = edge.data.wireIndex ?? 1;
+      const color = canonicalColorValue({ color: edge.data.color, colorCode: edge.data.colorCode });
+      const serialized = color ?? '';
+      const previous = colorsByIndex.get(wireIndex);
+      if (previous !== undefined && previous !== serialized) {
+        throw new CanonicalProjectError(
+          `cabo "${name}": cores contraditorias no condutor ${wireIndex} ` +
+            `("${previous}" e "${serialized}")`,
+        );
+      }
+      colorsByIndex.set(wireIndex, serialized);
+    }
+    for (const [wireIndex, color] of colorsByIndex) cable.colors[wireIndex - 1] = color;
+
+    reconcileSharedInspectionField(cable, cableEdges, 'gauge');
+    reconcileSharedInspectionField(cable, cableEdges, 'length');
+    reconcileSharedInspectionField(cable, cableEdges, 'notes');
+  }
+
   // A sparse `colors` array (wire 2 colored, wire 1 not) would serialize to
-  // JSON nulls, so gaps are filled with '' — the same "no color" signal an
+  // JSON nulls, so gaps are filled with '' -- the same "no color" signal an
   // absent WireViz color entry carries.
   for (const cable of byName.values()) {
     for (let i = 0; i < cable.wireCount; i++) {
@@ -603,6 +649,42 @@ function buildCables(
   }
 
   return [...byName.values()].sort(byKey((cable) => cable.name));
+}
+
+type InspectionField = 'gauge' | 'length' | 'notes';
+
+/**
+ * WireViz can express these fields only once per cable. Keep a cable-level
+ * value in sync when all connected conductors agree. When they differ, remove
+ * the cable-level fallback: a stale imported value would otherwise make a
+ * deliberately cleared conductor inherit it again after save and reload.
+ */
+function reconcileSharedInspectionField(
+  cable: CanonicalCable,
+  edges: readonly Edge<WireEdgeData>[],
+  key: InspectionField,
+): void {
+  if (edges.length === 0) return;
+  const value = edges[0].data[key];
+  if (edges.every((edge) => edge.data[key] === value)) {
+    cable[key] = value;
+  } else {
+    clearInspectionField(cable, key);
+  }
+}
+
+function clearInspectionField(cable: CanonicalCable, key: InspectionField): void {
+  switch (key) {
+    case 'gauge':
+      delete cable.gauge;
+      break;
+    case 'length':
+      delete cable.length;
+      break;
+    case 'notes':
+      delete cable.notes;
+      break;
+  }
 }
 
 function mergeInventoryCable(live: CanonicalCable, inventory: CanonicalCable): void {
@@ -623,7 +705,7 @@ function mergeInventoryCable(live: CanonicalCable, inventory: CanonicalCable): v
     }
   }
 
-  const stringKeys: readonly CableStringKey[] = [
+  const stringKeys: readonly (CableStringKey | InspectionField)[] = [
     'gauge',
     'length',
     'notes',
@@ -673,7 +755,7 @@ function cloneCable(cable: CanonicalCable): CanonicalCable {
   };
 }
 
-type CableStringKey = 'gauge' | 'length' | 'notes' | 'type' | 'manufacturer' | 'mpn' | 'colorCode';
+type CableStringKey = 'type' | 'manufacturer' | 'mpn' | 'colorCode';
 
 function mergeCableString(
   cable: CanonicalCable,
@@ -823,9 +905,9 @@ const DEFAULT_POSITION: CanonicalPoint = { x: 0, y: 0 };
  *
  * The two sections are merged here and only here: `electrical` supplies
  * identity and connectivity, `layout` supplies position, board holes, tap
- * assignment and manual routes. A missing layout entry is not an error — a
+ * assignment and manual routes. A missing layout entry is not an error -- a
  * project that was just imported from WireViz has electrical content and no
- * geometry yet — it falls back to the origin with a single tap.
+ * geometry yet -- it falls back to the origin with a single tap.
  *
  * Node order is boards, then components, then junctions, so boards render
  * behind everything and junction markers sit on top (nodes stack in array
@@ -971,9 +1053,16 @@ function fromCanonicalConductor(
   cables: ReadonlyMap<string, CanonicalCable>,
 ): Edge<WireEdgeData> {
   const cable = conductor.cable ? cables.get(conductor.cable.name) : undefined;
-  const { color, colorCode } = resolveWireColor(
-    cable?.colors[(conductor.cable?.wireIndex ?? 1) - 1],
-  );
+  const cableColor = resolveWireColor(cable?.colors[(conductor.cable?.wireIndex ?? 1) - 1]);
+  const conductorColor = resolveWireColor(conductor.colorCode);
+  const hasConductorColor = conductor.color !== undefined || conductor.colorCode !== undefined;
+  const color = conductor.color ?? conductorColor.color ?? cableColor.color;
+  const colorCode = conductor.colorCode ?? (hasConductorColor ? undefined : cableColor.colorCode);
+  const normalizedRoute =
+    layout?.routingMode === 'manual' && layout.points
+      ? normalizeOrthogonalPersistedRoute(layout.points)
+      : null;
+  const manualPoints = normalizedRoute && normalizedRoute.length >= 2 ? normalizedRoute : undefined;
 
   return {
     id: conductor.id,
@@ -982,8 +1071,8 @@ function fromCanonicalConductor(
     sourcePort: endpointPortId(conductor.from, layout?.fromTap),
     target: endpointNodeId(conductor.to),
     targetPort: endpointPortId(conductor.to, layout?.toTap),
-    routingMode: layout?.routingMode,
-    points: layout?.points,
+    routingMode: manualPoints ? 'manual' : undefined,
+    points: manualPoints,
     data: {
       type: 'wire',
       wireId: conductor.cable?.name ?? '',
@@ -992,15 +1081,15 @@ function fromCanonicalConductor(
       cableColors: cable ? [...cable.colors] : undefined,
       cableWireLabels: cable?.wireLabels ? [...cable.wireLabels] : undefined,
       wireType: conductor.wireType,
+      gauge: conductor.gauge ?? cable?.gauge,
+      length: conductor.length ?? cable?.length,
+      notes: conductor.notes ?? cable?.notes,
       wirevizLink: conductor.wirevizLink,
       wirevizLoop: conductor.wirevizLoop,
       netId: net.id,
       netName: net.name,
       color,
       colorCode,
-      gauge: cable?.gauge,
-      length: cable?.length,
-      notes: cable?.notes,
       cableType: cable?.type,
       manufacturer: cable?.manufacturer,
       mpn: cable?.mpn,

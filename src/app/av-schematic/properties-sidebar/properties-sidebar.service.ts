@@ -6,18 +6,22 @@ import {
   type JunctionNodeData,
   type WireEdgeData,
 } from '../diagram/model/interfaces';
+import { describeWireEndpoints, type WireEndpointInfo } from '../diagram/model/wire-endpoints';
+import { NetHighlightService } from '../diagram/net-highlight/net-highlight.service';
 
 export type SidebarState = 'empty' | 'single-node' | 'single-junction' | 'single-edge' | 'multi';
 
-export interface WireEndpointInfo {
-  deviceId: string;
-  portLabel: string;
-}
+// Re-exported so existing consumers keep their import path.
+export type { WireEndpointInfo } from '../diagram/model/wire-endpoints';
 
 export interface SelectedWireDetails {
   edge: Edge<WireEdgeData>;
   source: WireEndpointInfo | null;
   target: WireEndpointInfo | null;
+  /** Number of physical conductors selected by a net highlight. */
+  netSize: number;
+  netId: string;
+  netName: string;
 }
 
 /** Manages sidebar visibility and exposes selection-derived data. */
@@ -25,6 +29,7 @@ export interface SelectedWireDetails {
 export class PropertiesSidebarService {
   private readonly selectionService = inject(NgDiagramSelectionService);
   private readonly modelService = inject(NgDiagramModelService);
+  private readonly netHighlight = inject(NetHighlightService);
 
   readonly isExpanded = signal(false);
 
@@ -67,11 +72,15 @@ export class PropertiesSidebarService {
   readonly selectedWireDetails = computed<SelectedWireDetails | null>(() => {
     const edge = this.selectedEdge();
     if (!edge) return null;
-    const nodes = this.modelService.nodes();
+    const { source, target } = describeWireEndpoints(this.modelService.nodes(), edge);
+    const net = this.netHighlight.netForEdge(edge.id);
     return {
       edge,
-      source: this.resolveEndpoint(nodes, edge.source, edge.sourcePort),
-      target: this.resolveEndpoint(nodes, edge.target, edge.targetPort),
+      source,
+      target,
+      netSize: net?.edgeIds.length ?? 0,
+      netId: net?.id ?? '',
+      netName: net?.name ?? '',
     };
   });
 
@@ -81,27 +90,5 @@ export class PropertiesSidebarService {
 
   toggleSidebarVisibility(): void {
     this.isExpanded.update((v) => !v);
-  }
-
-  private resolveEndpoint(
-    nodes: readonly Node[],
-    nodeId: string | undefined,
-    portId: string | undefined,
-  ): WireEndpointInfo | null {
-    if (!nodeId) return null;
-    const node = nodes.find((n) => n.id === nodeId);
-    if (!node) return null;
-    if (isJunctionNode(node)) {
-      return {
-        deviceId: node.data.label,
-        portLabel: portId ?? 'junção',
-      };
-    }
-    if (!isDeviceNode(node)) return null;
-    const port = portId ? node.data.ports.find((candidate) => candidate.id === portId) : undefined;
-    return {
-      deviceId: node.data.deviceId,
-      portLabel: port?.label ?? portId ?? '',
-    };
   }
 }

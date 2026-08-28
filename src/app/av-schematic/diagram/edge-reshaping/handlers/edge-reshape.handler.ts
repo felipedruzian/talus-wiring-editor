@@ -35,7 +35,7 @@ export interface ReshapeDragState {
 /**
  * Owns the in-flight reshape gesture: captures the pointer, translates each
  * move into world deltas, and dispatches reshape commands. Holds no geometry or
- * model-write logic itself — that lives in `logic/` and `commands/`.
+ * model-write logic itself -- that lives in `logic/` and `commands/`.
  */
 @Injectable()
 export class EdgeReshapeHandler {
@@ -83,6 +83,7 @@ export class EdgeReshapeHandler {
   }
 
   start(event: PointerEvent, handleEl: HTMLElement, descriptor: ReshapeStartDescriptor): void {
+    if (event.button !== 0) return;
     const edge = this.modelService.getEdgeById(descriptor.edgeId);
     if (!edge?.points) return;
 
@@ -115,7 +116,7 @@ export class EdgeReshapeHandler {
   }
 
   // Mirror the node-drag snap config: reshape snaps only when the edge's
-  // reference node would snap on drag. Null → snapping disabled, reshape moves
+  // reference node would snap on drag. Null -> snapping disabled, reshape moves
   // freely. Keeps snapping config-driven and optional for a core port.
   private gridForEdge(edge: Edge): { x: number; y: number } | null {
     const refNode = edgeGridReferenceNode(this.modelService.nodes(), edge);

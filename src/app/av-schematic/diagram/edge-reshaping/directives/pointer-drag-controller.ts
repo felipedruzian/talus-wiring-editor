@@ -22,6 +22,7 @@ export class PointerDragController<TState> {
   private listenerEl: Document | HTMLElement | null = null;
   private pendingEvent: PointerEvent | null = null;
   private rafHandle: number | null = null;
+  private moveSeen = false;
 
   constructor(
     private readonly handlers: PointerDragHandlers<TState>,
@@ -34,6 +35,7 @@ export class PointerDragController<TState> {
 
   begin(event: PointerEvent, handleEl: HTMLElement, state: TState): void {
     this.state = state;
+    this.moveSeen = false;
     this.handleEl = handleEl;
     this.pointerId = event.pointerId;
     try {
@@ -59,11 +61,12 @@ export class PointerDragController<TState> {
 
   private readonly onPointerMove = (event: PointerEvent): void => {
     if (!this.state || event.pointerId !== this.pointerId) return;
+    this.moveSeen = true;
     if (!this.options.coalesce) {
       this.handlers.onMove(event, this.state);
       return;
     }
-    // One commit per frame — high-rate pointers fire 1000+ Hz.
+    // One commit per frame -- high-rate pointers fire 1000+ Hz.
     this.pendingEvent = event;
     if (this.rafHandle !== null) return;
     this.rafHandle = requestAnimationFrame(() => {
@@ -77,6 +80,12 @@ export class PointerDragController<TState> {
   private readonly onPointerUp = (event: PointerEvent): void => {
     const state = this.state;
     if (!state || event.pointerId !== this.pointerId) return;
+    // A frame-coalesced drag may still have one move buffered when the pointer
+    // is released. Commit the release coordinates before canceling that frame
+    // so the persisted bend lands exactly where the user dropped it.
+    if (this.options.coalesce && this.moveSeen && event.type === 'pointerup') {
+      this.handlers.onMove(event, state);
+    }
     this.cleanup();
     this.state = null;
     this.handlers.onTeardown?.();
@@ -89,6 +98,7 @@ export class PointerDragController<TState> {
       this.rafHandle = null;
     }
     this.pendingEvent = null;
+    this.moveSeen = false;
     if (this.listenerEl) {
       this.listenerEl.removeEventListener('pointermove', this.onPointerMove as EventListener);
       this.listenerEl.removeEventListener('pointerup', this.onPointerUp as EventListener);

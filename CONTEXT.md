@@ -6,10 +6,12 @@ derivada da conectividade, não da ordem ou da formatação do YAML.
 **Endpoint** — Ponto terminal de uma net: um pino de componente ou uma junção.
 
 **Condutor** — Ligação física entre dois endpoints. Pode referenciar um fio de
-um cabo ou um link direto WireViz.
+um cabo ou um link direto WireViz e possui rota, cor e metadados de inspeção
+próprios.
 
-**Cabo** — Registro compartilhado por um ou mais condutores, com quantidade de
-fios, cores, bitola, comprimento e observações.
+**Cabo** — Registro WireViz compartilhado por um ou mais condutores, com
+quantidade de fios e inventário de posições. Atributos comuns podem ser
+emitidos no cabo; divergências permanecem nos condutores e entram no relatório.
 
 **Junção** — Um único ponto elétrico explícito onde dois ou mais condutores
 podem se encontrar.

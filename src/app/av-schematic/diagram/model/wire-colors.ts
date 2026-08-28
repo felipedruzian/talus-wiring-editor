@@ -2,9 +2,9 @@
  * Wire color vocabulary shared by the diagram model and the WireViz
  * importer/exporter.
  *
- * A conductor's color is stored in the canonical project as a single string
- * that is either a WireViz/DIN 47100 abbreviation (`"YE"`) or a CSS hex value
- * (`"#ff00aa"`) chosen locally. Both are first-class:
+ * A conductor stores its render color plus an optional lossless WireViz token.
+ * The token can be a WireViz/DIN 47100 abbreviation (`"YE"`) or an exact RGB
+ * value (`"#ff00aa"`) chosen locally. Both are first-class:
  *
  *   - an abbreviation resolves to a CSS value for rendering *and* survives a
  *     WireViz export unchanged;
@@ -15,7 +15,7 @@
  *     replacement would quietly change what the diagram says the physical
  *     wire looks like.
  *
- * The table is a deliberately small, explicitly maintained subset — not the
+ * The table is a deliberately small, explicitly maintained subset -- not the
  * full WireViz color table. An unrecognized abbreviation keeps its code and
  * resolves to no CSS value, so the wire falls back to the default stroke
  * token rather than rendering a wrong color.
@@ -80,10 +80,29 @@ export function resolveWireColor(value: string | undefined): ResolvedWireColor {
 }
 
 /**
- * Inverse of `resolveWireColor`: the single string the canonical project
- * stores. The abbreviation wins when there is one, because it is the lossless
- * form — the CSS value can always be re-derived from it.
+ * Inverse of `resolveWireColor`: the single value used in a WireViz cable color
+ * slot. The token wins when present because it is the lossless form; a known
+ * render color can be re-derived from it.
  */
 export function canonicalColorValue(resolved: ResolvedWireColor): string | undefined {
   return resolved.colorCode ?? resolved.color;
+}
+
+/** Missing render color is recoverable from a known token; conflicts are not. */
+export function isWireColorPairCoherent(
+  color: string | undefined,
+  colorCode: string | undefined,
+): boolean {
+  if (!colorCode) return true;
+  const resolved = resolveWireColor(colorCode);
+  if (!resolved.color || color === undefined) return true;
+  return normalizeCssColor(color) === normalizeCssColor(resolved.color);
+}
+
+function normalizeCssColor(color: string): string {
+  const trimmed = color.trim().toLowerCase();
+  if (/^#[0-9a-f]{3}$/.test(trimmed)) {
+    return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`;
+  }
+  return trimmed;
 }
