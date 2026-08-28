@@ -13,7 +13,11 @@
     <div class="sidebar-separator"></div>
     <div class="sidebar-content sidebar-enter">
       @if (state() === 'single-node' && selectedNode(); as node) {
-        <app-device-form [entityId]="node.id" [nodeData]="node.data" />
+        <app-device-form
+          [entityId]="node.id"
+          [nodeData]="node.data"
+          [readonlyPorts]="!!node.data.footprintId"
+        />
       } @else if (state() === 'single-junction' && selectedJunction(); as junction) {
         <app-junction-form [nodeId]="junction.id" [nodeData]="junction.data" />
       } @else if (state() === 'single-edge' && selectedWireDetails(); as wire) {

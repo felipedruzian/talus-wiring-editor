@@ -1,13 +1,101 @@
-<div class="board-node">
+<div class="board-node" [style.width.px]="size().width" [style.height.px]="size().height">
   <span class="board-node__label">{{ data().label }}</span>
   <svg
     class="board-node__grid"
     [attr.width]="size().width"
     [attr.height]="size().height"
     [attr.viewBox]="'0 0 ' + size().width + ' ' + size().height"
+    aria-hidden="true"
   >
-    @for (hole of holes(); track hole.row + '-' + hole.col) {
-      <circle class="board-node__hole" [attr.cx]="hole.x" [attr.cy]="hole.y" r="2.5" />
+    @for (trace of traces(); track trace.id) {
+      <g class="board-node__trace" [attr.stroke]="trace.color" [attr.fill]="trace.color">
+        @for (bridge of trace.bridges; track $index) {
+          <line
+            class="board-node__trace-bridge"
+            [attr.x1]="bridge.x1"
+            [attr.y1]="bridge.y1"
+            [attr.x2]="bridge.x2"
+            [attr.y2]="bridge.y2"
+          />
+        }
+        @for (segment of trace.segments; track $index) {
+          @if (segment.dot) {
+            <circle
+              class="board-node__trace-dot"
+              [attr.cx]="segment.x1"
+              [attr.cy]="segment.y1"
+              [attr.r]="data().pitch * 0.22"
+            />
+          } @else {
+            <line
+              class="board-node__trace-run"
+              [attr.x1]="segment.x1"
+              [attr.y1]="segment.y1"
+              [attr.x2]="segment.x2"
+              [attr.y2]="segment.y2"
+              [attr.stroke-width]="data().pitch * 0.34"
+            />
+          }
+        }
+      </g>
+    }
+    @for (hole of holes(); track hole.key) {
+      <circle
+        class="board-node__hole"
+        [class.board-node__hole--conflicted]="hole.conflicted"
+        [attr.cx]="hole.x"
+        [attr.cy]="hole.y"
+        [attr.r]="holeRadius()"
+      />
     }
   </svg>
+
+  @for (trace of traces(); track trace.id) {
+    <span
+      class="board-node__trace-label"
+      [style.left.px]="trace.labelX"
+      [style.top.px]="trace.labelY"
+    >
+      {{ trace.net ?? trace.label }}
+    </span>
+  }
+
+  @for (hole of holes(); track hole.key) {
+    <ng-diagram-port
+      class="board-node__port board-node__port--hole"
+      [id]="hole.portId"
+      type="both"
+      side="left"
+      originPoint="centerLeft"
+      [style.left.px]="holePortLeft(hole)"
+      [style.top.px]="holePortTop(hole)"
+      [style.width.px]="holePortSize()"
+      [style.height.px]="holePortSize()"
+    >
+      <span
+        class="board-node__port-hit"
+        [title]="'L' + (hole.row + 1) + '-C' + (hole.col + 1)"
+      ></span>
+    </ng-diagram-port>
+  }
+
+  @for (trace of traces(); track trace.id) {
+    <ng-diagram-port
+      class="board-node__port board-node__port--trace"
+      [id]="trace.portId"
+      type="both"
+      side="left"
+      originPoint="centerLeft"
+      [style.left.px]="tracePortLeft(trace)"
+      [style.top.px]="tracePortTop(trace)"
+      [style.width.px]="holePortSize()"
+      [style.height.px]="holePortSize()"
+    >
+      <span
+        class="board-node__port-hit board-node__port-hit--trace"
+        [style.background]="trace.color"
+        [title]="trace.label + (trace.net ? ' (' + trace.net + ')' : '')"
+      ></span>
+    </ng-diagram-port>
+  }
 </div>

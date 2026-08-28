@@ -1,4 +1,22 @@
 import { type Edge, type Node, type Point } from 'ng-diagram';
+import { holeLocalPoint, holesEqual, isBoardHoleAvailable } from './board-geometry';
+import {
+  boardCopperJunctionId,
+  boardPortLabel,
+  holePortId,
+  isBoardPortId,
+  parseHolePortId,
+  parseTracePortId,
+  physicalBindingConductorId,
+  tracePortId,
+} from './board-ports';
+import { traceForHole, traceHoles } from './board-trace';
+import { cloneFootprint, resolveFootprint, type Footprint } from './footprint';
+import {
+  devicePortHoles,
+  placementNodePosition,
+  syncPortHolesToPlacement,
+} from './footprint-geometry';
 import { isBoardNode, isDeviceNode, isJunctionNode, isWireEdge } from './guards';
 import {
   EdgeTemplateType,
@@ -6,7 +24,9 @@ import {
   type AvSchematicNodeData,
   type BoardHole,
   type BoardNodeData,
+  type BoardTrace,
   type DeviceNodeData,
+  type DevicePlacement,
   type JunctionKind,
   type JunctionNodeData,
   type PortDirection,
@@ -212,12 +232,25 @@ export interface CanonicalLayout {
   conductors: CanonicalConductorLayout[];
 }
 
+/**
+ * A physical board. Everything here is geometry - how many holes, how far
+ * apart, which of them exist, and where the copper runs - which is why the
+ * whole record lives in `layout` and never in `electrical`. Copper that a
+ * conductor actually lands on becomes an ordinary `CanonicalJunction`; see
+ * `CanonicalJunctionLayout.boardPort`.
+ */
 export interface CanonicalBoard {
   id: string;
   label: string;
   rows: number;
   cols: number;
   pitch: number;
+  /** Explicit hole list for an irregular board. Absent means the full rows x cols grid. */
+  holes?: BoardHole[];
+  /** Drawn hole diameter in px. Absent falls back to `DEFAULT_HOLE_DIAMETER`. */
+  holeDiameter?: number;
+  /** Copper traces. A board with no traces is a plain perfboard. */
+  traces?: BoardTrace[];
   position: CanonicalPoint;
 }
 
@@ -231,6 +264,16 @@ export interface CanonicalComponentLayout {
   position: CanonicalPoint;
   /** See `DeviceNodeData.boardId` -- required iff any `pinHoles` entry is present. */
   boardId?: string;
+  /**
+   * Physical footprint this component is drawn with. Illustration and cell
+   * geometry are layout, not electrical: the pins themselves stay in
+   * `electrical.components[].pins`, which is what WireViz can express.
+   */
+  footprintId?: string;
+  /** Embedded definition, so a reload never depends on the app's fixture catalog. */
+  footprint?: Footprint;
+  /** Seat on a board. Only meaningful together with `footprintId`. */
+  placement?: DevicePlacement;
   pinHoles?: CanonicalPinPlacement[];
 }
 
@@ -241,6 +284,16 @@ export interface CanonicalJunctionLayout {
   taps: number;
   boardId?: string;
   hole?: BoardHole;
+  /**
+   * Board node port this junction is *drawn as* (`hole:<row>:<col>` or
+   * `trace:<traceId>`), instead of being drawn as its own junction node.
+   *
+   * A solder point in a board hole, and a copper trace joining several holes,
+   * are both exactly what `CanonicalJunction` already means: one electrical
+   * point several conductors meet at. Only the way it is drawn differs, and
+   * "how it is drawn" is precisely what `layout` is for. Requires `boardId`.
+   */
+  boardPort?: string;
 }
 
 /**
@@ -258,6 +311,8 @@ export interface CanonicalConductorLayout {
   /** 0-based visual tap each end lands on, when that end is a junction. */
   fromTap?: number;
   toTap?: number;
+  /** Hidden pin-to-copper solder association generated from a physical placement. */
+  physicalBinding?: boolean;
 }
 
 export class CanonicalProjectError extends Error {
@@ -324,7 +379,8 @@ export function stableIdFragment(value: string): string {
 interface ConductorDraft {
   conductor: CanonicalConductor;
   layout: CanonicalConductorLayout;
-  netNameHint?: string;
+  authoredNetNameHint?: string;
+  copperNetNameHint?: string;
 }
 
 /**
@@ -335,13 +391,15 @@ interface ConductorDraft {
  * document -- so all three routes agree by construction on what counts as one
  * net.
  *
- * `nameHints` maps a conductor id to a preferred net name; the smallest hint
- * in a group wins, so merging two nets yields the same name whichever wire
- * was drawn first.
+ * `nameHints` carries authored/imported names and always wins over
+ * `fallbackNameHints`, which carries copper labels. Within each priority the
+ * smallest hint wins, so a physical merge is deterministic whichever wire was
+ * drawn first. Diagnostics report competing authored names before save.
  */
 export function buildNets(
   conductors: readonly CanonicalConductor[],
   nameHints?: ReadonlyMap<string, string>,
+  fallbackNameHints?: ReadonlyMap<string, string>,
 ): CanonicalNet[] {
   const keyed = conductors.map((conductor) => ({
     conductor,
@@ -370,10 +428,14 @@ export function buildNets(
       .map((entry) => nameHints?.get(entry.conductor.id))
       .filter((hint): hint is string => !!hint)
       .sort();
+    const fallbackHints = group
+      .map((entry) => fallbackNameHints?.get(entry.conductor.id))
+      .filter((hint): hint is string => !!hint)
+      .sort();
 
     return {
       id,
-      name: hints[0] ?? id,
+      name: hints[0] ?? fallbackHints[0] ?? id,
       endpoints,
       conductors: group.map((entry) => entry.conductor).sort(byId),
     };
@@ -401,37 +463,214 @@ export function toCanonicalProject(
   const junctionNodes = nodes.filter(isJunctionNode);
   const boardNodes = nodes.filter(isBoardNode);
 
-  const nodeKinds = new Map<string, 'device' | 'junction'>();
+  const nodeKinds = new Map<string, 'device' | 'junction' | 'board'>();
   for (const node of deviceNodes) nodeKinds.set(node.id, 'device');
   for (const node of junctionNodes) nodeKinds.set(node.id, 'junction');
+  for (const node of boardNodes) nodeKinds.set(node.id, 'board');
 
+  const copper = new BoardCopperJunctions(boardNodes);
   const wireEdges = edges.filter(isWireEdge);
-  const drafts = wireEdges.map((edge) => toConductorDraft(edge, nodeKinds));
+  const drafts = [
+    ...wireEdges.map((edge) => toConductorDraft(edge, nodeKinds, copper)),
+    ...physicalBindingDrafts(deviceNodes, boardNodes, copper),
+  ];
 
-  const nameHints = new Map<string, string>();
+  const conductorIds = new Set<string>();
+  const authoredNameHints = new Map<string, string>();
+  const copperNameHints = new Map<string, string>();
   for (const draft of drafts) {
-    if (draft.netNameHint) nameHints.set(draft.conductor.id, draft.netNameHint);
+    if (conductorIds.has(draft.conductor.id)) {
+      throw new CanonicalProjectError(`duplicate conductor id "${draft.conductor.id}"`);
+    }
+    conductorIds.add(draft.conductor.id);
+    if (draft.authoredNetNameHint) {
+      authoredNameHints.set(draft.conductor.id, draft.authoredNetNameHint);
+    }
+    if (draft.copperNetNameHint) {
+      copperNameHints.set(draft.conductor.id, draft.copperNetNameHint);
+    }
   }
   const nets = buildNets(
     drafts.map((draft) => draft.conductor),
-    nameHints,
+    authoredNameHints,
+    copperNameHints,
   );
 
   return {
     formatVersion: CANONICAL_FORMAT_VERSION,
     electrical: {
       components: deviceNodes.map(toCanonicalComponent).sort(byId),
-      junctions: junctionNodes.map(toCanonicalJunction).sort(byId),
+      junctions: [...junctionNodes.map(toCanonicalJunction), ...copper.junctions()].sort(byId),
       cables: buildCables(wireEdges, cableInventory),
       nets,
     },
     layout: {
       boards: boardNodes.map(toCanonicalBoard).sort(byId),
       components: deviceNodes.map(toComponentLayout).sort(byKey((c) => c.componentId)),
-      junctions: junctionNodes.map(toJunctionLayout).sort(byKey((j) => j.junctionId)),
+      junctions: [...junctionNodes.map(toJunctionLayout), ...copper.layouts()].sort(
+        byKey((j) => j.junctionId),
+      ),
       conductors: drafts.map((draft) => draft.layout).sort(byKey((c) => c.conductorId)),
     },
   };
+}
+
+/**
+ * Materializes one `CanonicalJunction` per board hole or trace a conductor
+ * actually lands on.
+ *
+ * Unused copper stays pure geometry on the board record: minting a junction
+ * for all 168 holes of a 6 x 28 board would bloat every save and, worse,
+ * invent electrical points nothing is connected to. The junction only comes
+ * into existence when something is soldered there - which is also the moment
+ * it becomes true that "conductors meet here".
+ */
+class BoardCopperJunctions {
+  private readonly boardsById: ReadonlyMap<string, Node<BoardNodeData>>;
+  private readonly used = new Map<
+    string,
+    { junction: CanonicalJunction; layout: CanonicalJunctionLayout; netLabel?: string }
+  >();
+
+  constructor(boardNodes: readonly Node<BoardNodeData>[]) {
+    this.boardsById = new Map(boardNodes.map((node) => [node.id, node]));
+  }
+
+  /** Resolves a board node port into the junction endpoint that represents it. */
+  resolve(
+    edgeId: string,
+    side: 'source' | 'target',
+    boardNodeId: string,
+    portId: string,
+  ): { endpoint: CanonicalNetEndpoint; tap?: number; netLabel?: string } {
+    const board = this.boardsById.get(boardNodeId);
+    if (!board) {
+      throw new CanonicalProjectError(`edge "${edgeId}".${side}: no board "${boardNodeId}"`);
+    }
+    if (!isBoardPortId(portId)) {
+      throw new CanonicalProjectError(
+        `edge "${edgeId}".${side}: "${portId}" is not a board hole or trace port`,
+      );
+    }
+
+    const hole = resolveBoardPortHole(board.data, portId);
+    if (!hole) {
+      throw new CanonicalProjectError(
+        `edge "${edgeId}".${side}: board "${board.data.boardId}" has no port "${portId}"`,
+      );
+    }
+
+    const requestedTraceId = parseTracePortId(portId);
+    const trace = requestedTraceId
+      ? board.data.traces?.find((candidate) => candidate.id === requestedTraceId)
+      : traceForHole(board.data, hole);
+    const canonicalPortId = trace ? tracePortId(trace.id) : holePortId(hole);
+    const traceHoleList = trace ? traceHoles(trace) : [hole];
+    const tap =
+      trace && requestedTraceId === null
+        ? traceHoleList.findIndex((candidate) => holesEqual(candidate, hole))
+        : undefined;
+    if (tap !== undefined && tap < 0) {
+      throw new CanonicalProjectError(
+        `edge "${edgeId}".${side}: hole is not part of trace "${trace?.id ?? ''}"`,
+      );
+    }
+
+    const junctionId = boardCopperJunctionId(board.data.boardId, canonicalPortId);
+    const existing = this.used.get(junctionId);
+    if (existing) {
+      return { endpoint: { kind: 'junction', junctionId }, tap, netLabel: existing.netLabel };
+    }
+
+    const anchorHole = traceHoleList[0];
+    if (!anchorHole) {
+      throw new Error(`Board port "${canonicalPortId}" has no physical hole`);
+    }
+    const local = holeLocalPoint(board.data, anchorHole);
+    this.used.set(junctionId, {
+      junction: {
+        id: junctionId,
+        label: boardPortLabel(canonicalPortId, trace?.label),
+        wirevizName: junctionId,
+        // A trace joins several holes into one point, which is exactly what a
+        // rail is; a bare hole is a single splice point.
+        kind: trace ? 'rail' : 'junction',
+      },
+      layout: {
+        junctionId,
+        position: { x: board.position.x + local.x, y: board.position.y + local.y },
+        // A trace uses its holes as visual taps. Conductor layout keeps the
+        // exact landing hole while electrical identity stays one junction.
+        taps: traceHoleList.length,
+        boardId: board.data.boardId,
+        hole: anchorHole,
+        boardPort: canonicalPortId,
+      },
+      netLabel: trace?.net,
+    });
+    return { endpoint: { kind: 'junction', junctionId }, tap, netLabel: trace?.net };
+  }
+
+  junctions(): CanonicalJunction[] {
+    return [...this.used.values()].map((entry) => entry.junction);
+  }
+
+  layouts(): CanonicalJunctionLayout[] {
+    return [...this.used.values()].map((entry) => entry.layout);
+  }
+}
+
+/** The hole a board port addresses: itself for a hole, the first hole for a trace. */
+export function resolveBoardPortHole(board: BoardNodeData, portId: string): BoardHole | undefined {
+  const hole = parseHolePortId(portId);
+  if (hole) return isBoardHoleAvailable(board, hole) ? hole : undefined;
+  const traceId = parseTracePortId(portId);
+  if (!traceId) return undefined;
+  const trace = board.traces?.find((candidate) => candidate.id === traceId);
+  return trace ? traceHoles(trace)[0] : undefined;
+}
+
+function physicalBindingDrafts(
+  deviceNodes: readonly Node<DeviceNodeData>[],
+  boardNodes: readonly Node<BoardNodeData>[],
+  copper: BoardCopperJunctions,
+): ConductorDraft[] {
+  const boardsById = new Map(boardNodes.map((board) => [board.data.boardId, board]));
+  const drafts: ConductorDraft[] = [];
+
+  for (const node of deviceNodes) {
+    const holes = devicePortHoles(node.data);
+    if (holes.size === 0) continue;
+    const boardId = node.data.placement?.boardId ?? node.data.boardId;
+    const board = boardId ? boardsById.get(boardId) : undefined;
+    if (!board) {
+      throw new CanonicalProjectError(
+        `component "${node.id}": physical pin holes require an existing board`,
+      );
+    }
+
+    for (const port of node.data.ports) {
+      const hole = holes.get(port.id);
+      if (!hole) continue;
+      const conductorId = physicalBindingConductorId(node.id, port.id);
+      const resolved = copper.resolve(conductorId, 'target', board.id, holePortId(hole));
+      drafts.push({
+        conductor: {
+          id: conductorId,
+          from: { kind: 'pin', componentId: node.id, pinId: port.id },
+          to: resolved.endpoint,
+        },
+        layout: {
+          conductorId,
+          toTap: resolved.tap,
+          physicalBinding: true,
+        },
+        copperNetNameHint: resolved.netLabel,
+      });
+    }
+  }
+
+  return drafts;
 }
 
 function byId(a: { id: string }, b: { id: string }): number {
@@ -448,7 +687,8 @@ function byKey<T>(key: (value: T) => string): (a: T, b: T) => number {
 
 function toConductorDraft(
   edge: Edge<WireEdgeData>,
-  nodeKinds: ReadonlyMap<string, 'device' | 'junction'>,
+  nodeKinds: ReadonlyMap<string, 'device' | 'junction' | 'board'>,
+  copper: BoardCopperJunctions,
 ): ConductorDraft {
   if (!edge.source || !edge.sourcePort || !edge.target || !edge.targetPort) {
     throw new CanonicalProjectError(
@@ -456,8 +696,11 @@ function toConductorDraft(
     );
   }
 
-  const from = toEndpoint(edge.id, 'source', edge.source, edge.sourcePort, nodeKinds);
-  const to = toEndpoint(edge.id, 'target', edge.target, edge.targetPort, nodeKinds);
+  const from = toEndpoint(edge.id, 'source', edge.source, edge.sourcePort, nodeKinds, copper);
+  const to = toEndpoint(edge.id, 'target', edge.target, edge.targetPort, nodeKinds, copper);
+  if (endpointsEqual(from.endpoint, to.endpoint)) {
+    throw new CanonicalProjectError(`edge "${edge.id}": both ends resolve to the same endpoint`);
+  }
   if (!isWireColorPairCoherent(edge.data.color, edge.data.colorCode)) {
     throw new CanonicalProjectError(`edge "${edge.id}": color does not match colorCode`);
   }
@@ -491,7 +734,13 @@ function toConductorDraft(
     toTap: to.tap,
   };
 
-  return { conductor, layout, netNameHint: edge.data.netName };
+  const copperHint = from.netLabel ?? to.netLabel;
+  return {
+    conductor,
+    layout,
+    authoredNetNameHint: edge.data.netName,
+    copperNetNameHint: copperHint,
+  };
 }
 
 function normalizeManualRoute(
@@ -513,8 +762,9 @@ function toEndpoint(
   side: 'source' | 'target',
   nodeId: string,
   portId: string,
-  nodeKinds: ReadonlyMap<string, 'device' | 'junction'>,
-): { endpoint: CanonicalNetEndpoint; tap?: number } {
+  nodeKinds: ReadonlyMap<string, 'device' | 'junction' | 'board'>,
+  copper: BoardCopperJunctions,
+): { endpoint: CanonicalNetEndpoint; tap?: number; netLabel?: string } {
   const kind = nodeKinds.get(nodeId);
   if (kind === 'device') {
     return { endpoint: { kind: 'pin', componentId: nodeId, pinId: portId } };
@@ -522,8 +772,12 @@ function toEndpoint(
   if (kind === 'junction') {
     return { endpoint: { kind: 'junction', junctionId: nodeId }, tap: junctionTapIndex(portId) };
   }
+  if (kind === 'board') {
+    const resolved = copper.resolve(edgeId, side, nodeId, portId);
+    return { endpoint: resolved.endpoint, tap: resolved.tap, netLabel: resolved.netLabel };
+  }
   throw new CanonicalProjectError(
-    `edge "${edgeId}".${side}: node "${nodeId}" is neither a device nor a junction`,
+    `edge "${edgeId}".${side}: node "${nodeId}" is not a device, a junction or a board`,
   );
 }
 
@@ -840,14 +1094,36 @@ function toCanonicalComponent(node: Node<DeviceNodeData>): CanonicalComponent {
 function toComponentLayout(node: Node<DeviceNodeData>): CanonicalComponentLayout {
   const pinHoles: CanonicalPinPlacement[] = [];
   for (const port of node.data.ports) {
-    if (port.hole !== undefined) pinHoles.push({ pinId: port.id, hole: port.hole });
+    if (port.hole !== undefined) pinHoles.push({ pinId: port.id, hole: { ...port.hole } });
   }
+  const footprint = resolveFootprint(node.data);
 
   return {
     componentId: node.id,
     position: toCanonicalPoint(node.position),
     boardId: node.data.boardId,
+    footprintId: node.data.footprintId,
+    footprint: footprint ? cloneFootprint(footprint) : undefined,
+    placement: node.data.placement ? clonePlacement(node.data.placement) : undefined,
     pinHoles: pinHoles.length > 0 ? pinHoles : undefined,
+  };
+}
+
+function clonePlacement(placement: DevicePlacement): DevicePlacement {
+  return {
+    boardId: placement.boardId,
+    anchor: { ...placement.anchor },
+    rotation: placement.rotation,
+  };
+}
+
+export function cloneBoardTrace(trace: BoardTrace): BoardTrace {
+  return {
+    ...trace,
+    segments: trace.segments.map((segment) => ({
+      from: { ...segment.from },
+      to: { ...segment.to },
+    })),
   };
 }
 
@@ -880,12 +1156,23 @@ function toJunctionLayout(node: Node<JunctionNodeData>): CanonicalJunctionLayout
 }
 
 function toCanonicalBoard(node: Node<BoardNodeData>): CanonicalBoard {
+  // A board's node id *is* its `boardId`: hole addresses, placements and
+  // copper junction ids are all written against `boardId`, so letting the two
+  // drift would silently re-point every one of them on reload.
+  if (node.id !== node.data.boardId) {
+    throw new CanonicalProjectError(
+      `board node id "${node.id}" must equal boardId "${node.data.boardId}"`,
+    );
+  }
   return {
     id: node.id,
     label: node.data.label,
     rows: node.data.rows,
     cols: node.data.cols,
     pitch: node.data.pitch,
+    holes: node.data.holes?.map((hole) => ({ ...hole })),
+    holeDiameter: node.data.holeDiameter,
+    traces: node.data.traces?.map(cloneBoardTrace),
     position: toCanonicalPoint(node.position),
   };
 }
@@ -932,21 +1219,50 @@ export function fromCanonicalProject(project: CanonicalProjectV2): {
   }
 
   const boardNodes = project.layout.boards.map(fromCanonicalBoard);
+  const boardIds = new Set(boardNodes.map((node) => node.data.boardId));
+  const boardsById = new Map(boardNodes.map((node) => [node.data.boardId, node]));
+
+  // A junction drawn as a board port has no node of its own: it *is* the
+  // board's hole/trace port. A layout that points at a board this project no
+  // longer contains falls back to an ordinary junction node rather than
+  // dropping the electrical point on the floor.
+  const copperPorts = new Map<string, BoardCopperPort>();
+  for (const layout of project.layout.junctions) {
+    if (!layout.boardPort || !layout.boardId || !boardIds.has(layout.boardId)) continue;
+    const board = boardsById.get(layout.boardId);
+    const traceId = parseTracePortId(layout.boardPort);
+    const trace = traceId
+      ? board?.data.traces?.find((candidate) => candidate.id === traceId)
+      : undefined;
+    copperPorts.set(layout.junctionId, {
+      boardId: layout.boardId,
+      portId: layout.boardPort,
+      tapPortIds: trace?.segments.length
+        ? traceHoles(trace).map((hole) => holePortId(hole))
+        : undefined,
+    });
+  }
+
   const componentNodes = project.electrical.components.map((component) =>
-    fromCanonicalComponent(component, componentLayouts.get(component.id)),
+    fromCanonicalComponent(component, componentLayouts.get(component.id), boardsById),
   );
-  const junctionNodes = project.electrical.junctions.map((junction) =>
-    fromCanonicalJunction(
-      junction,
-      junctionLayouts.get(junction.id),
-      netByJunction.get(junction.id),
-    ),
-  );
+  const junctionNodes = project.electrical.junctions
+    .filter((junction) => !copperPorts.has(junction.id))
+    .map((junction) =>
+      fromCanonicalJunction(
+        junction,
+        junctionLayouts.get(junction.id),
+        netByJunction.get(junction.id),
+      ),
+    );
 
   const edges = project.electrical.nets.flatMap((net) =>
-    net.conductors.map((conductor) =>
-      fromCanonicalConductor(conductor, net, conductorLayouts.get(conductor.id), cables),
-    ),
+    net.conductors.flatMap((conductor) => {
+      const layout = conductorLayouts.get(conductor.id);
+      return layout?.physicalBinding
+        ? []
+        : [fromCanonicalConductor(conductor, net, layout, cables, copperPorts)];
+    }),
   );
 
   return {
@@ -968,6 +1284,9 @@ function fromCanonicalBoard(board: CanonicalBoard): Node<BoardNodeData> {
       rows: board.rows,
       cols: board.cols,
       pitch: board.pitch,
+      holes: board.holes?.map((hole) => ({ ...hole })),
+      holeDiameter: board.holeDiameter,
+      traces: board.traces?.map(cloneBoardTrace),
     },
   };
 }
@@ -975,41 +1294,56 @@ function fromCanonicalBoard(board: CanonicalBoard): Node<BoardNodeData> {
 function fromCanonicalComponent(
   component: CanonicalComponent,
   layout: CanonicalComponentLayout | undefined,
+  boardsById: ReadonlyMap<string, Node<BoardNodeData>>,
 ): Node<DeviceNodeData> {
   const holesByPin = new Map((layout?.pinHoles ?? []).map((entry) => [entry.pinId, entry.hole]));
+  const footprint = layout?.footprint ? cloneFootprint(layout.footprint) : undefined;
+  const placement = layout?.placement ? clonePlacement(layout.placement) : undefined;
+  const seated = !!layout?.footprintId && !!footprint && !!placement;
+
+  const board = placement ? boardsById.get(placement.boardId) : undefined;
+  const data: DeviceNodeData = {
+    type: 'device',
+    footprintId: layout?.footprintId,
+    footprint,
+    placement,
+    deviceId: component.deviceId,
+    manufacturer: component.manufacturer,
+    model: component.model,
+    category: component.category,
+    location: component.location,
+    boardId: layout?.boardId,
+    wirevizName: component.wirevizName,
+    wirevizType: component.wirevizType,
+    wirevizSubtype: component.wirevizSubtype,
+    wirevizColor: component.wirevizColor,
+    wirevizManufacturer: component.wirevizManufacturer,
+    wirevizMpn: component.wirevizMpn,
+    wirevizStyle: component.wirevizStyle,
+    wirevizShowName: component.wirevizShowName,
+    notes: component.notes,
+    wirevizExtras: component.wirevizExtras,
+    ports: component.pins.map((pin) => ({
+      id: pin.id,
+      label: pin.label,
+      direction: pin.direction,
+      connectorType: pin.connectorType,
+      wirevizDesignator: pin.wirevizDesignator,
+      wirevizLabel: pin.wirevizLabel,
+      hole: holesByPin.get(pin.id),
+    })),
+  };
 
   return {
     id: component.id,
-    type: NodeTemplateType.DeviceNode,
-    position: layout?.position ?? DEFAULT_POSITION,
-    data: {
-      type: 'device',
-      deviceId: component.deviceId,
-      manufacturer: component.manufacturer,
-      model: component.model,
-      category: component.category,
-      location: component.location,
-      boardId: layout?.boardId,
-      wirevizName: component.wirevizName,
-      wirevizType: component.wirevizType,
-      wirevizSubtype: component.wirevizSubtype,
-      wirevizColor: component.wirevizColor,
-      wirevizManufacturer: component.wirevizManufacturer,
-      wirevizMpn: component.wirevizMpn,
-      wirevizStyle: component.wirevizStyle,
-      wirevizShowName: component.wirevizShowName,
-      notes: component.notes,
-      wirevizExtras: component.wirevizExtras,
-      ports: component.pins.map((pin) => ({
-        id: pin.id,
-        label: pin.label,
-        direction: pin.direction,
-        connectorType: pin.connectorType,
-        wirevizDesignator: pin.wirevizDesignator,
-        wirevizLabel: pin.wirevizLabel,
-        hole: holesByPin.get(pin.id),
-      })),
-    },
+    // A seated part is drawn as its physical footprint; everything else keeps
+    // the generic AV card. Same `DeviceNodeData`, only the template differs.
+    type: seated ? NodeTemplateType.FootprintNode : NodeTemplateType.DeviceNode,
+    position:
+      seated && board && placement
+        ? placementNodePosition({ board: board.data, position: board.position }, placement)
+        : (layout?.position ?? DEFAULT_POSITION),
+    data: seated ? syncPortHolesToPlacement(data) : data,
   };
 }
 
@@ -1051,6 +1385,7 @@ function fromCanonicalConductor(
   net: CanonicalNet,
   layout: CanonicalConductorLayout | undefined,
   cables: ReadonlyMap<string, CanonicalCable>,
+  copperPorts: ReadonlyMap<string, BoardCopperPort>,
 ): Edge<WireEdgeData> {
   const cable = conductor.cable ? cables.get(conductor.cable.name) : undefined;
   const cableColor = resolveWireColor(cable?.colors[(conductor.cable?.wireIndex ?? 1) - 1]);
@@ -1067,10 +1402,10 @@ function fromCanonicalConductor(
   return {
     id: conductor.id,
     type: EdgeTemplateType.WireEdge,
-    source: endpointNodeId(conductor.from),
-    sourcePort: endpointPortId(conductor.from, layout?.fromTap),
-    target: endpointNodeId(conductor.to),
-    targetPort: endpointPortId(conductor.to, layout?.toTap),
+    source: endpointNodeId(conductor.from, copperPorts),
+    sourcePort: endpointPortId(conductor.from, layout?.fromTap, copperPorts),
+    target: endpointNodeId(conductor.to, copperPorts),
+    targetPort: endpointPortId(conductor.to, layout?.toTap, copperPorts),
     routingMode: manualPoints ? 'manual' : undefined,
     points: manualPoints,
     data: {
@@ -1099,10 +1434,28 @@ function fromCanonicalConductor(
   };
 }
 
-function endpointNodeId(endpoint: CanonicalNetEndpoint): string {
-  return endpoint.kind === 'pin' ? endpoint.componentId : endpoint.junctionId;
+/** Where a junction that is drawn as board copper actually lands. */
+export interface BoardCopperPort {
+  boardId: string;
+  portId: string;
+  tapPortIds?: string[];
 }
 
-function endpointPortId(endpoint: CanonicalNetEndpoint, tap: number | undefined): string {
-  return endpoint.kind === 'pin' ? endpoint.pinId : junctionTapPortId(tap ?? 0);
+function endpointNodeId(
+  endpoint: CanonicalNetEndpoint,
+  copperPorts: ReadonlyMap<string, BoardCopperPort>,
+): string {
+  if (endpoint.kind === 'pin') return endpoint.componentId;
+  return copperPorts.get(endpoint.junctionId)?.boardId ?? endpoint.junctionId;
+}
+
+function endpointPortId(
+  endpoint: CanonicalNetEndpoint,
+  tap: number | undefined,
+  copperPorts: ReadonlyMap<string, BoardCopperPort>,
+): string {
+  if (endpoint.kind === 'pin') return endpoint.pinId;
+  const copper = copperPorts.get(endpoint.junctionId);
+  if (!copper) return junctionTapPortId(tap ?? 0);
+  return tap === undefined ? copper.portId : (copper.tapPortIds?.[tap] ?? copper.portId);
 }

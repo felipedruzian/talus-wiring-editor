@@ -1,9 +1,17 @@
 import { type JsonValue } from '../../shared/utils/json-value';
+import { type Footprint } from './footprint';
 
 export enum NodeTemplateType {
   DeviceNode = 'deviceNode',
   BoardNode = 'boardNode',
   JunctionNode = 'junctionNode',
+  /**
+   * A device drawn as a physical footprint seated on a board, instead of as the
+   * generic AV card. Same `DeviceNodeData` payload - only the template differs,
+   * so the properties sidebar, DXF export, `generateDeviceId` and every other
+   * subsystem that keys on `data.type === 'device'` keep working unchanged.
+   */
+  FootprintNode = 'footprintNode',
 }
 
 export enum EdgeTemplateType {
@@ -30,11 +38,17 @@ export type PreservedFields = Readonly<Record<string, PreservedValue>>;
 
 /**
  * A hole address on a physical board's grid (0-indexed, row then column).
- * Optional on `DevicePort` -- only ports that are meant to align with a
- * physical board's hole grid (e.g. a header pin plugged into board A) carry
- * one. Purely descriptive addressing metadata in this slice: the device-node
- * template still lays ports out in the baseline two-column card, it does not
- * yet project `hole` into pixel space. See docs/wiring-tracer-bullet.md.
+ *
+ * Boards are described row-major from their top-left hole, so `{row: 0, col: 0}`
+ * is the hole the board's own illustration anchors on. Human-facing labels are
+ * 1-indexed (`L1..L6` x `C1..C11`); those live
+ * in `BoardTrace.label` / `BoardTrace.net`, never in the addresses themselves.
+ *
+ * Optional on `DevicePort` -- only pins meant to align with a board's hole grid
+ * carry one. For a device with a `placement`, per-pin holes are *derived* from
+ * the placement and the footprint (see `deviceHoleClaims`), and the
+ * stored `hole` is the resolved result; for a device without one, the stored
+ * `hole` is the only address there is (the issue #1 tracer-bullet path).
  */
 export interface BoardHole {
   row: number;
@@ -70,6 +84,31 @@ export interface WireVizConnectorMetadata {
   wirevizExtras?: PreservedFields;
 }
 
+/**
+ * How far a footprint is turned on the board, clockwise, in degrees. Only
+ * multiples of 90 exist: a through-hole part can only be seated on the hole
+ * grid at right angles, so anything else would put its pins between holes.
+ */
+export type BoardRotation = 0 | 90 | 180 | 270;
+
+export const BOARD_ROTATIONS: readonly BoardRotation[] = [0, 90, 180, 270];
+
+/**
+ * Where a footprinted component is seated on a board.
+ *
+ * `anchor` is the board hole that the *rotated* footprint's top-left bounding
+ * box cell lands on - so the whole placement is `(board, anchor, rotation)` and
+ * every pin position follows from the footprint. Keeping the anchor (rather
+ * than a pixel position) as the stored truth is what makes "encaixado" mean
+ * something: a placement can only ever address whole holes.
+ */
+export interface DevicePlacement {
+  /** `BoardNodeData.boardId` this component is seated on. */
+  boardId: string;
+  anchor: BoardHole;
+  rotation: BoardRotation;
+}
+
 export interface DeviceNodeData extends WireVizConnectorMetadata {
   type: 'device';
   deviceId: string;
@@ -82,19 +121,64 @@ export interface DeviceNodeData extends WireVizConnectorMetadata {
    * `BoardNodeData.boardId`). Required for validation whenever any of this
    * device's `ports` carries a `hole` -- a hole address is only meaningful
    * relative to one specific board's grid. Devices with no holed ports may
-   * omit it.
+   * omit it. When `placement` is set it always agrees with `placement.boardId`.
    */
   boardId?: string;
   notes?: string;
+  /**
+   * Physical footprint this device is drawn and seated with (a key of
+   * `FOOTPRINTS`). Absent for devices that are just generic AV cards, and for
+   * the issue #1 tracer-bullet devices whose pin holes are hand-addressed.
+   */
+  footprintId?: string;
+  /**
+   * Project-owned definition for `footprintId`.
+   *
+   * New physical saves carry this value so reload does not depend on the
+   * application fixture catalog. The built-in catalog remains a fallback for
+   * palette items and legacy in-memory nodes.
+   */
+  footprint?: Footprint;
+  /** Seat on a board. Only meaningful together with `footprintId`. */
+  placement?: DevicePlacement;
   ports: DevicePort[];
 }
 
 /**
- * A physical board with an addressable rows x cols hole grid (e.g. "placa A",
- * 6 x 11). Rendered as its own node so it shares the single ng-diagram
- * canvas/coordinate plane with devices and wires -- not a second canvas, not a
- * background image. Not editable via the properties sidebar in this slice
- * (no sidebar form is wired up for `board` nodes yet).
+ * One axis-aligned run of holes joined by a copper trace. `from` and `to` are
+ * inclusive and must share a row or a column -- a diagonal run has no physical
+ * meaning on a hole grid.
+ */
+export interface BoardTraceSegment {
+  from: BoardHole;
+  to: BoardHole;
+}
+
+/**
+ * A trilha: a set of holes on one board that are electrically one point.
+ *
+ * Segments (rather than an explicit hole list) keep a full-width rail on a
+ * 6 x 28 board one line of data instead of 28, and still express the L-shaped
+ * runs and vertical bridges that the real Talus-Droid pieces use (see peca E's
+ * bridge from L1-C3 down to L3-C1 in docs/physical-footprints.md).
+ */
+export interface BoardTrace {
+  id: string;
+  /** Human-facing name, e.g. `"L1"`. */
+  label: string;
+  /** Electrical net this trace carries, e.g. `"GND_SYS"`. Free of a net when bare copper. */
+  net?: string;
+  segments: BoardTraceSegment[];
+}
+
+/**
+ * A physical board with an addressable rows x cols hole grid.
+ *
+ * Nothing here presumes a particular size or a particular kind of board: the
+ * 6 x 11 placa A, the uncut 6 x 28 origin perfboard and the small 6 x 3 / 6 x 4
+ * pecas D/E/F/G are all the same type with different numbers. Rendered as its
+ * own node so it shares the single ng-diagram canvas/coordinate plane with
+ * devices and wires -- not a second canvas, not a background image.
  */
 export interface BoardNodeData {
   type: 'board';
@@ -104,6 +188,17 @@ export interface BoardNodeData {
   cols: number;
   /** Distance between adjacent holes, in diagram px (both axes). */
   pitch: number;
+  /**
+   * Explicit holes present on the board. Absence means the complete rectangular
+   * `rows x cols` grid, preserving the compact representation used by earlier
+   * projects. Supplying the list allows cut-outs and irregular perfboards; an
+   * empty list deliberately means that the board has no holes.
+   */
+  holes?: BoardHole[];
+  /** Drawn hole diameter in px. Defaults to `DEFAULT_HOLE_DIAMETER` when absent. */
+  holeDiameter?: number;
+  /** Copper traces on this board. A board with no traces is a plain perfboard. */
+  traces?: BoardTrace[];
 }
 
 /**

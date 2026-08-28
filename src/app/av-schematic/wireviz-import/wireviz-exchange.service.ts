@@ -1,8 +1,11 @@
 import { computed, inject, Injectable, InjectionToken, signal } from '@angular/core';
 import {
+  buildNets,
   CANONICAL_FORMAT_VERSION,
+  type CanonicalConductor,
   type CanonicalConductorLayout,
   type CanonicalElectrical,
+  type CanonicalJunction,
   type CanonicalJunctionLayout,
   type CanonicalProjectV2,
 } from '../diagram/model/canonical-project';
@@ -57,7 +60,12 @@ export class WireVizExchangeService {
       const imported = importWireViz(yaml, effectiveOptions);
       const project = buildImportedProject(imported.electrical, current);
       await this.storage.replaceProject(project);
-      this._report.set(imported.report);
+      this._report.set({
+        entries: [
+          ...imported.report.entries,
+          ...physicalNetReconciliationEntries(imported.electrical, project.electrical),
+        ].sort((a, b) => a.path.localeCompare(b.path) || a.code.localeCompare(b.code)),
+      });
       this.succeed(
         `YAML importado: ${imported.electrical.nets.length} net(s), ` +
           `${imported.electrical.cables.length} cabo(s).`,
@@ -79,7 +87,12 @@ export class WireVizExchangeService {
   exportYaml(): WireVizExportResult | null {
     this.begin('Exportando YAML WireViz...');
     try {
-      const result = exportWireViz(this.storage.snapshotProject().electrical);
+      const project = this.storage.snapshotProject();
+      const bindingCount = project.layout.conductors.filter(
+        (layout) => layout.physicalBinding,
+      ).length;
+      const exported = exportWireViz(wireVizElectrical(project));
+      const result = withPhysicalBindingReport(exported, bindingCount);
       this._report.set(result.report);
       this.succeed(`WireViz exportado com ${result.report.entries.length} item(ns) no relatório.`);
       return result;
@@ -113,6 +126,81 @@ export class WireVizExchangeService {
       entries: [{ severity: 'error', code: 'operation-failed', path, message }],
     });
   }
+}
+
+/**
+ * Removes generated pin-to-copper bindings before producing WireViz YAML.
+ *
+ * Those conductors describe soldered placement, not authored wires. Exporting
+ * them as ordinary WireViz connections would make the next replacement import
+ * duplicate them before `withPhysicalBindings` restores the project-owned
+ * associations. A copper junction is retained when a visible conductor still
+ * targets it; otherwise it is restored from the import skeleton together with
+ * the hidden bindings.
+ */
+export function wireVizElectrical(project: CanonicalProjectV2): CanonicalElectrical {
+  const hiddenConductorIds = new Set(
+    project.layout.conductors
+      .filter((layout) => layout.physicalBinding)
+      .map((layout) => layout.conductorId),
+  );
+  if (hiddenConductorIds.size === 0) return project.electrical;
+
+  const conductors: CanonicalConductor[] = [];
+  const nameHints = new Map<string, string>();
+  for (const net of project.electrical.nets) {
+    for (const conductor of net.conductors) {
+      if (hiddenConductorIds.has(conductor.id)) continue;
+      conductors.push(conductor);
+      nameHints.set(conductor.id, net.name);
+    }
+  }
+
+  const referencedJunctionIds = new Set<string>();
+  for (const conductor of conductors) {
+    if (conductor.from.kind === 'junction') {
+      referencedJunctionIds.add(conductor.from.junctionId);
+    }
+    if (conductor.to.kind === 'junction') {
+      referencedJunctionIds.add(conductor.to.junctionId);
+    }
+  }
+  const copperJunctionIds = new Set(
+    project.layout.junctions
+      .filter((layout) => layout.boardPort !== undefined)
+      .map((layout) => layout.junctionId),
+  );
+
+  return {
+    ...project.electrical,
+    junctions: project.electrical.junctions.filter(
+      (junction) => !copperJunctionIds.has(junction.id) || referencedJunctionIds.has(junction.id),
+    ),
+    nets: buildNets(conductors, nameHints),
+  };
+}
+
+function withPhysicalBindingReport(
+  result: WireVizExportResult,
+  bindingCount: number,
+): WireVizExportResult {
+  if (bindingCount === 0) return result;
+  const bindingEntry: WireVizReportEntry = {
+    severity: 'info',
+    code: 'field-not-representable',
+    path: 'layout.conductors.physicalBinding',
+    message:
+      `${bindingCount} associação(ões) física(s) entre pino e cobre permanecem apenas ` +
+      'no projeto e serão restauradas em uma reimportação de substituição.',
+  };
+  return {
+    ...result,
+    report: {
+      entries: [...result.report.entries, bindingEntry].sort(
+        (a, b) => a.path.localeCompare(b.path) || a.code.localeCompare(b.code),
+      ),
+    },
+  };
 }
 
 /**
@@ -161,9 +249,10 @@ function inferImportOptions(project: CanonicalProjectV2): WireVizImportOptions {
 }
 
 export function buildImportedProject(
-  electrical: CanonicalElectrical,
+  importedElectrical: CanonicalElectrical,
   previous: CanonicalProjectV2,
 ): CanonicalProjectV2 {
+  const electrical = withPhysicalBindings(importedElectrical, previous);
   const previousComponents = new Map(
     previous.layout.components.map((layout) => [layout.componentId, layout]),
   );
@@ -229,6 +318,130 @@ export function buildImportedProject(
       conductors,
     },
   };
+}
+
+/**
+ * Carries pin-to-copper bindings through a replacement WireViz import.
+ *
+ * WireViz can describe the imported conductors, but it has no vocabulary for
+ * a pin being soldered into a board hole. The import skeleton therefore keeps
+ * those generated binding conductors and their copper junctions, then rebuilds
+ * the net graph in one pass. Imported names are authored hints and always win;
+ * a trace label is only a fallback for a binding-only net.
+ */
+function withPhysicalBindings(
+  imported: CanonicalElectrical,
+  previous: CanonicalProjectV2,
+): CanonicalElectrical {
+  const importedComponents = new Map(
+    imported.components.map((component) => [component.id, component]),
+  );
+  const importedConductorIds = new Set(
+    imported.nets.flatMap((net) => net.conductors.map((conductor) => conductor.id)),
+  );
+  const previousConductorById = new Map<string, CanonicalConductor>();
+  const previousNetByConductor = new Map(
+    previous.electrical.nets.flatMap((net) =>
+      net.conductors.map((conductor) => {
+        previousConductorById.set(conductor.id, conductor);
+        return [conductor.id, net] as const;
+      }),
+    ),
+  );
+  const previousJunctions = new Map(
+    previous.electrical.junctions.map((junction) => [junction.id, junction]),
+  );
+
+  const bindings: CanonicalConductor[] = [];
+  const physicalJunctions = new Map<string, CanonicalJunction>();
+  const fallbackNames = new Map<string, string>();
+  for (const layout of previous.layout.conductors) {
+    if (!layout.physicalBinding) continue;
+    const conductor = previousConductorById.get(layout.conductorId);
+    if (!conductor) continue;
+    const pin =
+      conductor.from.kind === 'pin'
+        ? conductor.from
+        : conductor.to.kind === 'pin'
+          ? conductor.to
+          : undefined;
+    const junction =
+      conductor.from.kind === 'junction'
+        ? conductor.from
+        : conductor.to.kind === 'junction'
+          ? conductor.to
+          : undefined;
+    const component = pin ? importedComponents.get(pin.componentId) : undefined;
+    if (!pin || !junction || !component?.pins.some((candidate) => candidate.id === pin.pinId)) {
+      continue;
+    }
+    if (importedConductorIds.has(conductor.id)) {
+      throw new WireVizImportError(
+        `conductor "${conductor.id}": id reservado para uma associação física pin-cobre`,
+      );
+    }
+    const physicalJunction = previousJunctions.get(junction.junctionId);
+    if (!physicalJunction) continue;
+
+    bindings.push(conductor);
+    physicalJunctions.set(physicalJunction.id, physicalJunction);
+    const previousNet = previousNetByConductor.get(conductor.id);
+    if (previousNet && previousNet.name !== previousNet.id) {
+      fallbackNames.set(conductor.id, previousNet.name);
+    }
+  }
+
+  const importedConductors = imported.nets.flatMap((net) => net.conductors);
+  const authoredNames = new Map<string, string>();
+  for (const net of imported.nets) {
+    for (const conductor of net.conductors) authoredNames.set(conductor.id, net.name);
+  }
+  const conductors = [...importedConductors, ...bindings];
+  const junctions = new Map(imported.junctions.map((junction) => [junction.id, junction]));
+  for (const junction of physicalJunctions.values()) {
+    if (!junctions.has(junction.id)) junctions.set(junction.id, junction);
+  }
+
+  return {
+    ...imported,
+    junctions: [...junctions.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+    nets: buildNets(conductors, authoredNames, fallbackNames),
+  };
+}
+
+/** Actionable import warnings for author names merged by retained copper. */
+export function physicalNetReconciliationEntries(
+  imported: CanonicalElectrical,
+  reconciled: CanonicalElectrical,
+): WireVizReportEntry[] {
+  const importedNameByConductor = new Map<string, string>();
+  for (const net of imported.nets) {
+    for (const conductor of net.conductors) {
+      importedNameByConductor.set(conductor.id, net.name);
+    }
+  }
+
+  const entries: WireVizReportEntry[] = [];
+  for (const net of reconciled.nets) {
+    const importedNames = [
+      ...new Set(
+        net.conductors
+          .map((conductor) => importedNameByConductor.get(conductor.id))
+          .filter((name): name is string => name !== undefined),
+      ),
+    ].sort();
+    if (importedNames.length < 2) continue;
+    entries.push({
+      severity: 'warning',
+      code: 'physical-net-reconciled',
+      path: `electrical.nets.${net.id}`,
+      message:
+        `As redes importadas ${importedNames.map((name) => `"${name}"`).join(', ')} ` +
+        `compartilham o cobre físico e foram reconciliadas como "${net.name}" por ordem ` +
+        'lexical. Revise o encaixe ou a autoria das redes.',
+    });
+  }
+  return entries;
 }
 
 function junctionDegrees(electrical: CanonicalElectrical): Map<string, number> {

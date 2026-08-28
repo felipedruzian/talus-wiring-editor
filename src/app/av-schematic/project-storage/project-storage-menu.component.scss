@@ -57,6 +57,59 @@
   }
 }
 
+.diagnostic-btn {
+  border: 1px solid var(--ngd-ui-stroke-primary-default);
+  border-radius: var(--ngd-token-radius-button-m);
+  background: var(--ngd-ui-bg-primary-default);
+  color: var(--ngd-txt-primary-default);
+  padding: 4px 8px;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.diagnostic-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: min(440px, 80vw);
+  max-height: 320px;
+  overflow: auto;
+  z-index: 12;
+  padding: 10px 12px;
+  border: 1px solid var(--ngd-ui-stroke-primary-default);
+  border-radius: var(--ngd-token-radius-element-8);
+  background: var(--ngd-ui-bg-primary-default);
+  color: var(--ngd-txt-primary-default);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  font-size: 12px;
+
+  p,
+  ul {
+    margin: 8px 0 0;
+  }
+
+  ul {
+    padding-left: 18px;
+  }
+
+  li {
+    margin-bottom: 8px;
+    color: var(--ngd-txt-warning-default, #7a4b00);
+
+    &.is-error {
+      color: var(--ngd-txt-danger-default, #b42318);
+    }
+  }
+
+  code {
+    display: block;
+    margin-top: 2px;
+    color: var(--ngd-txt-secondary-default);
+    overflow-wrap: anywhere;
+  }
+}
+
 .status-message {
   position: absolute;
   top: calc(100% + 6px);

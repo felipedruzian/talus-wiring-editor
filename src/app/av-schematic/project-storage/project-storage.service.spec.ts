@@ -73,14 +73,22 @@ describe('ProjectStorageService save/open', () => {
     let savedBody: unknown;
     let restoredNodes: Node[] = [];
     let restoredEdges: Edge[] = [];
-    const deleteEdges = vi.fn(() => Promise.resolve());
-    const deleteNodes = vi.fn(() => Promise.resolve());
+    const deleteEdges = vi.fn(() => {
+      currentEdges = [];
+      return Promise.resolve();
+    });
+    const deleteNodes = vi.fn(() => {
+      currentNodes = [];
+      return Promise.resolve();
+    });
     const addNodes = vi.fn((nodes: Node[]) => {
       restoredNodes = nodes;
+      currentNodes = nodes;
       return Promise.resolve();
     });
     const addEdges = vi.fn((edges: Edge[]) => {
       restoredEdges = edges;
+      currentEdges = edges;
       return Promise.resolve();
     });
     const modelService = {
@@ -88,10 +96,12 @@ describe('ProjectStorageService save/open', () => {
         getNodes: () => currentNodes,
         getEdges: () => currentEdges,
       }),
+      getNodeById: (nodeId: string) => currentNodes.find((node) => node.id === nodeId),
       deleteEdges,
       deleteNodes,
       addNodes,
       addEdges,
+      updateEdges: vi.fn(() => Promise.resolve()),
     };
     const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === 'PUT') {

@@ -86,7 +86,7 @@ export class ElementMutationService {
         }
         // Any ports change (flip, reorder, removal) shifts sibling port rows, so
         // manual edges on unchanged ports need re-anchoring too.
-        applyEdgeStretchOnSelectionMoved(this.modelService, new Set([change.entityId]), true);
+        await applyEdgeStretchOnSelectionMoved(this.modelService, new Set([change.entityId]), true);
       });
   }
 
@@ -271,9 +271,9 @@ export class ElementMutationService {
         },
         { waitForMeasurements: true },
       )
-      .then(() => {
-        applyEdgeStretchOnSelectionMoved(this.modelService, new Set([change.nodeId]), true);
-      });
+      .then(() =>
+        applyEdgeStretchOnSelectionMoved(this.modelService, new Set([change.nodeId]), true),
+      );
   }
 
   resetEdgeRouting(edgeId: string): void {

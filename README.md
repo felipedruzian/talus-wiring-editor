@@ -6,7 +6,7 @@ _Live demo: [https://www.ngdiagram.dev/templates/av/](https://www.ngdiagram.dev/
 
 Interactive AV (audio/video) schematic diagram built with Angular 21 and [ng-diagram](https://www.npmjs.com/package/ng-diagram). Use this project as a starting point for AV system design — building your own schematic, signal-flow, or device-wiring diagram. Minimal dependencies: only Angular and ng-diagram, with no opinionated third-party UI libraries.
 
-> **Este fork (`talus-wiring-editor`)** está evoluindo este template para um editor de fiação física. O tracer bullet da issue #1 foi estendido pela issue #2 com nets multi-drop, junções/trilhos explícitos, projeto canônico v2 e round-trip WireViz com relatório de compatibilidade. Ver [`docs/wiring-tracer-bullet.md`](docs/wiring-tracer-bullet.md), [`docs/wireviz-round-trip.md`](docs/wireviz-round-trip.md) e [`docs/license-matrix.md`](docs/license-matrix.md).
+> **Este fork (`talus-wiring-editor`)** está evoluindo este template para um editor de fiação física. O tracer bullet da issue #1 foi estendido pela issue #2 com nets multi-drop, junções/trilhos explícitos, projeto canônico v2 e round-trip WireViz com relatório de compatibilidade; a issue #3 acrescenta placas arbitrárias e footprints encaixáveis no mesmo canvas. Ver [`docs/wiring-tracer-bullet.md`](docs/wiring-tracer-bullet.md), [`docs/wireviz-round-trip.md`](docs/wireviz-round-trip.md), [`docs/physical-footprints.md`](docs/physical-footprints.md) e [`docs/license-matrix.md`](docs/license-matrix.md).
 
 Features:
 
@@ -65,6 +65,7 @@ Deep-dive documentation lives in [`docs/`](docs/):
 - [`docs/architecture.md`](docs/architecture.md) — service hierarchy, key patterns, project structure
 - [`docs/edge-reshaping.md`](docs/edge-reshaping.md) — manual edge routing: gesture/command/logic layers and the ng-diagram porting target
 - [`docs/export.md`](docs/export.md) — PNG and DXF export pipelines
+- [`docs/physical-footprints.md`](docs/physical-footprints.md) — placas, footprints, encaixe, ocupação, persistência v2 e limites da autoria física
 - [`docs/wiring-tracer-bullet.md`](docs/wiring-tracer-bullet.md) — issue #1: representação de placa/componente/net física, formato canônico de projeto, o que está pendente ou fora de escopo
 - [`docs/wireviz-import-limits.md`](docs/wireviz-import-limits.md) — o subconjunto de YAML WireViz que o parser desta fatia aceita
 - [`docs/wireviz-round-trip.md`](docs/wireviz-round-trip.md) — projeto canônico v2, multi-drop, relatório e equivalência elétrica

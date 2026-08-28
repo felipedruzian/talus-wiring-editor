@@ -41,6 +41,8 @@ export type WireVizReportCode =
   | 'loop-detected'
   /** A net ended up with three or more endpoints (multi-drop / fan-out). Informational, never an error. */
   | 'multidrop-net'
+  /** Distinct imported net names became one net through existing physical copper. */
+  | 'physical-net-reconciled'
   // --- export ---------------------------------------------------------
   /** A color shape WireViz cannot represent. Kept in the project, omitted from YAML, never substituted. */
   | 'color-not-representable'

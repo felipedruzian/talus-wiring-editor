@@ -23,6 +23,9 @@ export class ProjectStorageMenuComponent {
   protected readonly status = this.storage.status;
   protected readonly message = this.storage.message;
   protected readonly isBusy = this.storage.isBusy;
+  protected readonly diagnostics = this.storage.physicalDiagnostics;
+  protected readonly diagnosticCount = this.storage.physicalDiagnosticCount;
+  protected readonly diagnosticsOpen = signal(false);
 
   protected readonly statusRole = computed(() => (this.status() === 'error' ? 'alert' : 'status'));
   protected readonly operationIsSave = computed(() => this.storage.operation() === 'save');
@@ -39,5 +42,10 @@ export class ProjectStorageMenuComponent {
   protected open(): void {
     if (this.isBusy()) return;
     void this.storage.open(this.projectId());
+  }
+
+  protected toggleDiagnostics(): void {
+    this.storage.refreshPhysicalDiagnostics();
+    this.diagnosticsOpen.update((open) => !open);
   }
 }

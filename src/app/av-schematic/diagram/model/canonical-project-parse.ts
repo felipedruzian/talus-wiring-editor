@@ -1,4 +1,21 @@
-import { isHoleInBounds } from './board-geometry';
+import {
+  BOARD_MARGIN,
+  findHoleCollisions,
+  holeKey,
+  isBoardHoleAvailable,
+  isHoleInBounds,
+  type BoardHoleClaim,
+} from './board-geometry';
+import {
+  boardCopperJunctionId,
+  holePortId,
+  isBoardPortId,
+  parseHolePortId,
+  parseTracePortId,
+  physicalBindingConductorId,
+  tracePortId,
+} from './board-ports';
+import { findTraceDefects, findTraceOverlaps, traceForHole, traceHoles } from './board-trace';
 import {
   buildNets,
   CANONICAL_FORMAT_VERSION,
@@ -21,7 +38,22 @@ import {
   type CanonicalRoutingMode,
 } from './canonical-project';
 import {
+  footprintOccupiedHoles,
+  footprintPinHoles,
+  placementNodePosition,
+} from './footprint-geometry';
+import {
+  type Footprint,
+  type FootprintCell,
+  type FootprintPaint,
+  type FootprintShape,
+} from './footprint';
+import {
   type BoardHole,
+  type BoardRotation,
+  type BoardTrace,
+  type BoardTraceSegment,
+  type DevicePlacement,
   type JunctionKind,
   type PortDirection,
   type PreservedFields,
@@ -59,6 +91,17 @@ const ALLOWED_PORT_DIRECTIONS: readonly PortDirection[] = ['input', 'output'];
 const ALLOWED_JUNCTION_KINDS: readonly JunctionKind[] = ['junction', 'rail'];
 const ALLOWED_ENDPOINT_KINDS = ['pin', 'junction'] as const;
 const ALLOWED_WIREVIZ_LINKS: readonly WireVizLinkStyle[] = ['--', '<--', '<-->', '-->'];
+const ALLOWED_BOARD_ROTATIONS: readonly BoardRotation[] = [0, 90, 180, 270];
+const ALLOWED_FOOTPRINT_PAINTS: readonly FootprintPaint[] = [
+  'none',
+  'body',
+  'body-alt',
+  'accent',
+  'lead',
+  'silk',
+  'polarity',
+];
+const ALLOWED_TEXT_ANCHORS = ['start', 'middle', 'end'] as const;
 
 export function parseCanonicalProject(raw: unknown): CanonicalProjectV2 {
   const root = expectRecord(raw, 'project');
@@ -150,6 +193,50 @@ function preflightV2(
   budget.add(junctionLayouts.length, 'project.layout.junctions');
   budget.add(conductorLayouts.length, 'project.layout.conductors');
 
+  boards.forEach((raw, index) => {
+    const label = `project.layout.boards[${index}]`;
+    const board = expectRecord(raw, label);
+    if (board['holes'] !== undefined) {
+      const holes = expectArray(board['holes'], `${label}.holes`);
+      assertCollectionLimit(
+        holes.length,
+        OPERATIONAL_LIMITS.maxBoardHoles,
+        `${label}.holes`,
+        'hole count',
+      );
+      budget.add(holes.length, `${label}.holes`);
+    }
+    if (board['traces'] !== undefined) {
+      const traces = expectArray(board['traces'], `${label}.traces`);
+      let segmentCount = 0;
+      assertCollectionLimit(
+        traces.length,
+        OPERATIONAL_LIMITS.maxBoardTraces,
+        `${label}.traces`,
+        'trace count',
+      );
+      budget.add(traces.length, `${label}.traces`);
+      traces.forEach((traceRaw, traceIndex) => {
+        const traceLabel = `${label}.traces[${traceIndex}].segments`;
+        const segments = expectArray(expectRecord(traceRaw, traceLabel)['segments'], traceLabel);
+        assertCollectionLimit(
+          segments.length,
+          OPERATIONAL_LIMITS.maxTraceSegmentsPerBoard,
+          traceLabel,
+          'segment count',
+        );
+        segmentCount += segments.length;
+        budget.add(segments.length, traceLabel);
+      });
+      assertCollectionLimit(
+        segmentCount,
+        OPERATIONAL_LIMITS.maxTraceSegmentsPerBoard,
+        `${label}.traces`,
+        'total segment count',
+      );
+    }
+  });
+
   components.forEach((raw, index) => {
     const label = `project.electrical.components[${index}].pins`;
     const pins = expectArray(
@@ -204,6 +291,36 @@ function preflightV2(
     if (layout['pinHoles'] !== undefined) {
       budget.add(expectArray(layout['pinHoles'], label).length, label);
     }
+    if (layout['footprint'] !== undefined) {
+      const footprintLabel = `project.layout.components[${index}].footprint`;
+      const footprint = expectRecord(layout['footprint'], footprintLabel);
+      const pins = expectArray(footprint['pins'], `${footprintLabel}.pins`);
+      assertCollectionLimit(
+        pins.length,
+        OPERATIONAL_LIMITS.maxPinsPerComponent,
+        `${footprintLabel}.pins`,
+        'pin count',
+      );
+      budget.add(pins.length, `${footprintLabel}.pins`);
+      const shapes = expectArray(footprint['shapes'], `${footprintLabel}.shapes`);
+      assertCollectionLimit(
+        shapes.length,
+        OPERATIONAL_LIMITS.maxFootprintShapes,
+        `${footprintLabel}.shapes`,
+        'shape count',
+      );
+      budget.add(shapes.length, `${footprintLabel}.shapes`);
+      if (footprint['bodyCells'] !== undefined) {
+        const cells = expectArray(footprint['bodyCells'], `${footprintLabel}.bodyCells`);
+        assertCollectionLimit(
+          cells.length,
+          OPERATIONAL_LIMITS.maxBoardHoles,
+          `${footprintLabel}.bodyCells`,
+          'body cell count',
+        );
+        budget.add(cells.length, `${footprintLabel}.bodyCells`);
+      }
+    }
   });
 
   junctionLayouts.forEach((raw, index) => {
@@ -248,6 +365,7 @@ function validateProject(project: CanonicalProjectV2): void {
   const boardsById = new Map<string, CanonicalBoard>();
   for (const board of boards) {
     claimId(board.id, 'project.layout.boards');
+    validateBoard(board);
     boardsById.set(board.id, board);
   }
 
@@ -411,6 +529,7 @@ function validateLayout(
   conductorIds: ReadonlySet<string>,
 ): void {
   const seenComponentLayouts = new Set<string>();
+  const physicalClaims: BoardHoleClaim[] = [];
   for (const layout of project.layout.components) {
     const label = `project.layout.components "${layout.componentId}"`;
     if (seenComponentLayouts.has(layout.componentId)) {
@@ -429,6 +548,71 @@ function validateLayout(
       );
     }
 
+    if (layout.footprintId !== undefined && layout.footprint === undefined) {
+      throw new CanonicalProjectError(
+        `${label}: footprintId requires an embedded footprint definition`,
+      );
+    }
+    if (layout.footprint !== undefined) {
+      validateFootprint(layout.footprint, `${label}.footprint`);
+      if (layout.footprintId === undefined) {
+        throw new CanonicalProjectError(`${label}: footprint requires footprintId`);
+      }
+      if (layout.footprint.id !== layout.footprintId) {
+        throw new CanonicalProjectError(
+          `${label}: footprint id "${layout.footprint.id}" differs from footprintId "${layout.footprintId}"`,
+        );
+      }
+      const footprintPinIds = new Set(layout.footprint.pins.map((pin) => pin.id));
+      for (const pin of component.pins) {
+        if (!footprintPinIds.has(pin.id)) {
+          throw new CanonicalProjectError(
+            `${label}.footprint: no physical pin for electrical pin "${pin.id}"`,
+          );
+        }
+      }
+    }
+    if (layout.placement !== undefined && layout.footprint === undefined) {
+      throw new CanonicalProjectError(`${label}: placement requires a footprint`);
+    }
+
+    if (layout.placement && layout.footprint) {
+      const board = boardsById.get(layout.placement.boardId);
+      if (!board) {
+        throw new CanonicalProjectError(
+          `${label}.placement: no board "${layout.placement.boardId}"`,
+        );
+      }
+      if (layout.boardId !== undefined && layout.boardId !== layout.placement.boardId) {
+        throw new CanonicalProjectError(
+          `${label}: boardId and placement.boardId must identify the same board`,
+        );
+      }
+      const occupied = footprintOccupiedHoles(layout.footprint, layout.placement);
+      const unavailable = occupied.filter((hole) => !isBoardHoleAvailable(board, hole));
+      if (unavailable.length > 0) {
+        const first = unavailable[0];
+        throw new CanonicalProjectError(
+          `${label}.placement: hole {row: ${first?.row ?? -1}, col: ${first?.col ?? -1}} is not available on board "${board.id}"`,
+        );
+      }
+      layout.boardId = layout.placement.boardId;
+      layout.position = placementNodePosition(
+        { board, position: board.position },
+        layout.placement,
+      );
+      const footprintHoles = new Map(
+        footprintPinHoles(layout.footprint, layout.placement).map((pin) => [pin.pinId, pin.hole]),
+      );
+      layout.pinHoles = component.pins.flatMap((pin) => {
+        const hole = footprintHoles.get(pin.id);
+        return hole ? [{ pinId: pin.id, hole: { ...hole } }] : [];
+      });
+      physicalClaims.push(
+        ...occupied.map((hole) => ({ boardId: board.id, ownerId: layout.componentId, hole })),
+      );
+    }
+
     const seenPins = new Set<string>();
     for (const placement of layout.pinHoles ?? []) {
       if (seenPins.has(placement.pinId)) {
@@ -444,11 +628,32 @@ function validateLayout(
         boardsById,
         `${label}.pinHoles "${placement.pinId}"`,
       );
+      if (!layout.placement && layout.boardId) {
+        physicalClaims.push({
+          boardId: layout.boardId,
+          ownerId: `${layout.componentId}:${placement.pinId}`,
+          hole: placement.hole,
+        });
+      }
     }
+  }
+
+  const collisions = findHoleCollisions(physicalClaims);
+  if (collisions.length > 0) {
+    const first = collisions[0]?.[0];
+    const owners = collisions[0]?.map((claim) => claim.ownerId).join(', ') ?? '';
+    throw new CanonicalProjectError(
+      `project.layout.components: board "${first?.boardId ?? ''}" hole ` +
+        `{row: ${first?.hole.row ?? -1}, col: ${first?.hole.col ?? -1}} is occupied by ${owners}`,
+    );
   }
 
   const seenJunctionLayouts = new Set<string>();
   const tapsByJunction = new Map<string, number>();
+  const boardPortsByJunction = new Map<
+    string,
+    { boardId: string; portId: string; holes: BoardHole[]; netLabel?: string }
+  >();
   for (const layout of project.layout.junctions) {
     const label = `project.layout.junctions "${layout.junctionId}"`;
     if (seenJunctionLayouts.has(layout.junctionId)) {
@@ -467,8 +672,62 @@ function validateLayout(
     if (layout.hole) {
       validateHole(layout.hole, layout.boardId, boardsById, label);
     }
+    if (layout.boardPort !== undefined) {
+      if (!layout.boardId) {
+        throw new CanonicalProjectError(`${label}.boardPort: requires boardId`);
+      }
+      if (!isBoardPortId(layout.boardPort)) {
+        throw new CanonicalProjectError(`${label}.boardPort: invalid board port id`);
+      }
+      const board = boardsById.get(layout.boardId);
+      if (!board) {
+        throw new CanonicalProjectError(`${label}.boardPort: unknown board "${layout.boardId}"`);
+      }
+      const hole = parseHolePortId(layout.boardPort);
+      const traceId = parseTracePortId(layout.boardPort);
+      const trace = traceId
+        ? board.traces?.find((candidate) => candidate.id === traceId)
+        : undefined;
+      if (traceId && !trace) {
+        throw new CanonicalProjectError(`${label}.boardPort: unknown trace "${traceId}"`);
+      }
+      if (hole && !isBoardHoleAvailable(board, hole)) {
+        throw new CanonicalProjectError(`${label}.boardPort: unavailable hole`);
+      }
+      if (hole && traceForHole(board, hole)) {
+        throw new CanonicalProjectError(
+          `${label}.boardPort: a hole on a trace must use that trace port`,
+        );
+      }
+      const holes = trace ? traceHoles(trace) : hole ? [hole] : [];
+      if (holes.length === 0) {
+        throw new CanonicalProjectError(`${label}.boardPort: port has no physical hole`);
+      }
+      const expectedId = boardCopperJunctionId(layout.boardId, layout.boardPort);
+      if (layout.junctionId !== expectedId) {
+        throw new CanonicalProjectError(
+          `${label}: expected deterministic junction id "${expectedId}"`,
+        );
+      }
+      const anchor = holes[0];
+      if (!anchor) throw new CanonicalProjectError(`${label}.boardPort: port has no anchor`);
+      layout.hole = { ...anchor };
+      layout.taps = holes.length;
+      layout.position = {
+        x: board.position.x + BOARD_MARGIN + anchor.col * board.pitch,
+        y: board.position.y + BOARD_MARGIN + anchor.row * board.pitch,
+      };
+      boardPortsByJunction.set(layout.junctionId, {
+        boardId: layout.boardId,
+        portId: layout.boardPort,
+        holes,
+        netLabel: trace?.net,
+      });
+    }
     tapsByJunction.set(layout.junctionId, layout.taps);
   }
+
+  validateCopperNetLabels(project, boardPortsByJunction);
 
   const conductorsById = new Map<string, CanonicalConductor>();
   for (const net of project.electrical.nets) {
@@ -490,6 +749,244 @@ function validateLayout(
     const conductor = conductorsById.get(layout.conductorId);
     validateTap(layout.fromTap, conductor?.from, tapsByJunction, `${label}.fromTap`);
     validateTap(layout.toTap, conductor?.to, tapsByJunction, `${label}.toTap`);
+    if (layout.physicalBinding) {
+      if (!conductor) throw new CanonicalProjectError(`${label}: missing conductor`);
+      validatePhysicalBinding(
+        layout,
+        conductor,
+        project.layout.components,
+        boardsById,
+        boardPortsByJunction,
+        label,
+      );
+    }
+  }
+
+  validatePhysicalBindingCoverage(project);
+}
+
+function validateCopperNetLabels(
+  project: CanonicalProjectV2,
+  boardPortsByJunction: ReadonlyMap<string, { netLabel?: string }>,
+): void {
+  for (const net of project.electrical.nets) {
+    const labels = [
+      ...new Set(
+        net.endpoints
+          .filter((endpoint) => endpoint.kind === 'junction')
+          .map((endpoint) => boardPortsByJunction.get(endpoint.junctionId)?.netLabel)
+          .filter((label): label is string => !!label),
+      ),
+    ].sort();
+    if (labels.length > 1) {
+      throw new CanonicalProjectError(
+        `project.electrical.nets "${net.id}": physically joins incompatible copper labels ` +
+          labels.join(', '),
+      );
+    }
+  }
+}
+
+function validateBoard(board: CanonicalBoard): void {
+  const label = `project.layout.boards "${board.id}"`;
+  if (board.holeDiameter !== undefined && board.holeDiameter > board.pitch) {
+    throw new CanonicalProjectError(`${label}.holeDiameter: cannot exceed board pitch`);
+  }
+  if (board.holes === undefined && board.rows * board.cols > OPERATIONAL_LIMITS.maxBoardHoles) {
+    throw new CanonicalProjectError(
+      `${label}: implicit hole count ${board.rows * board.cols} exceeds operational limit of ` +
+        `${OPERATIONAL_LIMITS.maxBoardHoles}; use an explicit sparse holes list`,
+    );
+  }
+
+  const holeKeys = new Set<string>();
+  for (const hole of board.holes ?? []) {
+    const key = holeKey(hole);
+    if (holeKeys.has(key)) throw new CanonicalProjectError(`${label}.holes: duplicate "${key}"`);
+    holeKeys.add(key);
+    if (!isHoleInBounds(board, hole)) {
+      throw new CanonicalProjectError(`${label}.holes: "${key}" is outside the board grid`);
+    }
+  }
+
+  const traceIds = new Set<string>();
+  for (const trace of board.traces ?? []) {
+    if (traceIds.has(trace.id)) {
+      throw new CanonicalProjectError(`${label}.traces: duplicate id "${trace.id}"`);
+    }
+    traceIds.add(trace.id);
+    if (trace.segments.length === 0) {
+      throw new CanonicalProjectError(`${label}.traces "${trace.id}": requires a segment`);
+    }
+    for (const [segmentIndex, segment] of trace.segments.entries()) {
+      if (segment.from.row !== segment.to.row && segment.from.col !== segment.to.col) {
+        throw new CanonicalProjectError(
+          `${label}.traces "${trace.id}" segment ${segmentIndex}: diagonal`,
+        );
+      }
+      for (const endpoint of [segment.from, segment.to]) {
+        if (!isBoardHoleAvailable(board, endpoint)) {
+          throw new CanonicalProjectError(
+            `${label}.traces "${trace.id}" segment ${segmentIndex}: unavailable endpoint ` +
+              `{row: ${endpoint.row}, col: ${endpoint.col}}`,
+          );
+        }
+      }
+    }
+    const tapCount = traceHoles(trace).length;
+    if (tapCount > OPERATIONAL_LIMITS.maxJunctionTaps) {
+      throw new CanonicalProjectError(
+        `${label}.traces "${trace.id}": ${tapCount} holes exceed junction tap limit ` +
+          `${OPERATIONAL_LIMITS.maxJunctionTaps}`,
+      );
+    }
+  }
+  const defect = findTraceDefects(board)[0];
+  if (defect) {
+    throw new CanonicalProjectError(
+      `${label}.traces "${defect.traceId}" segment ${defect.segmentIndex}: ${defect.reason} at ` +
+        `{row: ${defect.hole.row}, col: ${defect.hole.col}}`,
+    );
+  }
+  const overlap = findTraceOverlaps(board)[0];
+  if (overlap) {
+    throw new CanonicalProjectError(
+      `${label}.traces: ${overlap.traceIds.join(', ')} overlap at ` +
+        `{row: ${overlap.hole.row}, col: ${overlap.hole.col}}`,
+    );
+  }
+}
+
+function validateFootprint(footprint: Footprint, label: string): void {
+  const pinIds = new Set<string>();
+  const occupiedPinCells = new Set<string>();
+  for (const pin of footprint.pins) {
+    if (pinIds.has(pin.id)) {
+      throw new CanonicalProjectError(`${label}.pins: duplicate id "${pin.id}"`);
+    }
+    pinIds.add(pin.id);
+    validateFootprintCell(pin.cell, footprint, `${label}.pins "${pin.id}".cell`);
+    const cellKey = holeKey(pin.cell);
+    if (occupiedPinCells.has(cellKey)) {
+      throw new CanonicalProjectError(`${label}.pins: two pins occupy cell "${cellKey}"`);
+    }
+    occupiedPinCells.add(cellKey);
+  }
+  const bodyCells = new Set<string>();
+  for (const cell of footprint.bodyCells ?? []) {
+    validateFootprintCell(cell, footprint, `${label}.bodyCells`);
+    const key = holeKey(cell);
+    if (bodyCells.has(key)) {
+      throw new CanonicalProjectError(`${label}.bodyCells: duplicate cell "${key}"`);
+    }
+    bodyCells.add(key);
+  }
+}
+
+function validateFootprintCell(cell: FootprintCell, footprint: Footprint, label: string): void {
+  if (cell.row >= footprint.rows || cell.col >= footprint.cols) {
+    throw new CanonicalProjectError(
+      `${label}: {row: ${cell.row}, col: ${cell.col}} is outside ${footprint.rows} x ${footprint.cols}`,
+    );
+  }
+}
+
+function validatePhysicalBinding(
+  layout: CanonicalConductorLayout,
+  conductor: CanonicalConductor,
+  componentLayouts: readonly CanonicalComponentLayout[],
+  boardsById: ReadonlyMap<string, CanonicalBoard>,
+  boardPortsByJunction: ReadonlyMap<
+    string,
+    { boardId: string; portId: string; holes: BoardHole[]; netLabel?: string }
+  >,
+  label: string,
+): void {
+  if (layout.routingMode !== undefined || layout.points !== undefined) {
+    throw new CanonicalProjectError(`${label}: a physical binding cannot have a visible route`);
+  }
+  const pin =
+    conductor.from.kind === 'pin'
+      ? conductor.from
+      : conductor.to.kind === 'pin'
+        ? conductor.to
+        : null;
+  const junction =
+    conductor.from.kind === 'junction'
+      ? conductor.from
+      : conductor.to.kind === 'junction'
+        ? conductor.to
+        : null;
+  if (!pin || !junction) {
+    throw new CanonicalProjectError(
+      `${label}: a physical binding must join one pin to one junction`,
+    );
+  }
+  const expectedId = physicalBindingConductorId(pin.componentId, pin.pinId);
+  if (conductor.id !== expectedId) {
+    throw new CanonicalProjectError(`${label}: expected deterministic id "${expectedId}"`);
+  }
+  const componentLayout = componentLayouts.find(
+    (candidate) => candidate.componentId === pin.componentId,
+  );
+  if (!componentLayout) {
+    throw new CanonicalProjectError(`${label}: pin component has no layout`);
+  }
+  const pinHole =
+    componentLayout.placement && componentLayout.footprint
+      ? footprintPinHoles(componentLayout.footprint, componentLayout.placement).find(
+          (candidate) => candidate.pinId === pin.pinId,
+        )?.hole
+      : componentLayout.pinHoles?.find((candidate) => candidate.pinId === pin.pinId)?.hole;
+  const physicalBoardId = componentLayout.placement?.boardId ?? componentLayout.boardId;
+  const board = physicalBoardId ? boardsById.get(physicalBoardId) : undefined;
+  if (!pinHole || !board) {
+    throw new CanonicalProjectError(`${label}: cannot resolve the pin's board hole`);
+  }
+  const trace = traceForHole(board, pinHole);
+  const expectedPort = trace ? tracePortId(trace.id) : holePortId(pinHole);
+  const expectedJunctionId = boardCopperJunctionId(board.id, expectedPort);
+  if (junction.junctionId !== expectedJunctionId) {
+    throw new CanonicalProjectError(
+      `${label}: pin resolves to junction "${expectedJunctionId}", not "${junction.junctionId}"`,
+    );
+  }
+  const boardPort = boardPortsByJunction.get(junction.junctionId);
+  if (boardPort?.portId !== expectedPort) {
+    throw new CanonicalProjectError(`${label}: junction has no matching boardPort layout`);
+  }
+  const expectedTap = trace
+    ? traceHoles(trace).findIndex((hole) => hole.row === pinHole.row && hole.col === pinHole.col)
+    : undefined;
+  const actualTap = conductor.from.kind === 'junction' ? layout.fromTap : layout.toTap;
+  if (actualTap !== expectedTap) {
+    throw new CanonicalProjectError(
+      `${label}: expected copper tap ${String(expectedTap)}, got ${String(actualTap)}`,
+    );
+  }
+}
+
+function validatePhysicalBindingCoverage(project: CanonicalProjectV2): void {
+  const bound = new Set(
+    project.layout.conductors
+      .filter((layout) => layout.physicalBinding)
+      .map((layout) => layout.conductorId),
+  );
+  const componentsById = new Map(
+    project.electrical.components.map((component) => [component.id, component]),
+  );
+  for (const layout of project.layout.components) {
+    if (!layout.placement || !layout.footprint) continue;
+    const component = componentsById.get(layout.componentId);
+    if (!component) continue;
+    for (const pin of component.pins) {
+      const id = physicalBindingConductorId(component.id, pin.id);
+      if (!bound.has(id)) {
+        throw new CanonicalProjectError(
+          `project.layout.components "${component.id}": missing physical binding "${id}"`,
+        );
+      }
+    }
   }
 }
 
@@ -508,7 +1005,7 @@ function validateHole(
     throw new CanonicalProjectError(`${label}.hole: a hole was given but no boardId`);
   }
   const board = boardsById.get(boardId);
-  if (!board || !isHoleInBounds(board, hole)) {
+  if (!board || !isBoardHoleAvailable(board, hole)) {
     throw new CanonicalProjectError(
       `${label}.hole: {row: ${hole.row}, col: ${hole.col}} does not fit board "${boardId}"`,
     );
@@ -760,10 +1257,66 @@ function parseBoard(raw: unknown, label: string): CanonicalBoard {
   return {
     id: expectNonEmptyString(obj['id'], `${label}.id`),
     label: expectString(obj['label'], `${label}.label`),
-    rows: expectPositiveInteger(obj['rows'], `${label}.rows`),
-    cols: expectPositiveInteger(obj['cols'], `${label}.cols`),
-    pitch: expectPositiveFiniteNumber(obj['pitch'], `${label}.pitch`),
+    rows: expectBoundedPositiveInteger(
+      obj['rows'],
+      `${label}.rows`,
+      OPERATIONAL_LIMITS.maxBoardRows,
+      'row count',
+    ),
+    cols: expectBoundedPositiveInteger(
+      obj['cols'],
+      `${label}.cols`,
+      OPERATIONAL_LIMITS.maxBoardCols,
+      'column count',
+    ),
+    pitch: expectBoundedPositiveFiniteNumber(
+      obj['pitch'],
+      `${label}.pitch`,
+      OPERATIONAL_LIMITS.maxBoardPitch,
+      'pitch',
+    ),
+    holes:
+      obj['holes'] === undefined
+        ? undefined
+        : expectArray(obj['holes'], `${label}.holes`).map((hole, index) =>
+            expectHole(hole, `${label}.holes[${index}]`),
+          ),
+    holeDiameter:
+      obj['holeDiameter'] === undefined
+        ? undefined
+        : expectBoundedPositiveFiniteNumber(
+            obj['holeDiameter'],
+            `${label}.holeDiameter`,
+            OPERATIONAL_LIMITS.maxBoardPitch,
+            'hole diameter',
+          ),
+    traces:
+      obj['traces'] === undefined
+        ? undefined
+        : expectArray(obj['traces'], `${label}.traces`).map((trace, index) =>
+            parseBoardTrace(trace, `${label}.traces[${index}]`),
+          ),
     position: expectPoint(obj['position'], `${label}.position`),
+  };
+}
+
+function parseBoardTrace(raw: unknown, label: string): BoardTrace {
+  const obj = expectRecord(raw, label);
+  return {
+    id: expectNonEmptyString(obj['id'], `${label}.id`),
+    label: expectString(obj['label'], `${label}.label`),
+    net: expectOptionalString(obj['net'], `${label}.net`),
+    segments: expectArray(obj['segments'], `${label}.segments`).map((segment, index) =>
+      parseBoardTraceSegment(segment, `${label}.segments[${index}]`),
+    ),
+  };
+}
+
+function parseBoardTraceSegment(raw: unknown, label: string): BoardTraceSegment {
+  const obj = expectRecord(raw, label);
+  return {
+    from: expectHole(obj['from'], `${label}.from`),
+    to: expectHole(obj['to'], `${label}.to`),
   };
 }
 
@@ -773,6 +1326,15 @@ function parseComponentLayout(raw: unknown, label: string): CanonicalComponentLa
     componentId: expectNonEmptyString(obj['componentId'], `${label}.componentId`),
     position: expectPoint(obj['position'], `${label}.position`),
     boardId: expectOptionalString(obj['boardId'], `${label}.boardId`),
+    footprintId: expectOptionalString(obj['footprintId'], `${label}.footprintId`),
+    footprint:
+      obj['footprint'] === undefined
+        ? undefined
+        : parseFootprint(obj['footprint'], `${label}.footprint`),
+    placement:
+      obj['placement'] === undefined
+        ? undefined
+        : parseDevicePlacement(obj['placement'], `${label}.placement`),
     pinHoles:
       obj['pinHoles'] === undefined
         ? undefined
@@ -780,6 +1342,132 @@ function parseComponentLayout(raw: unknown, label: string): CanonicalComponentLa
             parsePinPlacement(value, `${label}.pinHoles[${i}]`),
           ),
   };
+}
+
+function parseDevicePlacement(raw: unknown, label: string): DevicePlacement {
+  const obj = expectRecord(raw, label);
+  const rotation = expectFiniteNumber(obj['rotation'], `${label}.rotation`);
+  if (!ALLOWED_BOARD_ROTATIONS.includes(rotation as BoardRotation)) {
+    throw new CanonicalProjectError(`${label}.rotation: expected 0, 90, 180 or 270`);
+  }
+  return {
+    boardId: expectNonEmptyString(obj['boardId'], `${label}.boardId`),
+    anchor: expectHole(obj['anchor'], `${label}.anchor`),
+    rotation: rotation as BoardRotation,
+  };
+}
+
+function parseFootprint(raw: unknown, label: string): Footprint {
+  const obj = expectRecord(raw, label);
+  return {
+    id: expectNonEmptyString(obj['id'], `${label}.id`),
+    label: expectString(obj['label'], `${label}.label`),
+    rows: expectBoundedPositiveInteger(
+      obj['rows'],
+      `${label}.rows`,
+      OPERATIONAL_LIMITS.maxFootprintRows,
+      'row count',
+    ),
+    cols: expectBoundedPositiveInteger(
+      obj['cols'],
+      `${label}.cols`,
+      OPERATIONAL_LIMITS.maxFootprintCols,
+      'column count',
+    ),
+    pins: expectArray(obj['pins'], `${label}.pins`).map((pin, index) =>
+      parseFootprintPin(pin, `${label}.pins[${index}]`),
+    ),
+    shapes: expectArray(obj['shapes'], `${label}.shapes`).map((shape, index) =>
+      parseFootprintShape(shape, `${label}.shapes[${index}]`),
+    ),
+    bodyCells:
+      obj['bodyCells'] === undefined
+        ? undefined
+        : expectArray(obj['bodyCells'], `${label}.bodyCells`).map((cell, index) =>
+            parseFootprintCell(cell, `${label}.bodyCells[${index}]`),
+          ),
+  };
+}
+
+function parseFootprintPin(raw: unknown, label: string): Footprint['pins'][number] {
+  const obj = expectRecord(raw, label);
+  return {
+    id: expectNonEmptyString(obj['id'], `${label}.id`),
+    label: expectString(obj['label'], `${label}.label`),
+    cell: parseFootprintCell(obj['cell'], `${label}.cell`),
+    primary: expectOptionalBoolean(obj['primary'], `${label}.primary`),
+  };
+}
+
+function parseFootprintCell(raw: unknown, label: string): FootprintCell {
+  return expectHole(raw, label);
+}
+
+function parseFootprintShape(raw: unknown, label: string): FootprintShape {
+  const obj = expectRecord(raw, label);
+  const kind = expectOneOf(
+    obj['kind'],
+    ['rect', 'circle', 'line', 'text'] as const,
+    `${label}.kind`,
+  );
+  if (kind === 'rect') {
+    return {
+      kind,
+      x: expectFiniteNumber(obj['x'], `${label}.x`),
+      y: expectFiniteNumber(obj['y'], `${label}.y`),
+      width: expectPositiveFiniteNumber(obj['width'], `${label}.width`),
+      height: expectPositiveFiniteNumber(obj['height'], `${label}.height`),
+      rx:
+        obj['rx'] === undefined
+          ? undefined
+          : expectNonNegativeFiniteNumber(obj['rx'], `${label}.rx`),
+      fill: expectOptionalPaint(obj['fill'], `${label}.fill`),
+      stroke: expectOptionalPaint(obj['stroke'], `${label}.stroke`),
+    };
+  }
+  if (kind === 'circle') {
+    return {
+      kind,
+      cx: expectFiniteNumber(obj['cx'], `${label}.cx`),
+      cy: expectFiniteNumber(obj['cy'], `${label}.cy`),
+      r: expectPositiveFiniteNumber(obj['r'], `${label}.r`),
+      fill: expectOptionalPaint(obj['fill'], `${label}.fill`),
+      stroke: expectOptionalPaint(obj['stroke'], `${label}.stroke`),
+    };
+  }
+  if (kind === 'line') {
+    return {
+      kind,
+      x1: expectFiniteNumber(obj['x1'], `${label}.x1`),
+      y1: expectFiniteNumber(obj['y1'], `${label}.y1`),
+      x2: expectFiniteNumber(obj['x2'], `${label}.x2`),
+      y2: expectFiniteNumber(obj['y2'], `${label}.y2`),
+      stroke: expectOptionalPaint(obj['stroke'], `${label}.stroke`),
+      width:
+        obj['width'] === undefined
+          ? undefined
+          : expectPositiveFiniteNumber(obj['width'], `${label}.width`),
+    };
+  }
+  return {
+    kind,
+    x: expectFiniteNumber(obj['x'], `${label}.x`),
+    y: expectFiniteNumber(obj['y'], `${label}.y`),
+    text: expectString(obj['text'], `${label}.text`),
+    size:
+      obj['size'] === undefined
+        ? undefined
+        : expectPositiveFiniteNumber(obj['size'], `${label}.size`),
+    anchor:
+      obj['anchor'] === undefined
+        ? undefined
+        : expectOneOf(obj['anchor'], ALLOWED_TEXT_ANCHORS, `${label}.anchor`),
+    fill: expectOptionalPaint(obj['fill'], `${label}.fill`),
+  };
+}
+
+function expectOptionalPaint(raw: unknown, label: string): FootprintPaint | undefined {
+  return raw === undefined ? undefined : expectOneOf(raw, ALLOWED_FOOTPRINT_PAINTS, label);
 }
 
 function parsePinPlacement(raw: unknown, label: string): CanonicalPinPlacement {
@@ -803,6 +1491,7 @@ function parseJunctionLayout(raw: unknown, label: string): CanonicalJunctionLayo
     ),
     boardId: expectOptionalString(obj['boardId'], `${label}.boardId`),
     hole: obj['hole'] === undefined ? undefined : expectHole(obj['hole'], `${label}.hole`),
+    boardPort: expectOptionalString(obj['boardPort'], `${label}.boardPort`),
   };
 }
 
@@ -832,6 +1521,7 @@ function parseConductorLayout(raw: unknown, label: string): CanonicalConductorLa
       obj['toTap'] === undefined
         ? undefined
         : expectNonNegativeInteger(obj['toTap'], `${label}.toTap`),
+    physicalBinding: expectOptionalBoolean(obj['physicalBinding'], `${label}.physicalBinding`),
   };
 }
 
@@ -925,6 +1615,53 @@ function preflightV1(root: Record<string, unknown>): void {
   // Worst case per legacy net: conductor, conductor layout, two endpoints,
   // net, cable and cable wire slot. Shared nets/cables only reduce the total.
   budget.add(nets.length * 7, 'project.nets');
+
+  boards.forEach((raw, index) => {
+    const label = `project.boards[${index}]`;
+    const board = expectRecord(raw, label);
+    if (board['holes'] !== undefined) {
+      const holes = expectArray(board['holes'], `${label}.holes`);
+      assertCollectionLimit(
+        holes.length,
+        OPERATIONAL_LIMITS.maxBoardHoles,
+        `${label}.holes`,
+        'hole count',
+      );
+      budget.add(holes.length, `${label}.holes`);
+    }
+    if (board['traces'] !== undefined) {
+      const traces = expectArray(board['traces'], `${label}.traces`);
+      let segmentCount = 0;
+      assertCollectionLimit(
+        traces.length,
+        OPERATIONAL_LIMITS.maxBoardTraces,
+        `${label}.traces`,
+        'trace count',
+      );
+      budget.add(traces.length, `${label}.traces`);
+      for (const [traceIndex, traceRaw] of traces.entries()) {
+        const segmentsLabel = `${label}.traces[${traceIndex}].segments`;
+        const segments = expectArray(
+          expectRecord(traceRaw, `${label}.traces[${traceIndex}]`)['segments'],
+          segmentsLabel,
+        );
+        assertCollectionLimit(
+          segments.length,
+          OPERATIONAL_LIMITS.maxTraceSegmentsPerBoard,
+          segmentsLabel,
+          'segment count',
+        );
+        segmentCount += segments.length;
+        budget.add(segments.length, segmentsLabel);
+      }
+      assertCollectionLimit(
+        segmentCount,
+        OPERATIONAL_LIMITS.maxTraceSegmentsPerBoard,
+        `${label}.traces`,
+        'total segment count',
+      );
+    }
+  });
 
   components.forEach((raw, index) => {
     const label = `project.components[${index}].pins`;
@@ -1251,6 +1988,29 @@ function expectPositiveFiniteNumber(raw: unknown, label: string): number {
   const value = expectFiniteNumber(raw, label);
   if (value <= 0) {
     throw new CanonicalProjectError(`${label}: expected a positive number, got ${value}`);
+  }
+  return value;
+}
+
+function expectNonNegativeFiniteNumber(raw: unknown, label: string): number {
+  const value = expectFiniteNumber(raw, label);
+  if (value < 0) {
+    throw new CanonicalProjectError(`${label}: expected a non-negative number, got ${value}`);
+  }
+  return value;
+}
+
+function expectBoundedPositiveFiniteNumber(
+  raw: unknown,
+  label: string,
+  limit: number,
+  kind: string,
+): number {
+  const value = expectPositiveFiniteNumber(raw, label);
+  if (value > limit) {
+    throw new CanonicalProjectError(
+      `${label}: ${kind} ${value} exceeds operational limit of ${limit}`,
+    );
   }
   return value;
 }

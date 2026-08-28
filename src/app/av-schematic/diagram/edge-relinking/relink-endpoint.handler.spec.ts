@@ -4,27 +4,31 @@ import {
   NgDiagramService,
   NgDiagramViewportService,
   type Edge,
+  type Node,
   type Point,
 } from 'ng-diagram';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NodeTemplateType, type BoardNodeData } from '../model/interfaces';
 import { RelinkEndpointHandler } from './relink-endpoint.handler';
 import { RelinkTargetHighlightService } from './relink-target-highlight.service';
 
 describe('RelinkEndpointHandler', () => {
   const updateEdge = vi.fn<(edgeId: string, patch: Partial<Edge>) => void>();
   const highlight = { clear: vi.fn(), set: vi.fn() };
-  const sourceNode = {
+  const sourceNode: Node = {
     id: 'source',
     position: { x: 0, y: 0 },
     measuredPorts: [],
     data: {},
   };
-  const targetNode = {
+  const targetNode: Node = {
     id: 'new-target',
     position: { x: 200, y: 20 },
     measuredPorts: [
       {
         id: 'in',
+        nodeId: 'new-target',
+        type: 'both',
         side: 'left',
         position: { x: 0, y: 10 },
         size: { width: 10, height: 20 },
@@ -32,9 +36,13 @@ describe('RelinkEndpointHandler', () => {
     ],
     data: {},
   };
-  const edge = { id: 'wire-1', source: 'source', target: 'old-target' };
+  const edge: Edge = { id: 'wire-1', source: 'source', target: 'old-target', data: {} };
+  let modelNodes: Node[];
+  let modelEdges: Edge[];
 
   beforeEach(() => {
+    modelNodes = [sourceNode, targetNode];
+    modelEdges = [edge];
     updateEdge.mockReset();
     highlight.clear.mockReset();
     highlight.set.mockReset();
@@ -45,8 +53,14 @@ describe('RelinkEndpointHandler', () => {
         {
           provide: NgDiagramModelService,
           useValue: {
-            getEdgeById: vi.fn(() => edge),
-            nodes: vi.fn(() => [sourceNode, targetNode]),
+            getEdgeById: vi.fn((edgeId: string) =>
+              modelEdges.find((candidate) => candidate.id === edgeId),
+            ),
+            getModel: vi.fn(() => ({
+              getNodes: () => modelNodes,
+              getEdges: () => modelEdges,
+            })),
+            nodes: vi.fn(() => modelNodes),
             updateEdge,
           },
         },
@@ -106,5 +120,136 @@ describe('RelinkEndpointHandler', () => {
     expect(committedPatch).not.toHaveProperty('source');
     expect(route[1]).toEqual({ x: 100, y: 0 });
     expect(highlight.clear).toHaveBeenCalled();
+  });
+
+  it('leaves the end dangling when relink would bridge incompatible copper', () => {
+    const board = (id: string, x: number, traceId: string, net: string): Node<BoardNodeData> => ({
+      id,
+      type: NodeTemplateType.BoardNode,
+      position: { x, y: 0 },
+      data: {
+        type: 'board',
+        boardId: id,
+        label: id,
+        rows: 1,
+        cols: 1,
+        pitch: 20,
+        traces: [
+          {
+            id: traceId,
+            label: traceId,
+            net,
+            segments: [{ from: { row: 0, col: 0 }, to: { row: 0, col: 0 } }],
+          },
+        ],
+      },
+      measuredPorts: [
+        {
+          id: 'hole:0:0',
+          nodeId: id,
+          type: 'both',
+          side: 'left',
+          position: { x: 0, y: 0 },
+          size: { width: 10, height: 10 },
+        },
+      ],
+    });
+    const source = board('power-board', 0, 'vcc', 'VCC');
+    const target = board('ground-board', 200, 'gnd', 'GND');
+    const physicalEdge: Edge = {
+      id: 'wire-physical',
+      source: source.id,
+      sourcePort: 'hole:0:0',
+      target: '',
+      targetPosition: { x: 100, y: 5 },
+      routingMode: 'manual',
+      points: [
+        { x: 5, y: 5 },
+        { x: 100, y: 5 },
+      ],
+      data: {},
+    };
+    modelNodes = [source, target];
+    modelEdges = [physicalEdge];
+    const handler = TestBed.inject(RelinkEndpointHandler);
+
+    handler.onEndpointStart(physicalEdge.id, 'target', physicalEdge.points ?? [], 11);
+    handler.onEndpointContinue(205, 5, 11);
+    handler.onEndpointEnd(205, 5, 11);
+
+    expect(updateEdge).toHaveBeenCalledTimes(2);
+    for (const [, patch] of updateEdge.mock.calls) {
+      expect(patch.target).toBe('');
+      expect(patch).not.toHaveProperty('data');
+    }
+  });
+
+  it('leaves the end dangling when two board ports resolve to the same copper junction', () => {
+    const board: Node<BoardNodeData> = {
+      id: 'shared-copper-board',
+      type: NodeTemplateType.BoardNode,
+      position: { x: 0, y: 0 },
+      data: {
+        type: 'board',
+        boardId: 'shared-copper-board',
+        label: 'Shared copper board',
+        rows: 1,
+        cols: 2,
+        pitch: 20,
+        traces: [
+          {
+            id: 'rail',
+            label: 'Rail',
+            segments: [{ from: { row: 0, col: 0 }, to: { row: 0, col: 1 } }],
+          },
+        ],
+      },
+      measuredPorts: [
+        {
+          id: 'hole:0:0',
+          nodeId: 'shared-copper-board',
+          type: 'both',
+          side: 'left',
+          position: { x: 0, y: 0 },
+          size: { width: 10, height: 10 },
+        },
+        {
+          id: 'hole:0:1',
+          nodeId: 'shared-copper-board',
+          type: 'both',
+          side: 'left',
+          position: { x: 200, y: 0 },
+          size: { width: 10, height: 10 },
+        },
+      ],
+    };
+    const physicalEdge: Edge = {
+      id: 'wire-same-copper',
+      source: board.id,
+      sourcePort: 'hole:0:0',
+      target: '',
+      targetPosition: { x: 100, y: 5 },
+      routingMode: 'manual',
+      points: [
+        { x: 5, y: 5 },
+        { x: 100, y: 5 },
+      ],
+      data: {},
+    };
+    modelNodes = [board];
+    modelEdges = [physicalEdge];
+    const handler = TestBed.inject(RelinkEndpointHandler);
+
+    handler.onEndpointStart(physicalEdge.id, 'target', physicalEdge.points ?? [], 12);
+    handler.onEndpointEnd(205, 5, 12);
+
+    expect(updateEdge).toHaveBeenCalledOnce();
+    expect(updateEdge).toHaveBeenCalledWith(
+      physicalEdge.id,
+      expect.objectContaining({
+        target: '',
+        targetPort: undefined,
+      }),
+    );
   });
 });
