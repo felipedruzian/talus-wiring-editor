@@ -26,7 +26,7 @@ import { PropertiesSidebarService } from '../properties-sidebar/properties-sideb
 import { randomShortId } from '../shared/utils/random-short-id';
 import { generateDeviceId } from './model/auto-device-id';
 import { isDeviceNode, isJunctionNode, isWireEdge } from './model/guards';
-import { physicalEdgeNet } from './model/physical-connectivity';
+import { initialNetNameFromCopper, physicalEdgeNet } from './model/physical-connectivity';
 import { snapForNode } from './model/physical-snap';
 import {
   EdgeTemplateType,
@@ -102,7 +102,10 @@ export class DiagramComponent {
         data: {
           type: 'wire',
           wireId: '',
-          netId: physicalEdgeNet(this.modelService.getModel().getNodes(), edge).netId,
+          netName: initialNetNameFromCopper(
+            undefined,
+            physicalEdgeNet(this.modelService.getModel().getNodes(), edge),
+          ),
         },
       }),
       finalEdgeDataBuilder: (edge: Edge): Edge<WireEdgeData> => ({
@@ -114,7 +117,10 @@ export class DiagramComponent {
         data: {
           type: 'wire',
           wireId: generateWireId(),
-          netId: physicalEdgeNet(this.modelService.getModel().getNodes(), edge).netId,
+          netName: initialNetNameFromCopper(
+            undefined,
+            physicalEdgeNet(this.modelService.getModel().getNodes(), edge),
+          ),
         },
       }),
     },
@@ -157,7 +163,7 @@ export class DiagramComponent {
 
   // Manual edges don't auto-reroute, so re-anchor their endpoints to the live
   // ports of any moved node (auto edges are handled by ng-diagram's router).
-  // Mid-drag: re-anchor only, no merge — the route mustn't simplify before drop.
+  // Mid-drag: re-anchor only, no merge - the route mustn't simplify before drop.
   onSelectionMoved(event: SelectionMovedEvent): void {
     void applyEdgeStretchOnSelectionMoved(this.modelService, this.nodeIds(event.nodes), false);
   }
@@ -227,7 +233,7 @@ export class DiagramComponent {
     const node = event.node;
     if (!isDeviceNode(node) || node.data.deviceId) return;
 
-    // Committed model, not the nodes() signal — on rapid consecutive drops the
+    // Committed model, not the nodes() signal - on rapid consecutive drops the
     // signal may not include the previous drop yet, minting a duplicate id.
     const deviceId = generateDeviceId(node.data.category, this.modelService.getModel().getNodes());
     void this.modelService.updateNodeData<DeviceNodeData>(node.id, {

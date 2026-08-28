@@ -20,17 +20,17 @@ import {
  * Physical board fixtures for issue #3.
  *
  * These are the boards the Talus-Droid actually has, described with the same
- * generic `BoardNodeData` — nothing here is a special case in the model, the
+ * generic `BoardNodeData` - nothing here is a special case in the model, the
  * numbers are just different:
  *
  * | fixture        | grid   | traces                                        |
  * |----------------|--------|-----------------------------------------------|
  * | placa A        | 6 x 11 | six full-width rails, one per power net       |
  * | placa de origem| 6 x 28 | none (uncut perfboard the pieces are cut from)|
- * | peça D         | 6 x 3  | L1 = 8V_MOT, L6 = GND_MOT                     |
- * | peça E         | 6 x 3  | UART divider node (a jumper) + a short L6 GND |
- * | peça F         | 6 x 3  | L1 = 5V_PI, L6 = GND_SYS                      |
- * | peça G         | 6 x 4  | L1 = GND_SYS, L6 = VBAT_SYS                   |
+ * | peca D         | 6 x 3  | L1 = 8V_MOT, L6 = GND_MOT                     |
+ * | peca E         | 6 x 3  | UART divider node (a jumper) + a short L6 GND |
+ * | peca F         | 6 x 3  | L1 = 5V_PI, L6 = GND_SYS                      |
+ * | peca G         | 6 x 4  | L1 = GND_SYS, L6 = VBAT_SYS                   |
  *
  * Row/column addresses are 0-indexed here; the `L1..L6` / `C1..C11` names the
  * hardware notes use are 1-indexed and live in each trace's `label`.
@@ -108,7 +108,7 @@ export const PECA_G_BOARD: BoardNodeData = {
 };
 
 /**
- * Peça E is the one piece whose copper is not a pair of rails: the UART
+ * Peca E is the one piece whose copper is not a pair of rails: the UART
  * divider needs its junction to be a *jumper* between two holes that are not
  * neighbours (L1-C3 to L3-C1), which is why `BoardTrace.segments` allows
  * disjoint runs. Its rows are otherwise bare, or R1 and R2 would be shorted
@@ -347,7 +347,7 @@ export const SEATED_COMPONENT_NODES: Node<DeviceNodeData>[] = [
 
 /**
  * Not everything is seated. The XL4015 converter and the Hall module hang off
- * the boards through wires — and, in the Nano's case, cannot be seated at all:
+ * the boards through wires - and, in the Nano's case, cannot be seated at all:
  * its 0.6" row span needs 7 rows and every board here has 6. That is a real
  * property of the hardware, reported by `validatePlacement` rather than
  * papered over by shrinking the footprint.
@@ -400,7 +400,7 @@ interface WireSpec {
   id: string;
   wireId: string;
   colorCode: string;
-  netId: string;
+  netName: string;
   source: [nodeId: string, portId: string];
   target: [nodeId: string, portId: string];
 }
@@ -417,7 +417,7 @@ function wireEdge(spec: WireSpec): Edge<WireEdgeData> {
       type: 'wire',
       wireId: spec.wireId,
       wireType: 'power',
-      netId: spec.netId,
+      netName: spec.netName,
       ...resolveWireColor(spec.colorCode),
     },
   };
@@ -426,7 +426,7 @@ function wireEdge(spec: WireSpec): Edge<WireEdgeData> {
 /**
  * Every one of these lands on a board node, not on another component: the
  * `trace:*` and `hole:*` ports are what make "furos e trilhas funcionam como
- * endpoints conectáveis" true at the engine level, and because the association
+ * endpoints conectaveis" true at the engine level, and because the association
  * lives in the edge's own `targetPort`, it round-trips through save/reload
  * with no side table to keep in sync.
  */
@@ -435,7 +435,7 @@ export const PHYSICAL_WIRE_EDGES: Edge<WireEdgeData>[] = [
     id: 'w-d-vm',
     wireId: 'W-D1',
     colorCode: 'RD',
-    netId: '8V_MOT',
+    netName: '8V_MOT',
     source: ['tb6612-2', 'vm'],
     target: ['peca-d', tracePortId('d-l1')],
   }),
@@ -443,7 +443,7 @@ export const PHYSICAL_WIRE_EDGES: Edge<WireEdgeData>[] = [
     id: 'w-d-gnd',
     wireId: 'W-D2',
     colorCode: 'BK',
-    netId: 'GND_MOT',
+    netName: 'GND_MOT',
     source: ['tb6612-2', 'gnd'],
     target: ['peca-d', tracePortId('d-l6')],
   }),
@@ -451,7 +451,7 @@ export const PHYSICAL_WIRE_EDGES: Edge<WireEdgeData>[] = [
     id: 'w-g-vbat',
     wireId: 'W-G1',
     colorCode: 'RD',
-    netId: 'VBAT_SYS',
+    netName: 'VBAT_SYS',
     source: ['xl4015-1', 'in-plus'],
     target: ['peca-g', tracePortId('g-l6')],
   }),
@@ -459,7 +459,7 @@ export const PHYSICAL_WIRE_EDGES: Edge<WireEdgeData>[] = [
     id: 'w-g-gnd',
     wireId: 'W-G2',
     colorCode: 'BK',
-    netId: 'GND_SYS',
+    netName: 'GND_SYS',
     source: ['xl4015-1', 'in-minus'],
     target: ['peca-g', tracePortId('g-l1')],
   }),
@@ -467,7 +467,7 @@ export const PHYSICAL_WIRE_EDGES: Edge<WireEdgeData>[] = [
     id: 'w-f-5vpi',
     wireId: 'W-F1',
     colorCode: 'RD',
-    netId: '5V_PI',
+    netName: '5V_PI',
     source: ['xl4015-1', 'out-plus'],
     target: ['peca-f', tracePortId('f-l1')],
   }),
@@ -475,7 +475,7 @@ export const PHYSICAL_WIRE_EDGES: Edge<WireEdgeData>[] = [
     id: 'w-f-gnd',
     wireId: 'W-F2',
     colorCode: 'BK',
-    netId: 'GND_SYS',
+    netName: 'GND_SYS',
     source: ['xl4015-1', 'out-minus'],
     target: ['peca-f', tracePortId('f-l6')],
   }),
@@ -483,7 +483,7 @@ export const PHYSICAL_WIRE_EDGES: Edge<WireEdgeData>[] = [
     id: 'w-hall-gnd',
     wireId: 'W-H1',
     colorCode: 'BK',
-    netId: 'GND_SYS',
+    netName: 'GND_SYS',
     source: ['hall-left', 'gnd'],
     target: ['peca-g', tracePortId('g-l1')],
   }),
@@ -493,7 +493,7 @@ export const PHYSICAL_WIRE_EDGES: Edge<WireEdgeData>[] = [
     id: 'w-hall-do',
     wireId: 'W-H2',
     colorCode: 'YE',
-    netId: 'HALL_L',
+    netName: 'HALL_L',
     source: ['hall-left', 'do'],
     target: ['placa-origem', holePortId({ row: 2, col: 24 })],
   }),

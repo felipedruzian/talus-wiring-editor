@@ -1,8 +1,11 @@
 import { computed, inject, Injectable, InjectionToken, signal } from '@angular/core';
 import {
+  buildNets,
   CANONICAL_FORMAT_VERSION,
+  type CanonicalConductor,
   type CanonicalConductorLayout,
   type CanonicalElectrical,
+  type CanonicalJunction,
   type CanonicalJunctionLayout,
   type CanonicalProjectV2,
 } from '../diagram/model/canonical-project';
@@ -57,7 +60,12 @@ export class WireVizExchangeService {
       const imported = importWireViz(yaml, effectiveOptions);
       const project = buildImportedProject(imported.electrical, current);
       await this.storage.replaceProject(project);
-      this._report.set(imported.report);
+      this._report.set({
+        entries: [
+          ...imported.report.entries,
+          ...physicalNetReconciliationEntries(imported.electrical, project.electrical),
+        ].sort((a, b) => a.path.localeCompare(b.path) || a.code.localeCompare(b.code)),
+      });
       this.succeed(
         `YAML importado: ${imported.electrical.nets.length} net(s), ` +
           `${imported.electrical.cables.length} cabo(s).`,
@@ -161,9 +169,10 @@ function inferImportOptions(project: CanonicalProjectV2): WireVizImportOptions {
 }
 
 export function buildImportedProject(
-  electrical: CanonicalElectrical,
+  importedElectrical: CanonicalElectrical,
   previous: CanonicalProjectV2,
 ): CanonicalProjectV2 {
+  const electrical = withPhysicalBindings(importedElectrical, previous);
   const previousComponents = new Map(
     previous.layout.components.map((layout) => [layout.componentId, layout]),
   );
@@ -229,6 +238,132 @@ export function buildImportedProject(
       conductors,
     },
   };
+}
+
+/**
+ * Carries pin-to-copper bindings through a replacement WireViz import.
+ *
+ * WireViz can describe the imported conductors, but it has no vocabulary for
+ * a pin being soldered into a board hole. The import skeleton therefore keeps
+ * those generated binding conductors and their copper junctions, then rebuilds
+ * the net graph in one pass. Imported names are authored hints and always win;
+ * a trace label is only a fallback for a binding-only net.
+ */
+function withPhysicalBindings(
+  imported: CanonicalElectrical,
+  previous: CanonicalProjectV2,
+): CanonicalElectrical {
+  const importedComponents = new Map(
+    imported.components.map((component) => [component.id, component]),
+  );
+  const importedConductorIds = new Set(
+    imported.nets.flatMap((net) => net.conductors.map((conductor) => conductor.id)),
+  );
+  const previousConductorById = new Map<string, CanonicalConductor>();
+  const previousNetByConductor = new Map(
+    previous.electrical.nets.flatMap((net) =>
+      net.conductors.map((conductor) => {
+        previousConductorById.set(conductor.id, conductor);
+        return [conductor.id, net] as const;
+      }),
+    ),
+  );
+  const previousJunctions = new Map(
+    previous.electrical.junctions.map((junction) => [junction.id, junction]),
+  );
+
+  const bindings: CanonicalConductor[] = [];
+  const physicalJunctions = new Map<string, CanonicalJunction>();
+  const fallbackNames = new Map<string, string>();
+  for (const layout of previous.layout.conductors) {
+    if (!layout.physicalBinding) continue;
+    const conductor = previousConductorById.get(layout.conductorId);
+    if (!conductor) continue;
+    const pin =
+      conductor.from.kind === 'pin'
+        ? conductor.from
+        : conductor.to.kind === 'pin'
+          ? conductor.to
+          : undefined;
+    const junction =
+      conductor.from.kind === 'junction'
+        ? conductor.from
+        : conductor.to.kind === 'junction'
+          ? conductor.to
+          : undefined;
+    const component = pin ? importedComponents.get(pin.componentId) : undefined;
+    if (!pin || !junction || !component?.pins.some((candidate) => candidate.id === pin.pinId)) {
+      continue;
+    }
+    if (importedConductorIds.has(conductor.id)) {
+      throw new WireVizImportError(
+        `conductor "${conductor.id}": id reservado para uma associação física pin-cobre`,
+      );
+    }
+    const physicalJunction = previousJunctions.get(junction.junctionId);
+    if (!physicalJunction) continue;
+
+    bindings.push(conductor);
+    physicalJunctions.set(physicalJunction.id, physicalJunction);
+    const previousNet = previousNetByConductor.get(conductor.id);
+    if (previousNet && previousNet.name !== previousNet.id) {
+      fallbackNames.set(conductor.id, previousNet.name);
+    }
+  }
+
+  const importedConductors = imported.nets.flatMap((net) => net.conductors);
+  const authoredNames = new Map<string, string>();
+  for (const net of imported.nets) {
+    for (const conductor of net.conductors) authoredNames.set(conductor.id, net.name);
+  }
+  const conductors = [...importedConductors, ...bindings];
+  const junctions = new Map(imported.junctions.map((junction) => [junction.id, junction]));
+  for (const junction of physicalJunctions.values()) {
+    if (!junctions.has(junction.id)) junctions.set(junction.id, junction);
+  }
+
+  return {
+    ...imported,
+    junctions: [...junctions.values()].sort((a, b) =>
+      a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
+    ),
+    nets: buildNets(conductors, authoredNames, fallbackNames),
+  };
+}
+
+/** Actionable import warnings for author names merged by retained copper. */
+export function physicalNetReconciliationEntries(
+  imported: CanonicalElectrical,
+  reconciled: CanonicalElectrical,
+): WireVizReportEntry[] {
+  const importedNameByConductor = new Map<string, string>();
+  for (const net of imported.nets) {
+    for (const conductor of net.conductors) {
+      importedNameByConductor.set(conductor.id, net.name);
+    }
+  }
+
+  const entries: WireVizReportEntry[] = [];
+  for (const net of reconciled.nets) {
+    const importedNames = [
+      ...new Set(
+        net.conductors
+          .map((conductor) => importedNameByConductor.get(conductor.id))
+          .filter((name): name is string => name !== undefined),
+      ),
+    ].sort();
+    if (importedNames.length < 2) continue;
+    entries.push({
+      severity: 'warning',
+      code: 'physical-net-reconciled',
+      path: `electrical.nets.${net.id}`,
+      message:
+        `As redes importadas ${importedNames.map((name) => `"${name}"`).join(', ')} ` +
+        `compartilham o cobre físico e foram reconciliadas como "${net.name}" por ordem ` +
+        'lexical. Revise o encaixe ou a autoria das redes.',
+    });
+  }
+  return entries;
 }
 
 function junctionDegrees(electrical: CanonicalElectrical): Map<string, number> {

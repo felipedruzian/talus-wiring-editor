@@ -24,10 +24,11 @@ a uma trilha continua sendo uma aresta comum do `ng-diagram`; o endpoint fica
 registrado na própria aresta e não depende de uma tabela lateral.
 
 No `ng-diagram` 1.3.0, essas portas usam `originPoint="centerLeft"`. A posição
-CSS indica o centro físico do furo ou pino, enquanto a medição da biblioteca
-registra a caixa já transformada. O cálculo de endpoints usa a borda indicada
-por `side` e o centro do outro eixo; por isso, desenho, área de interação,
-roteador e nova ancoragem apontam para a mesma coordenada física.
+CSS da caixa subtrai metade de sua altura do centro físico do furo ou pino.
+Como a biblioteca ancora uma porta lateral na borda esquerda e no centro
+vertical da caixa medida, `portFlowPosition` retorna exatamente a coordenada da
+geometria. Um teste liga `holeLocalPoint` e a geometria rotacionada do footprint
+à posição final do port para impedir regressões de meio diâmetro.
 
 ## Footprints e encaixe
 
@@ -58,6 +59,11 @@ ilegal é recusada, o componente volta ao último encaixe válido e os furos em
 conflito são destacados. Ao mover uma placa, seus componentes encaixados são
 reposicionados a partir das âncoras, sem acumular erro de pixels.
 
+Arrastar um componente encaixado para fora de todas as placas o desencaixa: o
+footprint incorporado permanece disponível, mas `placement`, `boardId` e os
+furos derivados são removidos. O componente volta ao cartão genérico no mesmo
+canvas e seus fios, nomes de rede e trechos manuais são preservados.
+
 Quando corpos de placas se sobrepõem, um placement existente permanece na sua
 placa enquanto ela ainda contém o ponto. Para um componente novo, vence a menor
 placa, seguida por `boardId` e pelo ID do nó como critérios estáveis. Assim, a
@@ -75,14 +81,14 @@ preservam os trechos intermediários que continuam válidos. A mesma atualizaç�
 das âncoras ocorre depois da remontagem do modelo salvo, quando os novos nós e
 ports já foram medidos.
 
-A associação elétrica em runtime segue `pino -> furo -> trilha -> net`. Uma
-nova aresta herda a net física conhecida; mover uma peça para outra trilha
-atualiza essa associação, e sair de uma trilha remove a associação antiga
-quando ela era derivada do cobre. Um movimento que ligaria duas nets físicas
-incompatíveis é recusado. A reconexão manual de uma extremidade aplica a mesma
-inferência e deixa o fio pendente se o novo port causaria um curto. A inspeção
-lateral mostra também os endereços de
-furos e os nomes de trilhas quando uma extremidade pertence a uma placa.
+A associação física em runtime segue `pino -> furo -> trilha`. Uma nova aresta
+sem nome autoral recebe o nome declarado pelo cobre como sugestão inicial. Um
+nome importado ou editado pelo usuário nunca é substituído silenciosamente:
+ele tem prioridade, e uma divergência em relação ao cobre aparece como aviso no
+relatório **Diagnóstico físico**. Essa divergência continua salvável. Já uma
+aresta que uniria dois cobres com nomes físicos distintos representa um curto e
+é recusada; na reconexão, a extremidade permanece pendente no ponto tentado. A
+inspeção lateral também mostra os endereços de furos e os nomes de trilhas.
 
 Os ports de um componente encaixado são derivados do footprint e da placement.
 O editor genérico continua disponível para fabricante, modelo, categoria e
@@ -97,32 +103,65 @@ aplicada a endpoints de placa ou footprint.
 
 ## Persistência
 
-O formato canônico permanece em v1. Projetos anteriores sem placements físicos
-continuam aceitos, e a representação ganhou campos opcionais:
+O projeto usa o único formato canônico v2 introduzido pela issue #2. A seção
+`electrical` continua contendo componentes, junções, cabos, nets multi-drop e
+condutores; a seção `layout` contém placas, footprints, placements e geometria.
+Não existe `CanonicalNet` v1 paralelo. Snapshots v1 anteriores continuam sendo
+migrados pela fronteira de entrada existente.
+
+Os campos físicos opcionais são:
 
 - placas preservam `holes`, `holeDiameter` e `traces`;
 - componentes físicos preservam `footprintId`, a definição `footprint` e
   `placement`;
-- endpoints de nets aceitam pinos de componentes, furos e trilhas.
+- a junção de cobre usa `boardId` e `boardPort` no layout;
+- um condutor oculto `binding:<componentId>/<pinId>` associa cada pino encaixado
+  à junção canônica de seu furo ou de sua trilha.
 
-Os nomes `componentId` e `pinId` do endpoint foram mantidos por compatibilidade
-com o formato v1, embora `componentId` também possa identificar uma placa. O
-validador do frontend e o validador do serviço local aplicam as mesmas regras:
-footprint incorporado e coerente com o ID, placement em uma placa existente,
-todos os cells dentro de furos realmente presentes, ausência de colisões e
-pinos expostos existentes na definição. Durante o parse, furos dos pinos e
-posição em pixels são recalculados a partir da placement. Nets ausentes são
-inferidas do cobre, enquanto conflitos declarados ou físicos são rejeitados.
+Os endpoints elétricos v2 permanecem apenas `pin` e `junction`. Furos de uma
+mesma trilha apontam para uma única `CanonicalJunction`; o índice `fromTap` ou
+`toTap` preserva o furo visual específico. Assim, salvar e reabrir conserva a
+associação pino-furo-trilha sem inventar outro tipo elétrico e sem separar uma
+net multi-drop.
+
+O nome autoral da net tem prioridade determinística sobre o rótulo de cobre. O
+cobre só nomeia grupos ainda sem autoria. O relatório físico registra a
+divergência com caminho canônico e ação sugerida, mas ela não invalida todo o
+projeto. Curto entre cobres distintos, referência inexistente e grafo de
+binding incoerente continuam sendo erros estruturais.
+
+Uma importação WireViz de substituição mantém os bindings físicos dos
+componentes reaproveitados e reagrupa os condutores com o mesmo algoritmo. Se
+duas redes importadas de nomes distintos passam a compartilhar o cobre já
+montado, o menor nome em ordem lexical vence, e o relatório WireViz emite
+`physical-net-reconciled` com os nomes envolvidos e a ação de revisão. Assim,
+a reconciliação é determinística sem apagar a divergência silenciosamente.
+
+O validador do frontend e o validador do serviço local aplicam as mesmas regras:
+footprint incorporado e coerente com o ID, placement em placa existente, cells
+em furos realmente presentes, ausência de colisões, pinos expostos presentes
+na definição, trilhas ortogonais sem sobreposição e vínculos elétricos
+determinísticos. Durante o parse, furos dos pinos e posição em pixels são
+recalculados a partir de `placement`.
 
 No modelo em runtime, o ID de um nó de placa deve ser igual ao seu `boardId`;
 o exportador canônico recusa o snapshot se essa identidade tiver divergido. Um
 corpus adversarial compartilhado é executado pelos validadores TypeScript e
 Node para manter equivalentes as regras duplicadas até a unificação futura.
 
-Esta fatia não introduz um formato canônico v2 paralelo. Depois da integração
-da issue #2, a evolução versionada deve absorver `footprint`, `placement` e os
-endpoints de placa no único migrador canônico, preservando estas regras de
-validação e reconciliação como a fronteira de entrada.
+Para manter o canvas responsivo e limitar entradas não confiáveis, o formato
+aceita no máximo 128 linhas, 256 colunas, 4.096 furos por placa, pitch 256, 512
+trilhas, 4.096 segmentos por placa, footprints de 64 × 64 e 512 formas. Uma
+grade completa acima de 4.096 furos deve declarar uma lista esparsa explícita.
+
+## Autoria nesta fatia
+
+O usuário pode mover, girar, encaixar e desencaixar footprints, editar os dados
+usuais do componente e conectar pinos, furos ou trilhas. Definições arbitrárias
+de placa e footprint são persistidas e validadas pelo JSON canônico e podem ser
+fornecidas por fixtures ou integrações. Esta entrega não inclui um desenhador
+gráfico geral para criar novos contornos, furos, trilhas e formas SVG do zero;
+esse limite é de interface de autoria, não do modelo nem da persistência.
 
 ## Fixtures
 

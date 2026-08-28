@@ -9,13 +9,17 @@ import {
   type CanonicalProjectV2,
 } from '../diagram/model/canonical-project';
 import { parseCanonicalProject } from '../diagram/model/canonical-project-parse';
+import {
+  inspectPhysicalLayout,
+  type PhysicalDiagnostic,
+} from '../diagram/model/physical-diagnostics';
 
 /**
  * Same-origin project persistence client for the local wiring-editor service
  * (see server/wiring-editor-server.mjs, docs/local-service.md).
  *
  * Talks only to `/api/projects/:id` on the same origin the app was served
- * from — no base URL configuration, no cross-origin request, matching the
+ * from - no base URL configuration, no cross-origin request, matching the
  * server's same-origin-only API contract.
  *
  * Scoped to the av-schematic page (see AvSchematicPageComponent providers),
@@ -35,6 +39,7 @@ export class ProjectStorageService {
   private readonly _status = signal<ProjectStorageStatus>('idle');
   private readonly _operation = signal<ProjectStorageOperation | null>(null);
   private readonly _message = signal<string | null>(null);
+  private readonly _physicalDiagnostics = signal<readonly PhysicalDiagnostic[]>([]);
   /**
    * Project-level cable inventory. Edges carry connected cable data, but a
    * completely disconnected cable has no diagram element of its own.
@@ -45,6 +50,8 @@ export class ProjectStorageService {
   readonly operation = this._operation.asReadonly();
   readonly message = this._message.asReadonly();
   readonly isBusy = computed(() => this._status() === 'loading');
+  readonly physicalDiagnostics = this._physicalDiagnostics.asReadonly();
+  readonly physicalDiagnosticCount = computed(() => this._physicalDiagnostics().length);
 
   /** Validates a project id against the same pattern the server enforces, without a round trip. */
   validateProjectId(projectId: string): string | null {
@@ -63,7 +70,7 @@ export class ProjectStorageService {
 
     this.begin('save');
     try {
-      // The committed model, not the nodes()/edges() signals — a save must
+      // The committed model, not the nodes()/edges() signals - a save must
       // persist exactly what's actually in the model right now, not a
       // possibly-stale reactive snapshot (see diagram.component.ts's
       // onPaletteItemDropped for the same committed-vs-signal distinction).
@@ -114,10 +121,13 @@ export class ProjectStorageService {
   /** Captures the complete v2 project, including cables with zero connected conductors. */
   snapshotProject(): CanonicalProjectV2 {
     const committedModel = this.modelService.getModel();
-    const project = toCanonicalProject(
-      committedModel.getNodes(),
-      committedModel.getEdges(),
-      this.cableInventory,
+    this.refreshPhysicalDiagnostics();
+    const project = parseCanonicalProject(
+      toCanonicalProject(
+        committedModel.getNodes(),
+        committedModel.getEdges(),
+        this.cableInventory,
+      ),
     );
     this.cableInventory = project.electrical.cables.map(cloneCable);
     return project;
@@ -160,11 +170,18 @@ export class ProjectStorageService {
     const { nodes, edges } = fromCanonicalProject(parsed);
     await this.replaceModel(nodes, edges);
     this.cableInventory = parsed.electrical.cables.map(cloneCable);
+    this.refreshPhysicalDiagnostics();
+  }
+
+  /** Refreshes the actionable report without blocking save on warnings. */
+  refreshPhysicalDiagnostics(): void {
+    const model = this.modelService.getModel();
+    this._physicalDiagnostics.set(inspectPhysicalLayout(model.getNodes(), model.getEdges()));
   }
 
   /**
    * Replaces the entire diagram model using only NgDiagramModelService's
-   * public bulk operations (deleteEdges/deleteNodes/addNodes/addEdges) — no
+   * public bulk operations (deleteEdges/deleteNodes/addNodes/addEdges) - no
    * private state access, no full-model "reset" call (the service exposes
    * none). Edges are removed before nodes (edges reference node ids) and
    * added back after (new edges reference the freshly added node ids).
@@ -220,7 +237,7 @@ export class ProjectStorageService {
           return `${record['error']} (HTTP ${response.status})`;
       }
     } catch {
-      // Corpo da resposta nao era JSON - cai para a mensagem generica de status.
+      // Response body was not JSON; fall back to the generic status message.
     }
     return `erro do servidor (HTTP ${response.status})`;
   }

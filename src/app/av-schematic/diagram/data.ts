@@ -23,18 +23,18 @@ import {
 /**
  * Tracer bullet seed (issue #1 / talus-wiring-editor): board A (6 x 11
  * holes), an Arduino Nano and a TB6612FNG breakout, and the two nets
- * produced by actually importing the minimal WireViz fixture below — this
+ * produced by actually importing the minimal WireViz fixture below - this
  * is the real import pipeline running at load time, not hand-authored
  * edges that happen to match it.
  *
  * Issue #3 adds the physical layer on the same canvas: board A now carries
- * its six real copper rails, and the placa de origem plus peças D/E/F/G and
+ * its six real copper rails, and the placa de origem plus pecas D/E/F/G and
  * their seated footprints come from `fixtures/physical-boards.fixture.ts`.
  *
  * Board A having copper is why the tracer devices below only address a hole
  * for the pins that genuinely belong to a rail. A rail is one electrical
  * point across its whole row, so parking five different signals on one row
- * would short them together — see docs/physical-footprints.md.
+ * would short them together - see docs/physical-footprints.md.
  *
  * See docs/wiring-tracer-bullet.md for the integration decision this seed
  * exercises, and docs/wireviz-import-limits.md for the parser's supported
@@ -49,10 +49,10 @@ const boardA: Node<BoardNodeData> = {
 };
 
 // Nano and TB6612FNG are positioned so their illustrated cards overlap board
-// A's own footprint (x: 60..292, y: 60..192 for rows=6/cols=11/pitch=20 — see
+// A's own footprint (x: 60..292, y: 60..192 for rows=6/cols=11/pitch=20 - see
 // board-geometry.ts::boardSize) in the visual plane. `nodes` below keeps the
 // board first so it renders behind both components (see NgDiagramConfig's
-// `zIndex.elevateOnSelection: false` in diagram.component.ts — nodes stack
+// `zIndex.elevateOnSelection: false` in diagram.component.ts - nodes stack
 // in array order). Still just one ng-diagram canvas: the board is an
 // ordinary node, not a background layer.
 const nano: Node<DeviceNodeData> = {
@@ -151,7 +151,7 @@ const nodes: Node<AvSchematicNodeData>[] = [
 
 // Give the direction-line net (W2) a manual bend, demonstrating that manually
 // routed points survive being produced by the WireViz import (they're just
-// ordinary edge points from here on — edge-reshaping owns editing them).
+// ordinary edge points from here on - edge-reshaping owns editing them).
 const edges: Edge<AvSchematicEdgeData>[] = [
   ...importedModel.edges.map((edge) =>
     edge.data.wireId === 'W2'

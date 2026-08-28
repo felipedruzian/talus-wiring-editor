@@ -40,7 +40,7 @@ export function holeLocalPoint(
 }
 
 /**
- * The hole whose center is nearest to a point given in board-local pixels —
+ * The hole whose center is nearest to a point given in board-local pixels -
  * the inverse of `holeLocalPoint`, and the primitive the drag-to-seat snap is
  * built on. Not clamped to the grid: an out-of-bounds result is a real answer
  * ("you dropped past the edge") that the caller decides what to do with.
@@ -113,7 +113,7 @@ export function holesEqual(a: BoardHole, b: BoardHole): boolean {
 }
 
 /**
- * One pin's claim on a board hole — the minimal shape needed to validate
+ * One pin's claim on a board hole - the minimal shape needed to validate
  * hole placement without depending on `DeviceNodeData`/ng-diagram `Node`
  * types, so the checks below stay pure and framework-agnostic.
  */
@@ -127,7 +127,7 @@ export interface BoardHoleClaim {
 
 /**
  * Every claim whose hole falls outside its declared board's grid. Empty
- * means every claim addresses a real hole on its board — a physical
+ * means every claim addresses a real hole on its board - a physical
  * precondition for a pin to be "encaixado" (fitted) on that board at all.
  */
 export function findOutOfBoundsHoleClaims(

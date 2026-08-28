@@ -37,7 +37,7 @@ export function rotatedFootprintBox(footprint: CellBox, rotation: BoardRotation)
  * Rotates one cell clockwise inside the footprint's bounding box, so the
  * result is still measured from the rotated box's own top-left corner.
  *
- * 90 deg: (r, c) -> (c, rows - 1 - r). Checked against the box swap above —
+ * 90 deg: (r, c) -> (c, rows - 1 - r). Checked against the box swap above -
  * the new row index is bounded by the old column count and vice versa, which
  * is what makes `anchor + rotatedCell` always land inside the rotated box.
  */
@@ -81,7 +81,7 @@ export interface FootprintPinHole {
   pinId: string;
   label: string;
   hole: BoardHole;
-  /** Cell coordinates after rotation — where the pin is drawn inside the node. */
+  /** Cell coordinates after rotation - where the pin is drawn inside the node. */
   cell: FootprintCell;
 }
 
@@ -105,7 +105,7 @@ export function footprintPinHoles(
 }
 
 /**
- * Every hole a seated footprint physically occupies — its pins plus whatever
+ * Every hole a seated footprint physically occupies - its pins plus whatever
  * else its body sits on top of. `bodyCells` narrows it for parts that only
  * touch the board at their leads (a jumper link, an axial resistor lying
  * across a gap); without it the whole bounding box counts, which is the right
@@ -148,7 +148,7 @@ export function isPlacementInBounds(
 
 /**
  * Clamps an anchor so the whole rotated footprint stays on the board. Returns
- * null when the footprint simply cannot fit at that rotation — a 7-row
+ * null when the footprint simply cannot fit at that rotation - a 7-row
  * Arduino Nano on a 6-row perfboard has no valid anchor, and saying so is more
  * useful than snapping it to a lie.
  */
@@ -193,7 +193,7 @@ export function placementNodePosition(
 }
 
 /**
- * The anchor hole a node dropped at `nodePosition` should snap to — the
+ * The anchor hole a node dropped at `nodePosition` should snap to - the
  * inverse of `placementNodePosition`, rounded to the nearest hole. Not clamped
  * (see `clampAnchorToBoard`) so callers can tell "off the edge" from "fits".
  * Returns null when an explicit hole list is empty.

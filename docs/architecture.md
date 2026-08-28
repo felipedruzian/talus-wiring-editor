@@ -50,7 +50,8 @@ AvSchematicPageComponent (providers)
   cabo são usados no WireViz somente quando todos os condutores envolvidos
   podem compartilhá-los sem perda.
 - **Footprints no mesmo modelo** — placas, footprints e componentes externos são tipos de nó no mesmo `Node[]`; `BoardPlacementService` apenas reconcilia posição, encaixe e ocupação após movimentos.
-- **Cobre como junção elétrica** — um furo ou trilha usado por um condutor vira uma `CanonicalJunction` na seção `electrical`, com a geometria (`boardId`, furo, trilha) apenas em `layout`. As nets continuam derivadas da conectividade, nunca escritas pelo cobre.
+- **Cobre como junção elétrica** — um furo ou trilha usado por um condutor vira uma `CanonicalJunction` na seção `electrical`, com a geometria (`boardId`, furo, trilha) apenas em `layout`. Condutores ocultos e determinísticos ligam pinos encaixados a essa junção; as nets continuam derivadas do grafo v2.
+- **Autoria de net antes do cobre** — `WireEdgeData.netName` importado ou editado nunca é reescrito por movimento ou reconexão. O rótulo da trilha é apenas fallback para uma net nova; divergências permanecem salváveis e aparecem no relatório físico acionável do `ProjectStorageService`.
 - **Viewport overlays** — `appViewportBounds` / `appViewportOverlay` directives register UI elements that obscure the diagram so visibility / zoom-to-fit calculations account for them.
 - **Per-row port positioning** — each `.port-row` is `position: relative`, so each `<ng-diagram-port>`'s absolute positioning anchors to its own row, not the whole node. Side-specific transforms push the port shape entirely outside the card edge.
 
@@ -110,7 +111,7 @@ src/app/av-schematic/
 │   └── fixtures/                         # Fixtures clean-room das issues #1 e #2
 ├── project-storage/                      # Cliente de persistência de projeto (ver docs/local-service.md)
 │   ├── project-storage.service.ts        # GET/PUT em /api/projects/:id; serializa via canonical-project.ts
-│   └── project-storage-menu.component.ts # Controles Salvar/Abrir no top navbar (id de projeto + status)
+│   └── project-storage-menu.component.ts # Salvar/Abrir e relatório de diagnóstico físico no top navbar
 ├── properties-sidebar/                   # Painel direito: edita dispositivo, junção ou fio selecionado
 │   ├── element-mutation.service.ts       # Remoção + updates; redistribui taps quando o trilho muda
 │   └── components/

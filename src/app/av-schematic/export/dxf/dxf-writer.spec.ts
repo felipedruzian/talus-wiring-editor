@@ -11,7 +11,7 @@ import { DxfWriter } from './dxf-writer';
  * R2000+ files missing any piece of the structural skeleton ("Invalid or
  * incomplete DXF input -- drawing discarded"). Online viewers are lenient, so
  * these regressions only surface when a user opens the export in real
- * AutoCAD — this spec encodes the requirements at the tag level instead.
+ * AutoCAD - this spec encodes the requirements at the tag level instead.
  *
  * The parsing helpers are deliberately unforgiving: they fail on unterminated
  * sections/tables, broken code/value framing, and records missing their own

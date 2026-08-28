@@ -14,10 +14,10 @@ import {
 
 /**
  * Emits a single LWPOLYLINE per wire edge from `edge.points` plus two
- * `wireId` labels, one near each end — mirroring the two
+ * `wireId` labels, one near each end - mirroring the two
  * `<ng-diagram-base-edge-label>` markers in wire-edge.component.html.
  *
- * `edge.points` is supplied by ng-diagram after routing — orthogonal,
+ * `edge.points` is supplied by ng-diagram after routing - orthogonal,
  * polyline, and future point-following routings all expose the same array,
  * so this renderer doesn't care which routing produced them.
  *
@@ -25,7 +25,7 @@ import {
  * renderer snaps each port rect's adjacent edge flush with the device
  * frame, leaving the rect's outer edge slightly past the measured center.
  * We extend each endpoint a small distance along the first/last segment
- * (toward the next routing point — that direction always points outward
+ * (toward the next routing point - that direction always points outward
  * from the port for left/right side ports) so wires meet ports at their
  * outer boundary. Board holes/traces and footprint pins are physical center
  * coordinates, so those endpoints must remain untouched.
@@ -75,7 +75,7 @@ const renderWireLabels = (
 const renderLabel = (ctx: DxfRenderContext, anchor: Point, text: string): void => {
   const mappedPoint = ctx.mapper.mapPoint(anchor.x, anchor.y);
   const heightMm = ctx.mapper.mapLength(FONT_WIRE_LABEL);
-  // halign=1 (center), valign=1 (bottom) — text sits centered above the wire,
+  // halign=1 (center), valign=1 (bottom) - text sits centered above the wire,
   // bottom edge of the glyphs flush with the wire line.
   ctx.doc.addEntity(
     new DxfText(
@@ -112,7 +112,7 @@ const pointAtDistance = (
     }
     remaining -= segmentLength;
   }
-  // Path is shorter than `distance` — fall back to the far end.
+  // Path is shorter than `distance` - fall back to the far end.
   return ordered[ordered.length - 1];
 };
 

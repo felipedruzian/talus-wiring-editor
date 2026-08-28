@@ -12,6 +12,7 @@ import { holePortId, tracePortId } from '../model/board-ports';
 import { traceHoles, traceSegmentHoles } from '../model/board-trace';
 import { type BoardHole, type BoardNodeData, type BoardTrace } from '../model/interfaces';
 import { BoardPlacementService } from '../placement/board-placement.service';
+import { centerLeftPortBoxPosition } from '../edge-reshaping/logic/port-position';
 
 interface HoleView extends BoardHole {
   key: string;
@@ -36,7 +37,7 @@ interface TraceView {
   net?: string;
   color: string;
   segments: TraceSegmentView[];
-  /** Dashed hops between disjoint segments of one trace — i.e. jumper wires. */
+  /** Dashed hops between disjoint segments of one trace - i.e. jumper wires. */
   bridges: { x1: number; y1: number; x2: number; y2: number }[];
   portId: string;
   portX: number;
@@ -52,20 +53,20 @@ function netColor(net: string | undefined): string {
   for (let i = 0; i < net.length; i++) {
     hash = (hash * 31 + net.charCodeAt(i)) % 360;
   }
-  return `hsl(${hash}, 62%, 46%)`;
+  return `hsl(${hash}, 68%, 28%)`;
 }
 
 /**
  * Renders a physical board as an ng-diagram node: an addressable hole grid,
  * its copper traces, and a connection port for every hole and every trace.
  *
- * Nothing about the rendering is specialized per board — placa A (6 x 11), the
- * 6 x 28 origin perfboard and the 6 x 3 peças all take this same path, sized
+ * Nothing about the rendering is specialized per board - placa A (6 x 11), the
+ * 6 x 28 origin perfboard and the 6 x 3 pecas all take this same path, sized
  * from `rows`/`cols`/`pitch`. Sharing the single `Node[]` array, coordinate
  * space and z-order with device nodes is what keeps "mesmo canvas" true.
  *
  * Every hole carries a port, which is what makes "furos e trilhas funcionam
- * como endpoints conectáveis" literally true rather than approximated: the
+ * como endpoints conectaveis" literally true rather than approximated: the
  * association a wire records is an ordinary `targetPort` on this node. For a
  * 6 x 28 board that is 168 ports; boards materially larger than that would want
  * ports minted on demand instead (see docs/physical-footprints.md).
@@ -122,25 +123,31 @@ export class BoardNodeComponent implements NgDiagramNodeTemplate<BoardNodeData> 
   );
 
   protected holePortLeft(hole: HoleView): number {
-    return hole.x;
+    return centerLeftPortBoxPosition(hole, this.holePortSize()).x;
   }
 
   protected holePortTop(hole: HoleView): number {
-    return hole.y;
+    return centerLeftPortBoxPosition(hole, this.holePortSize()).y;
   }
 
   /**
    * A port's flow position is taken from its own box (left edge, vertical
-   * centre — see edge-reshaping/logic/port-position.ts), so every port box is
+   * centre - see edge-reshaping/logic/port-position.ts), so every port box is
    * laid out with its left edge exactly on the point it represents. That makes
    * wires land on the hole centre without any correction elsewhere.
    */
   protected tracePortLeft(trace: TraceView): number {
-    return trace.portX;
+    return centerLeftPortBoxPosition(
+      { x: trace.portX, y: trace.portY },
+      this.holePortSize(),
+    ).x;
   }
 
   protected tracePortTop(trace: TraceView): number {
-    return trace.portY;
+    return centerLeftPortBoxPosition(
+      { x: trace.portX, y: trace.portY },
+      this.holePortSize(),
+    ).y;
   }
 
   private toTraceView(trace: BoardTrace): TraceView {

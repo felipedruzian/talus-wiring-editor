@@ -50,7 +50,7 @@ export const applyEdgeStretchOnSelectionMoved = (
       (Math.abs(liveTarget.x - oldTarget.x) > 0.5 || Math.abs(liveTarget.y - oldTarget.y) > 0.5);
     if (!sourceDrifted && !targetDrifted) {
       // Nothing to re-anchor. On finalize, fold any collinear bends the drag
-      // left behind — invisible to the rendered line, so the drop matches what
+      // left behind - invisible to the rendered line, so the drop matches what
       // the user saw.
       if (merge) {
         const collapsed = collapseCollinearBends(edge.points);

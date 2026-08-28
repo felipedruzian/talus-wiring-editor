@@ -8,7 +8,9 @@ import {
 } from '../model/board-trace';
 import { deviceHoleClaims } from '../model/footprint-geometry';
 import { NodeTemplateType } from '../model/interfaces';
+import { physicalEdgeNet } from '../model/physical-connectivity';
 import {
+  EXTERNAL_COMPONENT_NODES,
   PHYSICAL_BOARDS,
   PHYSICAL_BOARD_NODES,
   PHYSICAL_WIRE_EDGES,
@@ -96,5 +98,19 @@ describe('physical component fixtures', () => {
   it('connects external components directly to board holes and traces', () => {
     expect(PHYSICAL_WIRE_EDGES.some((edge) => edge.targetPort?.startsWith('hole:'))).toBe(true);
     expect(PHYSICAL_WIRE_EDGES.some((edge) => edge.targetPort?.startsWith('trace:'))).toBe(true);
+  });
+
+  it('stores authored net names without forging canonical net ids or copper shorts', () => {
+    const nodes = [
+      ...PHYSICAL_BOARD_NODES,
+      ...SEATED_COMPONENT_NODES,
+      ...EXTERNAL_COMPONENT_NODES,
+    ];
+    expect(PHYSICAL_WIRE_EDGES.every((edge) => edge.data.netName && !edge.data.netId)).toBe(true);
+    expect(
+      PHYSICAL_WIRE_EDGES.every(
+        (edge) => physicalEdgeNet(nodes, edge).conflict.length === 0,
+      ),
+    ).toBe(true);
   });
 });

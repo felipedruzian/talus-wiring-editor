@@ -19,6 +19,32 @@
   <button type="button" class="action-btn" [disabled]="busy" (click)="open()">
     {{ busy && !operationIsSave() ? 'Abrindo...' : 'Abrir' }}
   </button>
+  <button
+    type="button"
+    class="diagnostic-btn"
+    [attr.aria-expanded]="diagnosticsOpen()"
+    (click)="toggleDiagnostics()"
+  >
+    Diagnóstico físico ({{ diagnosticCount() }})
+  </button>
+
+  @if (diagnosticsOpen()) {
+    <section class="diagnostic-panel" aria-label="Diagnóstico físico">
+      <strong>Diagnóstico físico</strong>
+      @if (diagnostics().length === 0) {
+        <p>Nenhum conflito físico encontrado.</p>
+      } @else {
+        <ul>
+          @for (diagnostic of diagnostics(); track $index) {
+            <li [class.is-error]="diagnostic.severity === 'error'">
+              <span>{{ diagnostic.message }}</span>
+              <code>{{ diagnostic.path }}</code>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+  }
 
   @if (message(); as text) {
     <span

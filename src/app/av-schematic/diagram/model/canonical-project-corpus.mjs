@@ -1,68 +1,120 @@
-// One adversarial corpus consumed unchanged by the TypeScript and plain-Node
-// validators. Keep this file free of framework imports so either runner can
-// load it without coupling the server to the Angular build.
+// Shared adversarial corpus for the TypeScript and plain-Node validators.
+
+function holes(rows, cols) {
+  return Array.from({ length: rows * cols }, (_, index) => ({
+    row: Math.floor(index / cols),
+    col: index % cols,
+  }));
+}
 
 function basePhysicalProject() {
+  const junctionId = 'copper:board-17/trace%3Avcc';
   return {
-    formatVersion: 1,
-    boards: [
-      {
-        id: 'board-17',
-        label: 'Board 17',
-        rows: 3,
-        cols: 4,
-        pitch: 17,
-        holes: Array.from({ length: 12 }, (_, index) => ({
-          row: Math.floor(index / 4),
-          col: index % 4,
-        })),
-        traces: [
-          {
-            id: 'vcc',
-            label: 'L3',
-            net: 'VCC',
-            segments: [{ from: { row: 2, col: 0 }, to: { row: 2, col: 3 } }],
-          },
-        ],
-        position: { x: 10, y: 20 },
-      },
-    ],
-    components: [
-      {
-        id: 'link-1',
-        deviceId: 'LINK-1',
-        manufacturer: 'project',
-        model: 'link',
-        boardId: 'board-17',
-        footprintId: 'inline-link',
-        footprint: {
-          id: 'inline-link',
-          label: 'Inline link',
-          rows: 1,
-          cols: 2,
+    formatVersion: 2,
+    electrical: {
+      components: [
+        {
+          id: 'link-1',
+          deviceId: 'LINK-1',
+          manufacturer: 'project',
+          model: 'link',
           pins: [
-            { id: 'a', label: 'A', cell: { row: 0, col: 0 }, primary: true },
-            { id: 'b', label: 'B', cell: { row: 0, col: 1 } },
+            { id: 'a', label: 'A', direction: 'input' },
+            { id: 'b', label: 'B', direction: 'output' },
           ],
-          shapes: [{ kind: 'line', x1: 0, y1: 0, x2: 1, y2: 0, stroke: 'lead' }],
-          bodyCells: [],
         },
-        placement: { boardId: 'board-17', anchor: { row: 0, col: 1 }, rotation: 0 },
-        position: { x: 999, y: -999 },
-        pins: [
-          { id: 'a', label: 'A', direction: 'input', hole: { row: 2, col: 3 } },
-          { id: 'b', label: 'B', direction: 'output', hole: { row: 2, col: 3 } },
-        ],
-      },
-    ],
-    nets: [
-      {
-        id: 'wire-1',
-        wireId: 'W1',
-        source: { componentId: 'link-1', pinId: 'a' },
-        target: { componentId: 'board-17', pinId: 'trace:vcc' },
-      },
-    ],
+      ],
+      junctions: [
+        { id: junctionId, label: 'VCC rail', kind: 'rail', wirevizName: junctionId },
+      ],
+      cables: [],
+      nets: [
+        {
+          id: 'net-authored',
+          name: 'AUTHORED',
+          endpoints: [
+            { kind: 'pin', componentId: 'link-1', pinId: 'a' },
+            { kind: 'pin', componentId: 'link-1', pinId: 'b' },
+            { kind: 'junction', junctionId },
+          ],
+          conductors: [
+            {
+              id: 'binding:link-1/a',
+              from: { kind: 'pin', componentId: 'link-1', pinId: 'a' },
+              to: { kind: 'junction', junctionId },
+            },
+            {
+              id: 'binding:link-1/b',
+              from: { kind: 'pin', componentId: 'link-1', pinId: 'b' },
+              to: { kind: 'junction', junctionId },
+            },
+          ],
+        },
+      ],
+    },
+    layout: {
+      boards: [
+        {
+          id: 'board-17',
+          label: 'Board 17',
+          rows: 3,
+          cols: 4,
+          pitch: 17,
+          holes: holes(3, 4),
+          holeDiameter: 5,
+          traces: [
+            {
+              id: 'vcc',
+              label: 'L3',
+              net: 'VCC',
+              segments: [{ from: { row: 2, col: 0 }, to: { row: 2, col: 3 } }],
+            },
+          ],
+          position: { x: 10, y: 20 },
+        },
+      ],
+      components: [
+        {
+          componentId: 'link-1',
+          position: { x: 999, y: -999 },
+          boardId: 'board-17',
+          footprintId: 'inline-link',
+          footprint: {
+            id: 'inline-link',
+            label: 'Inline link',
+            rows: 1,
+            cols: 2,
+            pins: [
+              { id: 'a', label: 'A', cell: { row: 0, col: 0 }, primary: true },
+              { id: 'b', label: 'B', cell: { row: 0, col: 1 } },
+            ],
+            shapes: [
+              { kind: 'line', x1: 0, y1: 0, x2: 1, y2: 0, stroke: 'lead' },
+            ],
+            bodyCells: [],
+          },
+          placement: { boardId: 'board-17', anchor: { row: 2, col: 1 }, rotation: 0 },
+          pinHoles: [
+            { pinId: 'a', hole: { row: 0, col: 0 } },
+            { pinId: 'b', hole: { row: 0, col: 1 } },
+          ],
+        },
+      ],
+      junctions: [
+        {
+          junctionId,
+          position: { x: -1, y: -1 },
+          taps: 4,
+          boardId: 'board-17',
+          hole: { row: 2, col: 0 },
+          boardPort: 'trace:vcc',
+        },
+      ],
+      conductors: [
+        { conductorId: 'binding:link-1/a', toTap: 1, physicalBinding: true },
+        { conductorId: 'binding:link-1/b', toTap: 2, physicalBinding: true },
+      ],
+    },
   };
 }
 
@@ -77,28 +129,32 @@ function changed(name, change) {
 }
 
 const completeGridWithoutHoleList = basePhysicalProject();
-delete completeGridWithoutHoleList.boards[0].holes;
+delete completeGridWithoutHoleList.layout.boards[0].holes;
 
 const emptyBoard = {
-  formatVersion: 1,
-  boards: [
-    {
-      id: 'empty-board',
-      label: 'Empty board',
-      rows: 2,
-      cols: 2,
-      pitch: 17,
-      holes: [],
-      position: { x: 0, y: 0 },
-    },
-  ],
-  components: [],
-  nets: [],
+  formatVersion: 2,
+  electrical: { components: [], junctions: [], cables: [], nets: [] },
+  layout: {
+    boards: [
+      {
+        id: 'empty-board',
+        label: 'Empty board',
+        rows: 2,
+        cols: 2,
+        pitch: 17,
+        holes: [],
+        position: { x: 0, y: 0 },
+      },
+    ],
+    components: [],
+    junctions: [],
+    conductors: [],
+  },
 };
 
 export const canonicalValidationCorpus = [
   {
-    name: 'accepts and reconciles a self-contained pitch-17 project',
+    name: 'accepts, normalizes and preserves authored net names over copper labels',
     accepted: true,
     raw: basePhysicalProject(),
   },
@@ -113,46 +169,95 @@ export const canonicalValidationCorpus = [
     raw: emptyBoard,
   },
   changed('rejects footprintId without an embedded footprint', (raw) => {
-    delete raw.components[0].footprint;
+    delete raw.layout.components[0].footprint;
   }),
   changed('rejects a mismatched embedded footprint id', (raw) => {
-    raw.components[0].footprint.id = 'different-footprint';
+    raw.layout.components[0].footprint.id = 'different-footprint';
   }),
   changed('rejects a placement beyond board bounds', (raw) => {
-    raw.components[0].placement.anchor.col = 3;
+    raw.layout.components[0].placement.anchor.col = 3;
   }),
   changed('rejects an occupied hole omitted by a sparse board', (raw) => {
-    raw.boards[0].holes = raw.boards[0].holes.filter(
-      (hole) => hole.row !== 0 || hole.col !== 2,
+    raw.layout.boards[0].holes = raw.layout.boards[0].holes.filter(
+      (hole) => hole.row !== 2 || hole.col !== 2,
     );
   }),
-  changed('rejects colliding footprint placements', (raw) => {
-    const duplicate = clone(raw.components[0]);
-    duplicate.id = 'link-2';
-    duplicate.deviceId = 'LINK-2';
-    raw.components.push(duplicate);
+  changed('rejects colliding manual hole claims', (raw) => {
+    raw.electrical.components.push({
+      id: 'probe',
+      deviceId: 'PROBE',
+      manufacturer: '',
+      model: '',
+      pins: [{ id: 'p', label: 'P', direction: 'input' }],
+    });
+    raw.layout.components.push({
+      componentId: 'probe',
+      position: { x: 0, y: 0 },
+      boardId: 'board-17',
+      pinHoles: [{ pinId: 'p', hole: { row: 2, col: 1 } }],
+    });
   }),
   changed('rejects a component pin absent from its footprint', (raw) => {
-    raw.components[0].pins[0].id = 'unknown-pin';
+    raw.layout.components[0].footprint.pins[0].id = 'unknown-pin';
   }),
   changed('rejects a footprint pin cell outside its box', (raw) => {
-    raw.components[0].footprint.pins[1].cell.col = 2;
+    raw.layout.components[0].footprint.pins[1].cell.col = 2;
   }),
-  changed('rejects physical net metadata that disagrees with copper', (raw) => {
-    raw.nets[0].netId = 'GND';
+  changed('rejects a missing pin-to-copper binding', (raw) => {
+    raw.layout.conductors.pop();
   }),
-  changed('rejects a board endpoint whose hole is absent', (raw) => {
-    raw.nets[0].target.pinId = 'hole:9:9';
+  changed('rejects a boardPort for a missing trace', (raw) => {
+    raw.layout.junctions[0].boardPort = 'trace:missing';
   }),
-  changed('rejects a non-canonical board hole endpoint id', (raw) => {
-    raw.nets[0].target.pinId = 'hole::2';
+  changed('rejects dimensions above the operational limit', (raw) => {
+    raw.layout.boards[0].rows = 129;
   }),
-  changed('rejects unsafe integer board dimensions', (raw) => {
-    raw.boards[0].rows = Number.MAX_SAFE_INTEGER + 1;
+  changed('rejects a hole diameter larger than pitch', (raw) => {
+    raw.layout.boards[0].holeDiameter = 18;
   }),
-  changed('rejects placement on an explicit board with no holes', (raw) => {
-    raw.boards[0].holes = [];
-    raw.boards[0].traces = [];
-    raw.nets = [];
+  changed('rejects a diagonal trace', (raw) => {
+    raw.layout.boards[0].traces[0].segments[0].to = { row: 1, col: 3 };
+  }),
+  changed('rejects overlapping traces', (raw) => {
+    raw.layout.boards[0].traces.push({
+      id: 'overlap',
+      label: 'Overlap',
+      segments: [{ from: { row: 1, col: 1 }, to: { row: 2, col: 1 } }],
+    });
+  }),
+  changed('rejects one electrical net that shorts distinct named copper', (raw) => {
+    const junctionId = 'copper:board-17/trace%3Agnd';
+    raw.layout.boards[0].traces.push({
+      id: 'gnd',
+      label: 'L2',
+      net: 'GND',
+      segments: [{ from: { row: 1, col: 0 }, to: { row: 1, col: 3 } }],
+    });
+    raw.electrical.junctions.push({
+      id: junctionId,
+      label: 'GND rail',
+      kind: 'rail',
+      wirevizName: junctionId,
+    });
+    raw.electrical.nets[0].endpoints.push({ kind: 'junction', junctionId });
+    raw.electrical.nets[0].conductors.push({
+      id: 'copper-short',
+      from: { kind: 'junction', junctionId: raw.electrical.junctions[0].id },
+      to: { kind: 'junction', junctionId },
+    });
+    raw.layout.junctions.push({
+      junctionId,
+      position: { x: -1, y: -1 },
+      taps: 4,
+      boardId: 'board-17',
+      hole: { row: 1, col: 0 },
+      boardPort: 'trace:gnd',
+    });
+    raw.layout.conductors.push({ conductorId: 'copper-short' });
+  }),
+  changed('rejects an invalid footprint shape paint', (raw) => {
+    raw.layout.components[0].footprint.shapes[0].stroke = 'invisible';
   }),
 ];
+
+export { basePhysicalProject };

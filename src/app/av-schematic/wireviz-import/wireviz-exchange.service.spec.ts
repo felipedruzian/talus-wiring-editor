@@ -8,11 +8,14 @@ import {
   type CanonicalNetEndpoint,
   type CanonicalProjectV2,
 } from '../diagram/model/canonical-project';
+import { basePhysicalProject } from '../diagram/model/canonical-project-corpus.mjs';
+import { parseCanonicalProject } from '../diagram/model/canonical-project-parse';
 import { electricallyEquivalent } from '../diagram/model/electrical-equivalence';
 import { OPERATIONAL_LIMITS } from '../diagram/model/operational-limits.mjs';
 import { ProjectStorageService } from '../project-storage/project-storage.service';
 import {
   buildImportedProject,
+  physicalNetReconciliationEntries,
   WIREVIZ_YAML_DOWNLOAD,
   WireVizExchangeService,
 } from './wireviz-exchange.service';
@@ -157,5 +160,96 @@ describe('buildImportedProject junction taps', () => {
     const build = () => buildImportedProject(junctionFanout(degree), emptyProject());
     if (accepted) expect(build().layout.junctions[0].taps).toBe(degree);
     else expect(build).toThrow(/junction tap count.*operational limit/);
+  });
+
+  it('keeps physical bindings while an imported net name wins over copper', () => {
+    const previous = parseCanonicalProject(basePhysicalProject());
+    const imported: CanonicalElectrical = {
+      components: [
+        ...previous.electrical.components,
+        {
+          id: 'external',
+          deviceId: 'EXT',
+          manufacturer: '',
+          model: '',
+          pins: [{ id: 'out', label: 'OUT', direction: 'output' }],
+        },
+      ],
+      junctions: [],
+      cables: [],
+      nets: [
+        {
+          id: 'imported-net',
+          name: 'IMPORTED_NAME',
+          endpoints: [
+            { kind: 'pin', componentId: 'external', pinId: 'out' },
+            { kind: 'pin', componentId: 'link-1', pinId: 'a' },
+          ],
+          conductors: [
+            {
+              id: 'wire-imported',
+              from: { kind: 'pin', componentId: 'external', pinId: 'out' },
+              to: { kind: 'pin', componentId: 'link-1', pinId: 'a' },
+            },
+          ],
+        },
+      ],
+    };
+
+    const parsed = parseCanonicalProject(buildImportedProject(imported, previous));
+    expect(parsed.electrical.nets).toHaveLength(1);
+    expect(parsed.electrical.nets[0].name).toBe('IMPORTED_NAME');
+    expect(parsed.electrical.nets[0].conductors.map((conductor) => conductor.id)).toEqual(
+      expect.arrayContaining(['wire-imported', 'binding:link-1/a', 'binding:link-1/b']),
+    );
+    expect(parsed.layout.conductors.filter((layout) => layout.physicalBinding)).toHaveLength(2);
+    expect(parsed.layout.junctions[0]).toMatchObject({ boardPort: 'trace:vcc' });
+  });
+
+  it('reports distinct imported names reconciled through existing copper', () => {
+    const previous = parseCanonicalProject(basePhysicalProject());
+    const external = (id: string): CanonicalComponent => ({
+      id,
+      deviceId: id.toUpperCase(),
+      manufacturer: '',
+      model: '',
+      pins: [{ id: 'p', label: 'P', direction: 'output' }],
+    });
+    const conductor = (id: string, externalId: string, pinId: string): CanonicalConductor => ({
+      id,
+      from: { kind: 'pin', componentId: externalId, pinId: 'p' },
+      to: { kind: 'pin', componentId: 'link-1', pinId },
+    });
+    const first = conductor('wire-zeta', 'external-zeta', 'a');
+    const second = conductor('wire-alpha', 'external-alpha', 'b');
+    const imported: CanonicalElectrical = {
+      components: [
+        ...previous.electrical.components,
+        external('external-zeta'),
+        external('external-alpha'),
+      ],
+      junctions: [],
+      cables: [],
+      nets: [
+        { id: 'zeta', name: 'ZETA', endpoints: [first.from, first.to], conductors: [first] },
+        {
+          id: 'alpha',
+          name: 'ALPHA',
+          endpoints: [second.from, second.to],
+          conductors: [second],
+        },
+      ],
+    };
+
+    const reconciled = buildImportedProject(imported, previous).electrical;
+    expect(reconciled.nets).toHaveLength(1);
+    expect(reconciled.nets[0].name).toBe('ALPHA');
+    expect(physicalNetReconciliationEntries(imported, reconciled)).toEqual([
+      expect.objectContaining({
+        severity: 'warning',
+        code: 'physical-net-reconciled',
+        message: expect.stringContaining('ALPHA'),
+      }),
+    ]);
   });
 });

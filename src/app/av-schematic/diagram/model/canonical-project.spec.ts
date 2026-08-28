@@ -3,11 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { diagramModel } from '../data';
 import {
   CanonicalProjectError,
+  buildNets,
   fromCanonicalProject,
   toCanonicalProject,
   type CanonicalProjectV2,
 } from './canonical-project';
 import { parseCanonicalProject } from './canonical-project-parse';
+import { canonicalValidationCorpus } from './canonical-project-corpus.mjs';
 import { electricallyEquivalent } from './electrical-equivalence';
 import { isBoardNode, isDeviceNode } from './guards';
 import { type WireEdgeData } from './interfaces';
@@ -29,6 +31,32 @@ function emptyV2(): CanonicalProjectV2 {
     layout: { boards: [], components: [], junctions: [], conductors: [] },
   };
 }
+
+describe('canonical physical validation corpus', () => {
+  for (const testCase of canonicalValidationCorpus) {
+    it(testCase.name, () => {
+      const parse = () => parseCanonicalProject(clone(testCase.raw));
+      if (testCase.accepted) {
+        expect(parse).not.toThrow();
+      } else {
+        expect(parse).toThrow(CanonicalProjectError);
+      }
+    });
+  }
+
+  it('normalizes fitted component geometry while preserving the authored net name', () => {
+    const accepted = canonicalValidationCorpus.find((testCase) => testCase.accepted)?.raw;
+    const parsed = parseCanonicalProject(clone(accepted));
+    expect(parsed.electrical.nets[0]?.name).toBe('AUTHORED');
+    expect(parsed.layout.components[0]).toMatchObject({
+      position: { x: 30.25, y: 57.25 },
+      pinHoles: [
+        { pinId: 'a', hole: { row: 2, col: 1 } },
+        { pinId: 'b', hole: { row: 2, col: 2 } },
+      ],
+    });
+  });
+});
 
 function canonicalCableBudgetProject(total: number): CanonicalProjectV2 {
   const project = emptyV2();
@@ -78,15 +106,33 @@ function legacyTwoPointProject(): Record<string, unknown> {
 }
 
 describe('canonical project round-trip', () => {
+  it('prefers authored names over copper fallbacks deterministically', () => {
+    const conductor = {
+      id: 'c1',
+      from: { kind: 'pin' as const, componentId: 'a', pinId: 'p' },
+      to: { kind: 'pin' as const, componentId: 'b', pinId: 'p' },
+    };
+    expect(
+      buildNets(
+        [conductor],
+        new Map([['c1', 'AUTHORED']]),
+        new Map([['c1', 'COPPER']]),
+      )[0]?.name,
+    ).toBe('AUTHORED');
+    expect(buildNets([conductor], undefined, new Map([['c1', 'COPPER']]))[0]?.name).toBe(
+      'COPPER',
+    );
+  });
+
   it('keeps electrical semantics separate from complementary visual geometry', () => {
     const project = toCanonicalProject(diagramModel.nodes, diagramModel.edges);
 
     expect(project.formatVersion).toBe(2);
-    expect(project.electrical.nets).toHaveLength(2);
-    expect(project.electrical.components).toHaveLength(2);
-    expect(project.layout.boards).toHaveLength(1);
-    expect(project.layout.components).toHaveLength(2);
-    expect(project.layout.conductors).toHaveLength(2);
+    expect(project.electrical.nets.length).toBeGreaterThanOrEqual(2);
+    expect(project.electrical.components.length).toBeGreaterThan(2);
+    expect(project.layout.boards).toHaveLength(6);
+    expect(project.layout.components).toHaveLength(project.electrical.components.length);
+    expect(project.layout.conductors.length).toBeGreaterThan(diagramModel.edges.length);
     expect(project.electrical).not.toHaveProperty('boards');
     expect(project.electrical.nets[0]).not.toHaveProperty('points');
   });
@@ -95,8 +141,8 @@ describe('canonical project round-trip', () => {
     const project = toCanonicalProject(diagramModel.nodes, diagramModel.edges);
     const rebuilt = fromCanonicalProject(project);
 
-    expect(rebuilt.nodes.filter(isBoardNode)).toHaveLength(1);
-    expect(rebuilt.nodes.filter(isDeviceNode)).toHaveLength(2);
+    expect(rebuilt.nodes.filter(isBoardNode)).toHaveLength(6);
+    expect(rebuilt.nodes.filter(isDeviceNode)).toHaveLength(project.electrical.components.length);
     expect(rebuilt.edges).toHaveLength(diagramModel.edges.length);
 
     const board = must(rebuilt.nodes.find(isBoardNode));
@@ -106,8 +152,9 @@ describe('canonical project round-trip', () => {
       rebuilt.nodes.find((node) => isDeviceNode(node) && node.data.deviceId === 'NANO-1'),
     );
     if (isDeviceNode(nano)) {
-      expect(nano.data.ports.find((port) => port.label === 'D9')?.hole).toEqual({
-        row: 1,
+      expect(nano.data.ports.find((port) => port.label === 'D9')?.hole).toBeUndefined();
+      expect(nano.data.ports.find((port) => port.label === 'GND')?.hole).toEqual({
+        row: 0,
         col: 1,
       });
     }
@@ -150,6 +197,34 @@ describe('canonical project round-trip', () => {
     const first = toCanonicalProject(diagramModel.nodes, diagramModel.edges);
     const rebuilt = fromCanonicalProject(first);
     expect(toCanonicalProject(rebuilt.nodes, rebuilt.edges, rebuilt.cableInventory)).toEqual(first);
+  });
+
+  it('canonicalizes every landing on one copper trace to one v2 junction', () => {
+    const project = toCanonicalProject(diagramModel.nodes, diagramModel.edges);
+    const copperLayouts = project.layout.junctions.filter(
+      (layout) => layout.boardId === 'board-a' && layout.boardPort === 'trace:a-l3',
+    );
+    expect(copperLayouts).toHaveLength(1);
+    const junctionId = must(copperLayouts[0]).junctionId;
+    const bindings = project.electrical.nets
+      .flatMap((net) => net.conductors)
+      .filter(
+        (conductor) =>
+          conductor.id === 'binding:nano-1/5v' || conductor.id === 'binding:tb6612-1/vcc',
+      );
+    expect(bindings).toHaveLength(2);
+    expect(
+      bindings.every(
+        (conductor) =>
+          (conductor.from.kind === 'junction' && conductor.from.junctionId === junctionId) ||
+          (conductor.to.kind === 'junction' && conductor.to.junctionId === junctionId),
+      ),
+    ).toBe(true);
+    expect(
+      project.layout.conductors
+        .filter((layout) => bindings.some((conductor) => conductor.id === layout.conductorId))
+        .every((layout) => layout.physicalBinding === true),
+    ).toBe(true);
   });
 
   it('keeps disconnected cables and unused slots outside the edge-only diagram model', () => {
@@ -454,9 +529,16 @@ describe('parseCanonicalProject', () => {
 
   it("rejects a pin hole that does not fit its component's declared board", () => {
     const raw = clone(validRaw) as {
-      layout: { components: { pinHoles?: { hole: { row: number } }[] }[] };
+      layout: {
+        components: {
+          placement?: unknown;
+          pinHoles?: { hole: { row: number } }[];
+        }[];
+      };
     };
-    const placement = raw.layout.components.flatMap((component) => component.pinHoles ?? [])[0];
+    const placement = raw.layout.components
+      .filter((component) => component.placement === undefined)
+      .flatMap((component) => component.pinHoles ?? [])[0];
     if (!placement) throw new Error('fixture has no pin placement');
     placement.hole.row = 9999;
     expect(() => parseCanonicalProject(raw)).toThrow(/does not fit board/);
@@ -464,9 +546,17 @@ describe('parseCanonicalProject', () => {
 
   it('rejects a component with a hole but no boardId', () => {
     const raw = clone(validRaw) as {
-      layout: { components: { boardId?: string; pinHoles?: unknown[] }[] };
+      layout: {
+        components: {
+          boardId?: string;
+          placement?: unknown;
+          pinHoles?: unknown[];
+        }[];
+      };
     };
-    const component = raw.layout.components.find((candidate) => candidate.pinHoles?.length);
+    const component = raw.layout.components.find(
+      (candidate) => candidate.placement === undefined && candidate.pinHoles?.length,
+    );
     if (!component) throw new Error('fixture has no component with a hole');
     delete component.boardId;
     expect(() => parseCanonicalProject(raw)).toThrow(/no boardId/);
@@ -498,32 +588,52 @@ describe('parseCanonicalProject', () => {
 
   it('accepts only a complete manual route as explicit persisted routing', () => {
     const manual = clone(validRaw) as {
-      layout: { conductors: { routingMode?: string; points?: { x: number; y: number }[] }[] };
+      layout: {
+        conductors: {
+          physicalBinding?: boolean;
+          routingMode?: string;
+          points?: { x: number; y: number }[];
+        }[];
+      };
     };
-    manual.layout.conductors[0].points = [
+    const manualLayout = manual.layout.conductors.find((layout) => !layout.physicalBinding);
+    if (!manualLayout) throw new Error('fixture has no visible conductor layout');
+    manualLayout.points = [
       { x: 0, y: 0 },
       { x: 0.5, y: 20 },
       { x: 40, y: 20 },
     ];
-    manual.layout.conductors[0].routingMode = 'manual';
+    manualLayout.routingMode = 'manual';
     expect(() => parseCanonicalProject(manual)).not.toThrow();
 
     const automatic = clone(validRaw) as {
-      layout: { conductors: { routingMode?: string }[] };
+      layout: { conductors: { physicalBinding?: boolean; routingMode?: string }[] };
     };
-    automatic.layout.conductors[0].routingMode = 'auto';
+    const automaticLayout = automatic.layout.conductors.find((layout) => !layout.physicalBinding);
+    if (!automaticLayout) throw new Error('fixture has no visible conductor layout');
+    automaticLayout.routingMode = 'auto';
     expect(() => parseCanonicalProject(automatic)).toThrow(/routingMode/);
 
     const missingPoints = clone(manual);
-    delete missingPoints.layout.conductors[0].points;
+    const missingPointsLayout = missingPoints.layout.conductors.find(
+      (layout) => !layout.physicalBinding,
+    );
+    if (!missingPointsLayout) throw new Error('fixture has no visible conductor layout');
+    delete missingPointsLayout.points;
     expect(() => parseCanonicalProject(missingPoints)).toThrow(/at least 2 points/);
 
     const missingMode = clone(manual);
-    delete missingMode.layout.conductors[0].routingMode;
+    const missingModeLayout = missingMode.layout.conductors.find(
+      (layout) => !layout.physicalBinding,
+    );
+    if (!missingModeLayout) throw new Error('fixture has no visible conductor layout');
+    delete missingModeLayout.routingMode;
     expect(() => parseCanonicalProject(missingMode)).toThrow(/require routingMode/);
 
     const diagonal = clone(manual);
-    diagonal.layout.conductors[0].points = [
+    const diagonalLayout = diagonal.layout.conductors.find((layout) => !layout.physicalBinding);
+    if (!diagonalLayout) throw new Error('fixture has no visible conductor layout');
+    diagonalLayout.points = [
       { x: 0, y: 0 },
       { x: 10, y: 10 },
     ];

@@ -6,37 +6,34 @@ import { devicePortHoles } from './footprint-geometry';
 import { isBoardNode, isDeviceNode } from './guards';
 import { type BoardHole } from './interfaces';
 
+/**
+ * Where a diagram endpoint physically lands, resolved through
+ * pin -> hole -> trace.
+ *
+ * `netLabel` is deliberately *not* called `netId`: copper carries a **name**
+ * the person wrote on the board ("GND_SYS"), never the identity of a net. In
+ * format v2 a net's identity is derived from the conductor graph
+ * (`net-grouping.ts`) and nowhere else, so this label is only ever used as a
+ * naming hint for a brand-new net and as evidence in
+ * `physical-diagnostics.ts`. Nothing here rewrites an imported net.
+ */
 export interface PhysicalEndpoint {
   boardId: string;
   hole: BoardHole;
   traceId?: string;
   traceLabel?: string;
-  netId?: string;
+  /** Net *name* written on the copper, when its trace declares one. */
+  netLabel?: string;
 }
 
 export interface PhysicalEdgeNet {
-  netId?: string;
+  /** The single copper net name both ends agree on, when there is one. */
+  netLabel?: string;
+  /** Two or more distinct copper net names met by one conductor: a short. */
   conflict: string[];
 }
 
-/**
- * Reconcile stored edge data after a physical endpoint moves. A current copper
- * net wins; leaving copper clears only the value that was previously derived,
- * preserving unrelated authored net data.
- */
-export function reconciledPhysicalNetId(
-  storedNetId: string | undefined,
-  previousPhysicalNetId: string | undefined,
-  current: PhysicalEdgeNet,
-): string | undefined {
-  if (current.conflict.length > 0) return storedNetId;
-  if (current.netId !== undefined) return current.netId;
-  return previousPhysicalNetId !== undefined && storedNetId === previousPhysicalNetId
-    ? undefined
-    : storedNetId;
-}
-
-/** Resolve a live diagram endpoint through pin -> hole -> trace -> net. */
+/** Resolve a live diagram endpoint through pin -> hole -> trace -> copper label. */
 export function physicalEndpoint(
   nodes: readonly Node[],
   nodeId: string | undefined,
@@ -61,39 +58,62 @@ export function physicalEndpoint(
           hole: traceHole,
           traceId: trace.id,
           traceLabel: trace.label,
-          netId: trace.net,
+          netLabel: trace.net,
         }
       : null;
   }
 
-  if (!isDeviceNode(node) || !node.data.placement) return null;
+  if (!isDeviceNode(node)) return null;
+  const boardId = node.data.placement?.boardId ?? node.data.boardId;
+  if (!boardId) return null;
   const board = nodes
     .filter(isBoardNode)
-    .find((candidate) => candidate.data.boardId === node.data.placement?.boardId);
+    .find((candidate) => candidate.data.boardId === boardId);
   const hole = devicePortHoles(node.data).get(portId);
   if (!board || !hole) return null;
   return endpointAtHole(board.data.boardId, hole, traceForHole(board.data, hole));
 }
 
-export function physicalNetForEndpoint(
+export function physicalNetLabelForEndpoint(
   nodes: readonly Node[],
   nodeId: string | undefined,
   portId: string | undefined,
 ): string | undefined {
-  return physicalEndpoint(nodes, nodeId, portId)?.netId;
+  return physicalEndpoint(nodes, nodeId, portId)?.netLabel;
 }
 
-/** Infer one physical edge net, reporting an explicit short when endpoints disagree. */
+/**
+ * The copper net name a conductor would carry, or an explicit short when its
+ * two ends sit on copper that already carries two different names.
+ *
+ * Refusing that connection is the only place physical copper is allowed to
+ * *veto* an edit; it never rewrites a net that already exists.
+ */
 export function physicalEdgeNet(
   nodes: readonly Node[],
   edge: Pick<Edge, 'source' | 'sourcePort' | 'target' | 'targetPort'>,
 ): PhysicalEdgeNet {
   const values = [
-    physicalNetForEndpoint(nodes, edge.source, edge.sourcePort),
-    physicalNetForEndpoint(nodes, edge.target, edge.targetPort),
+    physicalNetLabelForEndpoint(nodes, edge.source, edge.sourcePort),
+    physicalNetLabelForEndpoint(nodes, edge.target, edge.targetPort),
   ].filter((value): value is string => value !== undefined);
   const unique = [...new Set(values)];
-  return unique.length > 1 ? { conflict: unique } : { netId: unique[0], conflict: [] };
+  return unique.length > 1 ? { conflict: unique } : { netLabel: unique[0], conflict: [] };
+}
+
+/**
+ * The net name a *new* conductor should be born with.
+ *
+ * Only ever fills a blank: an edge that already carries a name (typically one
+ * an import wrote) keeps it, and the divergence is reported by
+ * `physical-diagnostics.ts` instead of being silently overwritten.
+ */
+export function initialNetNameFromCopper(
+  storedNetName: string | undefined,
+  physical: PhysicalEdgeNet,
+): string | undefined {
+  if (storedNetName) return storedNetName;
+  return physical.conflict.length > 0 ? undefined : physical.netLabel;
 }
 
 function endpointAtHole(
@@ -106,6 +126,6 @@ function endpointAtHole(
     hole,
     traceId: trace?.id,
     traceLabel: trace?.label,
-    netId: trace?.net,
+    netLabel: trace?.net,
   };
 }

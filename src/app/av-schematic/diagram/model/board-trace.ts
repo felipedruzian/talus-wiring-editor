@@ -11,7 +11,7 @@ import {
  *
  * Segments are axis-aligned by definition; a segment whose ends share neither
  * a row nor a column is malformed and yields only its two endpoints rather
- * than inventing a diagonal run of holes — `findMalformedTraceSegments` is
+ * than inventing a diagonal run of holes - `findMalformedTraceSegments` is
  * what reports it, so expansion never has to throw mid-render.
  */
 export function traceSegmentHoles(segment: BoardTraceSegment): BoardHole[] {
@@ -35,7 +35,7 @@ export function traceSegmentHoles(segment: BoardTraceSegment): BoardHole[] {
  * Every hole a trace joins, de-duplicated and row-major.
  *
  * A trace's segments need not touch each other: an insulated jumper wire
- * bridging two distant holes (peça E's UART divider node) is one trace made of
+ * bridging two distant holes (peca E's UART divider node) is one trace made of
  * two single-hole segments. Electrically they are one point either way, which
  * is the only thing a trace claims.
  */
@@ -146,7 +146,7 @@ export function findTraceDefects(board: BoardGrid & Pick<BoardNodeData, 'traces'
 }
 
 /**
- * Holes claimed by more than one trace on the same board — two nets shorted
+ * Holes claimed by more than one trace on the same board - two nets shorted
  * together, which is a wiring error rather than a layout preference.
  */
 export function findTraceOverlaps(board: Pick<BoardNodeData, 'traces'>): {

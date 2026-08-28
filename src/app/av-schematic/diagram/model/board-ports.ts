@@ -7,7 +7,7 @@ import { type BoardHole } from './interfaces';
  * expressed the only way the engine understands: an edge whose `target` is the
  * board node and whose `targetPort` is a port id. Encoding the hole address
  * into the id (rather than keeping a side table) means the association is
- * carried by the edge itself — so it round-trips through save/reload for free,
+ * carried by the edge itself - so it round-trips through save/reload for free,
  * with no extra field to keep in sync.
  *
  * Two shapes exist:
@@ -54,4 +54,51 @@ export function parseTracePortId(portId: string): string | null {
   if (!isTracePortId(portId)) return null;
   const traceId = portId.slice(TRACE_PORT_PREFIX.length);
   return traceId.length > 0 ? traceId : null;
+}
+
+/**
+ * Prefix of the junction id a board port takes in the canonical project.
+ *
+ * A hole (or a trace) that a conductor lands on *is* an electrical junction:
+ * one point where conductors meet. Format v2 stores it as one, and the
+ * layout entry records which board port it is drawn as
+ * (`CanonicalJunctionLayout.boardPort`). The prefix keeps these ids from ever
+ * colliding with a user-visible node id, and makes them recognizable in a
+ * saved file.
+ */
+export const BOARD_COPPER_JUNCTION_PREFIX = 'copper:';
+
+export function boardCopperJunctionId(boardId: string, portId: string): string {
+  return `${BOARD_COPPER_JUNCTION_PREFIX}${encodeURIComponent(boardId)}/${encodeURIComponent(portId)}`;
+}
+
+export function isBoardCopperJunctionId(junctionId: string): boolean {
+  return junctionId.startsWith(BOARD_COPPER_JUNCTION_PREFIX);
+}
+
+/** Deterministic id for the hidden conductor that solders one pin to a board hole. */
+export const PHYSICAL_BINDING_CONDUCTOR_PREFIX = 'binding:';
+
+export function physicalBindingConductorId(componentId: string, pinId: string): string {
+  return `${PHYSICAL_BINDING_CONDUCTOR_PREFIX}${encodeURIComponent(componentId)}/${encodeURIComponent(pinId)}`;
+}
+
+export function isPhysicalBindingConductorId(conductorId: string): boolean {
+  return conductorId.startsWith(PHYSICAL_BINDING_CONDUCTOR_PREFIX);
+}
+
+/**
+ * Human-facing name of a board port, 1-indexed the way the hardware notes are
+ * (`L1-C2`). Falls back to the raw port id for anything unrecognized so an
+ * unexpected value is still visible rather than blank.
+ */
+export function boardPortLabel(portId: string, traceLabel?: string): string {
+  const hole = parseHolePortId(portId);
+  if (hole) {
+    const address = `L${hole.row + 1}-C${hole.col + 1}`;
+    return traceLabel ? `${address} (${traceLabel})` : address;
+  }
+  const traceId = parseTracePortId(portId);
+  if (traceId) return traceLabel ?? traceId;
+  return portId;
 }

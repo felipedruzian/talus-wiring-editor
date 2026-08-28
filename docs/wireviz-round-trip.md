@@ -41,6 +41,8 @@ severidade, código, caminho e mensagem. Ele registra:
 - campos desconhecidos preservados ou reemitidos;
 - semânticas reconhecidas, mas não modeladas;
 - nets multi-drop, junções e loops detectados;
+- redes importadas com nomes distintos que o cobre físico existente reúne,
+  incluindo o nome escolhido deterministicamente e a ação de revisão;
 - remapeamentos necessários de nomes ou designadores;
 - geometria e metadados locais sem equivalente WireViz;
 - formas de cor locais que o WireViz não representa.

@@ -7,7 +7,7 @@ export enum NodeTemplateType {
   JunctionNode = 'junctionNode',
   /**
    * A device drawn as a physical footprint seated on a board, instead of as the
-   * generic AV card. Same `DeviceNodeData` payload — only the template differs,
+   * generic AV card. Same `DeviceNodeData` payload - only the template differs,
    * so the properties sidebar, DXF export, `generateDeviceId` and every other
    * subsystem that keys on `data.type === 'device'` keep working unchanged.
    */
@@ -97,7 +97,7 @@ export const BOARD_ROTATIONS: readonly BoardRotation[] = [0, 90, 180, 270];
  * Where a footprinted component is seated on a board.
  *
  * `anchor` is the board hole that the *rotated* footprint's top-left bounding
- * box cell lands on — so the whole placement is `(board, anchor, rotation)` and
+ * box cell lands on - so the whole placement is `(board, anchor, rotation)` and
  * every pin position follows from the footprint. Keeping the anchor (rather
  * than a pixel position) as the stored truth is what makes "encaixado" mean
  * something: a placement can only ever address whole holes.
@@ -158,8 +158,9 @@ export interface BoardTraceSegment {
  * A trilha: a set of holes on one board that are electrically one point.
  *
  * Segments (rather than an explicit hole list) keep a full-width rail on a
- * 6 x 28 board one line of data instead of 28, and still express L-shaped
- * runs and vertical bridges.
+ * 6 x 28 board one line of data instead of 28, and still express the L-shaped
+ * runs and vertical bridges that the real Talus-Droid pieces use (see peca E's
+ * bridge from L1-C3 down to L3-C1 in docs/physical-footprints.md).
  */
 export interface BoardTrace {
   id: string;
@@ -175,7 +176,7 @@ export interface BoardTrace {
  *
  * Nothing here presumes a particular size or a particular kind of board: the
  * 6 x 11 placa A, the uncut 6 x 28 origin perfboard and the small 6 x 3 / 6 x 4
- * peças D/E/F/G are all the same type with different numbers. Rendered as its
+ * pecas D/E/F/G are all the same type with different numbers. Rendered as its
  * own node so it shares the single ng-diagram canvas/coordinate plane with
  * devices and wires -- not a second canvas, not a background image.
  */

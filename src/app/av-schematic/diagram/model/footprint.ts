@@ -2,14 +2,14 @@
  * Physical footprints: what a component looks like, and where its pins sit
  * relative to a board's hole grid.
  *
- * A footprint is expressed entirely in **hole units** — one unit is one board
- * pitch — never in pixels. That is what lets the same footprint be seated on
+ * A footprint is expressed entirely in **hole units** - one unit is one board
+ * pitch - never in pixels. That is what lets the same footprint be seated on
  * any board this app can describe: placa A at 20 px pitch and a zoomed-out
  * 6 x 28 origin board at some other pitch use the identical definition, and
  * the pixel geometry is derived at render time (see `footprint-geometry.ts`).
  *
  * Illustration shapes use the same hole-unit coordinate space, with the origin
- * at cell (0, 0) — so a shape at `x: 1.5` sits halfway between the second and
+ * at cell (0, 0) - so a shape at `x: 1.5` sits halfway between the second and
  * third pin column, whatever the board's pitch turns out to be.
  */
 
@@ -20,7 +20,7 @@ export interface FootprintCell {
 
 /**
  * Bounded palette of paint roles. Footprints name a role, `footprint-node`'s
- * stylesheet resolves it to a CSS custom property — so themes (and the light /
+ * stylesheet resolves it to a CSS custom property - so themes (and the light /
  * dark toggle) stay in CSS and no footprint definition hardcodes a hex value.
  */
 export type FootprintPaint = 'none' | 'body' | 'body-alt' | 'accent' | 'lead' | 'silk' | 'polarity';
@@ -68,7 +68,7 @@ export type FootprintShape =
 export interface FootprintPin {
   /**
    * Matches a `DevicePort.id` when the component exposes this pin
-   * electrically. Pins with no matching port still occupy their hole — an
+   * electrically. Pins with no matching port still occupy their hole - an
    * unused header pin is still soldered into the board.
    */
   id: string;

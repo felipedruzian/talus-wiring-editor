@@ -81,7 +81,11 @@
   line-height: 1;
   font-weight: 600;
   letter-spacing: 0.02em;
-  color: var(--ngd-txt-secondary-default);
+  padding: 2px 3px;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 88%);
+  color: #1f2937;
+  text-shadow: 0 1px 0 rgb(255 255 255 / 70%);
   white-space: nowrap;
   user-select: none;
   pointer-events: none;

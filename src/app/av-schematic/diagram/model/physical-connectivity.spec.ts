@@ -3,10 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { rowTrace } from './board-trace';
 import { type Footprint } from './footprint';
 import {
+  initialNetNameFromCopper,
   physicalEdgeNet,
   physicalEndpoint,
-  physicalNetForEndpoint,
-  reconciledPhysicalNetId,
+  physicalNetLabelForEndpoint,
 } from './physical-connectivity';
 import {
   EdgeTemplateType,
@@ -89,9 +89,32 @@ describe('physical connectivity', () => {
       hole: { row: 0, col: 0 },
       traceId: 'vcc',
       traceLabel: 'L1',
-      netId: 'VCC',
+      netLabel: 'VCC',
     });
-    expect(physicalNetForEndpoint(nodes, component.id, 'a')).toBe('VCC');
+    expect(physicalNetLabelForEndpoint(nodes, component.id, 'a')).toBe('VCC');
+  });
+
+  it('keeps hand-addressed v2 pins connected without a footprint placement', () => {
+    const handAddressed: Node<DeviceNodeData> = {
+      ...component,
+      id: 'manual-pin',
+      type: NodeTemplateType.DeviceNode,
+      data: {
+        ...component.data,
+        footprintId: undefined,
+        footprint: undefined,
+        placement: undefined,
+        boardId: board.data.boardId,
+        ports: [{ id: 'a', label: 'A', direction: 'input', hole: { row: 2, col: 1 } }],
+      },
+    };
+
+    expect(physicalEndpoint([board, handAddressed], handAddressed.id, 'a')).toMatchObject({
+      boardId: 'board-17',
+      hole: { row: 2, col: 1 },
+      traceId: 'gnd',
+      netLabel: 'GND',
+    });
   });
 
   it('resolves board hole and trace endpoints without a side table', () => {
@@ -99,24 +122,24 @@ describe('physical connectivity', () => {
       boardId: 'board-17',
       hole: { row: 0, col: 2 },
       traceId: 'vcc',
-      netId: 'VCC',
+      netLabel: 'VCC',
     });
     expect(physicalEndpoint(nodes, board.id, 'trace:gnd')).toMatchObject({
       boardId: 'board-17',
       hole: { row: 2, col: 0 },
       traceId: 'gnd',
-      netId: 'GND',
+      netLabel: 'GND',
     });
     expect(physicalEndpoint(nodes, board.id, 'hole:1:1')).toMatchObject({
       boardId: 'board-17',
       hole: { row: 1, col: 1 },
-      netId: undefined,
+      netLabel: undefined,
     });
   });
 
   it('infers one physical edge net and reports incompatible copper endpoints', () => {
     expect(physicalEdgeNet(nodes, edgeTo('hole:0:3'))).toEqual({
-      netId: 'VCC',
+      netLabel: 'VCC',
       conflict: [],
     });
     expect(physicalEdgeNet(nodes, edgeTo('trace:gnd'))).toEqual({
@@ -124,9 +147,11 @@ describe('physical connectivity', () => {
     });
   });
 
-  it('updates and clears only net data derived from a moved physical endpoint', () => {
-    expect(reconciledPhysicalNetId('VCC', 'VCC', { netId: 'GND', conflict: [] })).toBe('GND');
-    expect(reconciledPhysicalNetId('VCC', 'VCC', { conflict: [] })).toBeUndefined();
-    expect(reconciledPhysicalNetId('AUTHORED', 'VCC', { conflict: [] })).toBe('AUTHORED');
+  it('uses copper only as a fallback and preserves an authored/imported net name', () => {
+    expect(initialNetNameFromCopper(undefined, { netLabel: 'GND', conflict: [] })).toBe('GND');
+    expect(initialNetNameFromCopper(undefined, { conflict: ['GND', 'VCC'] })).toBeUndefined();
+    expect(initialNetNameFromCopper('AUTHORED', { netLabel: 'GND', conflict: [] })).toBe(
+      'AUTHORED',
+    );
   });
 });

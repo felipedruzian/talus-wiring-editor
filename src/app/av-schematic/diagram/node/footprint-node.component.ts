@@ -15,6 +15,7 @@ import { resolveFootprint, type FootprintPaint, type FootprintShape } from '../m
 import { isBoardNode } from '../model/guards';
 import { type BoardRotation, type DeviceNodeData } from '../model/interfaces';
 import { BoardPlacementService } from '../placement/board-placement.service';
+import { centerLeftPortBoxPosition } from '../edge-reshaping/logic/port-position';
 
 interface PinView {
   id: string;
@@ -111,11 +112,11 @@ export class FootprintNodeComponent implements NgDiagramNodeTemplate<DeviceNodeD
   protected readonly portSize = computed(() => Math.max(4, Math.min(this.pitch() - 2, 14)));
 
   protected portLeft(pin: PinView): number {
-    return pin.x;
+    return centerLeftPortBoxPosition(pin, this.portSize()).x;
   }
 
   protected portTop(pin: PinView): number {
-    return pin.y;
+    return centerLeftPortBoxPosition(pin, this.portSize()).y;
   }
 
   protected fill(shape: FootprintShape): string {

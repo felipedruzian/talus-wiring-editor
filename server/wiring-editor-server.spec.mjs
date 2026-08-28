@@ -18,9 +18,28 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { OPERATIONAL_LIMITS } from '../src/app/av-schematic/diagram/model/operational-limits.mjs';
+import {
+  basePhysicalProject,
+  canonicalValidationCorpus,
+} from '../src/app/av-schematic/diagram/model/canonical-project-corpus.mjs';
+import { parseCanonicalProject as parseCanonicalProjectOnServer } from './canonical-project-validate.mjs';
 import { createWiringEditorServer } from './wiring-editor-server.mjs';
 
 const HOST = '127.0.0.1';
+
+describe('canonical physical validation corpus', () => {
+  for (const testCase of canonicalValidationCorpus) {
+    it(testCase.name, () => {
+      const parse = () =>
+        parseCanonicalProjectOnServer(JSON.parse(JSON.stringify(testCase.raw)));
+      if (testCase.accepted) {
+        expect(parse).not.toThrow();
+      } else {
+        expect(parse).toThrow();
+      }
+    });
+  }
+});
 
 /**
  * Sends a raw HTTP request via node:http instead of fetch(). Needed for the
@@ -294,6 +313,34 @@ describe('wiring-editor-server', () => {
       ]);
       expect(await clientA.json()).toEqual(project);
       expect(await clientB.json()).toEqual(project);
+    });
+
+    it('preserves and normalizes the complete physical v2 layout', async () => {
+      const putRes = await fetch(`${server.baseUrl}/api/projects/physical`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(basePhysicalProject()),
+      });
+      expect(putRes.status).toBe(200);
+
+      const getRes = await fetch(`${server.baseUrl}/api/projects/physical`);
+      const saved = await getRes.json();
+      expect(saved.electrical.nets[0].name).toBe('AUTHORED');
+      expect(saved.layout.boards[0]).toMatchObject({
+        pitch: 17,
+        holeDiameter: 5,
+        traces: [{ id: 'vcc', net: 'VCC' }],
+      });
+      expect(saved.layout.components[0]).toMatchObject({
+        footprintId: 'inline-link',
+        position: { x: 30.25, y: 57.25 },
+        pinHoles: [
+          { pinId: 'a', hole: { row: 2, col: 1 } },
+          { pinId: 'b', hole: { row: 2, col: 2 } },
+        ],
+      });
+      expect(saved.layout.junctions[0].boardPort).toBe('trace:vcc');
+      expect(saved.layout.conductors.every((layout) => layout.physicalBinding)).toBe(true);
     });
 
     it('continues accepting legacy v1 snapshots for older clients', async () => {

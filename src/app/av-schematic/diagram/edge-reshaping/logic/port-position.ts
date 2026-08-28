@@ -1,5 +1,11 @@
 import { type Node, type Point, type Port } from 'ng-diagram';
 
+/** CSS box position that makes a center-left port anchor land on `center`. */
+export const centerLeftPortBoxPosition = (center: Point, size: number): Point => ({
+  x: center.x,
+  y: center.y - size / 2,
+});
+
 const portCenter = (port: Port, node: Node): Point => {
   const x = (port.position?.x ?? 0) + node.position.x;
   const y = (port.position?.y ?? 0) + node.position.y;

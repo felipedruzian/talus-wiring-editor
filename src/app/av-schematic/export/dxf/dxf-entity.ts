@@ -2,7 +2,7 @@ import { formatCoord } from './dxf-format';
 
 /**
  * DXF entity primitives. This module knows nothing about ng-diagram or
- * av-schematic — only how to serialize a DXF entity record. Add a new
+ * av-schematic - only how to serialize a DXF entity record. Add a new
  * subclass here to support a new DXF entity type (e.g. ARC).
  */
 export abstract class DxfEntity {
@@ -141,7 +141,7 @@ export class DxfText extends DxfEntity {
         this.pair(31, formatCoord(0)),
       );
     }
-    // Second AcDbText subclass marker — per the DXF spec only the 73 (valign)
+    // Second AcDbText subclass marker - per the DXF spec only the 73 (valign)
     // group may follow it; the second alignment point (11/21/31) belongs to
     // the first AcDbText subclass.
     lines.push(this.pair(100, 'AcDbText'));
@@ -153,11 +153,11 @@ export class DxfText extends DxfEntity {
 /**
  * Sanitize a string for safe inclusion in a DXF TEXT entity (group code 1).
  *
- * - `%` → `%%%`: AutoCAD treats `%%c` / `%%d` / `%%p` / `%%o` / `%%u` /
- *   `%%nnn` as format codes (⌀, °, ±, over/underline toggles, ASCII char).
+ * - `%` -> `%%%`: AutoCAD treats `%%c` / `%%d` / `%%p` / `%%o` / `%%u` /
+ *   `%%nnn` as format codes (diameter, degree, plus/minus, toggles, ASCII char).
  *   `%%%` renders as a single literal `%`, and pre-escaping every `%`
  *   neutralizes any user-typed `%%X` sequence in the same pass.
- * - C0 control characters (incl. `\n`, `\r`, `\t`) → space: TEXT is
+ * - C0 control characters (incl. `\n`, `\r`, `\t`) -> space: TEXT is
  *   single-line, and a raw newline would corrupt the DXF group-code/value
  *   framing (each pair is delimited by a newline).
  *

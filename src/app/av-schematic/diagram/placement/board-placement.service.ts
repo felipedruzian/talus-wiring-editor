@@ -15,7 +15,7 @@ import {
   type PlacementConflict,
 } from '../model/footprint-geometry';
 import { isBoardNode, isDeviceNode, isWireEdge } from '../model/guards';
-import { physicalEdgeNet, reconciledPhysicalNetId } from '../model/physical-connectivity';
+import { physicalEdgeNet } from '../model/physical-connectivity';
 import {
   NodeTemplateType,
   type BoardNodeData,
@@ -27,12 +27,12 @@ import {
 /**
  * Owns "where is this component seated, and is that seat legal".
  *
- * Three jobs, all driven by ordinary ng-diagram node moves — no second canvas,
+ * Three jobs, all driven by ordinary ng-diagram node moves - no second canvas,
  * no parallel geometry model:
  *
  * 1. **Snap.** A footprinted component dropped anywhere over a board is seated
  *    on the nearest hole, and its node position is rewritten from the resulting
- *    anchor — so the pixels always agree with the hole address, never approximate it.
+ *    anchor - so the pixels always agree with the hole address, never approximate it.
  * 2. **Occupancy.** A seat that would put two pins in one hole, or hang the
  *    footprint off the edge, is refused: the move is reverted to the last legal
  *    placement and the conflict is published for the UI to show. Nothing ever
@@ -185,16 +185,19 @@ export class BoardPlacementService {
       return;
     }
 
-    const board = this.findBoardUnder(node) ?? this.findBoardById(node.data.placement?.boardId);
+    const board = this.findBoardUnder(node);
     if (!board) {
+      if (node.data.placement) {
+        await this.unseat(node);
+        return;
+      }
       this._conflict.set({
         kind: 'unknown-board',
         nodeId: node.id,
-        boardId: node.data.placement?.boardId ?? '',
+        boardId: '',
         holes: [],
         blockedBy: [],
       });
-      await this.revert(node, 'unknown-board');
       return;
     }
 
@@ -241,9 +244,6 @@ export class BoardPlacementService {
     const data = syncPortHolesToPlacement({ ...node.data, placement, boardId: placement.boardId });
     const previousNodes = this.modelService.getModel().getNodes();
     const connectedEdges = this.modelService.getConnectedEdges(node.id).filter(isWireEdge);
-    const previousPhysicalNets = new Map(
-      connectedEdges.map((edge) => [edge.id, physicalEdgeNet(previousNodes, edge).netId]),
-    );
     const candidateNodes = previousNodes.map((candidate) =>
       candidate.id === node.id ? { ...candidate, data } : candidate,
     );
@@ -271,35 +271,31 @@ export class BoardPlacementService {
       },
       { waitForMeasurements: true },
     );
-    await this.syncConnectedEdgeNets(node.id, previousPhysicalNets);
     return true;
   }
 
-  private async syncConnectedEdgeNets(
-    nodeId: string,
-    previousPhysicalNets: ReadonlyMap<string, string | undefined>,
-  ): Promise<void> {
-    const nodes = this.modelService.getModel().getNodes();
-    const updates = this.modelService
-      .getConnectedEdges(nodeId)
-      .filter(isWireEdge)
-      .flatMap((edge) => {
-        const physical = physicalEdgeNet(nodes, edge);
-        if (physical.conflict.length > 0) return [];
-        const previousNet = previousPhysicalNets.get(edge.id);
-        const netId = reconciledPhysicalNetId(edge.data.netId, previousNet, physical);
-        if (edge.data.netId === netId) {
-          return [];
-        }
-        return [{ id: edge.id, data: { ...edge.data, netId } }];
-      });
-    if (updates.length > 0) await this.modelService.updateEdges(updates);
+  /** Detaches a footprint from its board without changing its electrical wires. */
+  private async unseat(node: Node<DeviceNodeData>): Promise<void> {
+    this._conflict.set(null);
+    await this.modelService.updateNode(
+      node.id,
+      {
+        type: NodeTemplateType.DeviceNode,
+        data: {
+          ...node.data,
+          boardId: undefined,
+          placement: undefined,
+          ports: node.data.ports.map((port) => ({ ...port, hole: undefined })),
+        },
+      },
+      { waitForMeasurements: true },
+    );
   }
 
   /**
    * Puts a rejected node back on its last known good seat. A node that never
    * had one (dragged in from the palette straight onto an illegal spot) is left
-   * where it is with the conflict published — throwing it back to nowhere would
+   * where it is with the conflict published - throwing it back to nowhere would
    * be worse than showing why it can't sit there.
    */
   private async revert(node: Node<DeviceNodeData>, kind: PlacementConflict['kind']): Promise<void> {

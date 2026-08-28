@@ -45,7 +45,7 @@ export const DEFAULT_NODE_WIDTH = 240;
 export const PORT_WIDTH = 8;
 export const PORT_HEIGHT = 13;
 
-/** Mirrors `.port-row { min-height: 36px }` — fallback when measuredPorts is missing. */
+/** Mirrors `.port-row { min-height: 36px }` - fallback when measuredPorts is missing. */
 export const FALLBACK_PORT_ROW_HEIGHT = 36;
 
 /**
