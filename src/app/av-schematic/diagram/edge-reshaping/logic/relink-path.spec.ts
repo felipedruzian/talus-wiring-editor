@@ -54,4 +54,21 @@ describe('rebuildEndpointPath', () => {
       { x: 120, y: 40 },
     ]);
   });
+
+  it('keeps a drop-time route orthogonal when the endpoint is near a snapped bend', () => {
+    const snappedRoute: Point[] = [
+      { x: 180, y: 106 },
+      { x: 180, y: 220 },
+      { x: 300, y: 220 },
+    ];
+
+    const result = rebuildEndpointPath(snappedRoute, 'source', { x: 178, y: 106 }, true);
+
+    expect(result).toEqual([
+      { x: 178, y: 106 },
+      { x: 178, y: 220 },
+      { x: 300, y: 220 },
+    ]);
+    expect(isOrthogonalPolyline(result)).toBe(true);
+  });
 });

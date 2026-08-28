@@ -1,5 +1,6 @@
 import type { Point } from 'ng-diagram';
 import {
+  ROUTE_POSITION_TOLERANCE_PX,
   collapseCollinearRouteBends,
   dropSameAxisRouteBends,
   normalizePersistedRoute,
@@ -55,8 +56,18 @@ export const removeStraightSegments = (
       Math.abs(prev.y - curr.y) <= alignmentTolerance &&
       Math.abs(curr.y - next.y) <= alignmentTolerance;
 
-    const verticalPassThrough = xAligned && isBetween(prev.y, curr.y, next.y, alignmentTolerance);
-    const horizontalPassThrough = yAligned && isBetween(prev.x, curr.x, next.x, alignmentTolerance);
+    // A loose match around `curr` is not enough: removing it joins `prev`
+    // directly to `next`, so those endpoints must still form a persisted
+    // orthogonal segment. Otherwise a near-grid endpoint can become a tiny
+    // diagonal that save/open correctly rejects.
+    const verticalPassThrough =
+      xAligned &&
+      Math.abs(prev.x - next.x) < ROUTE_POSITION_TOLERANCE_PX &&
+      isBetween(prev.y, curr.y, next.y, alignmentTolerance);
+    const horizontalPassThrough =
+      yAligned &&
+      Math.abs(prev.y - next.y) < ROUTE_POSITION_TOLERANCE_PX &&
+      isBetween(prev.x, curr.x, next.x, alignmentTolerance);
 
     if (verticalPassThrough || horizontalPassThrough) continue;
     result.push(curr);

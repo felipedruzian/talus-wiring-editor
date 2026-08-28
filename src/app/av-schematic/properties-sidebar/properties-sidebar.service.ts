@@ -7,6 +7,7 @@ import {
   type WireEdgeData,
 } from '../diagram/model/interfaces';
 import { describeWireEndpoints, type WireEndpointInfo } from '../diagram/model/wire-endpoints';
+import { NetHighlightService } from '../diagram/net-highlight/net-highlight.service';
 
 export type SidebarState = 'empty' | 'single-node' | 'single-junction' | 'single-edge' | 'multi';
 
@@ -19,6 +20,8 @@ export interface SelectedWireDetails {
   target: WireEndpointInfo | null;
   /** Number of physical conductors selected by a net highlight. */
   netSize: number;
+  netId: string;
+  netName: string;
 }
 
 /** Manages sidebar visibility and exposes selection-derived data. */
@@ -26,6 +29,7 @@ export interface SelectedWireDetails {
 export class PropertiesSidebarService {
   private readonly selectionService = inject(NgDiagramSelectionService);
   private readonly modelService = inject(NgDiagramModelService);
+  private readonly netHighlight = inject(NetHighlightService);
 
   readonly isExpanded = signal(false);
 
@@ -69,11 +73,14 @@ export class PropertiesSidebarService {
     const edge = this.selectedEdge();
     if (!edge) return null;
     const { source, target } = describeWireEndpoints(this.modelService.nodes(), edge);
+    const net = this.netHighlight.netForEdge(edge.id);
     return {
       edge,
       source,
       target,
-      netSize: this.countNetMembers(edge.data.netId),
+      netSize: net?.edgeIds.length ?? 0,
+      netId: net?.id ?? '',
+      netName: net?.name ?? '',
     };
   });
 
@@ -83,11 +90,5 @@ export class PropertiesSidebarService {
 
   toggleSidebarVisibility(): void {
     this.isExpanded.update((v) => !v);
-  }
-
-  private countNetMembers(netId: string | undefined): number {
-    if (!netId) return 0;
-    return this.modelService.edges().filter((edge) => isWireEdge(edge) && edge.data.netId === netId)
-      .length;
   }
 }

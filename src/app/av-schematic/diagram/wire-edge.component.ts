@@ -88,7 +88,7 @@ export class WireEdgeComponent implements NgDiagramEdgeTemplate<WireEdgeData> {
   }
 
   protected readonly emphasis = computed<NetEmphasis>(() =>
-    this.netHighlight.emphasisFor(this.edge().data.netId),
+    this.netHighlight.emphasisForEdge(this.edge().id),
   );
 
   protected readonly strokeColor = computed(() => {
@@ -130,9 +130,10 @@ export class WireEdgeComponent implements NgDiagramEdgeTemplate<WireEdgeData> {
 
   /** Only the metadata that is actually filled in -- an empty field shows nothing. */
   protected readonly inspectionFacts = computed<InspectionFact[]>(() => {
-    const data = this.edge().data;
+    const edge = this.edge();
+    const data = edge.data;
     const facts: InspectionFact[] = [];
-    const netLabel = data.netName ?? data.netId;
+    const netLabel = this.netHighlight.netForEdge(edge.id)?.name;
     if (netLabel) facts.push({ label: 'Net', value: netLabel });
     if (data.wireType) facts.push({ label: 'Tipo', value: data.wireType });
     if (data.gauge) facts.push({ label: 'Bitola', value: data.gauge });

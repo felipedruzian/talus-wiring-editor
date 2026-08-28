@@ -1,6 +1,6 @@
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { NgDiagramModelService } from 'ng-diagram';
-import { isWireEdge } from '../model/guards';
+import { deriveLiveWireNets, type LiveWireNet } from './live-wire-nets';
 import { resolveNetEmphasis, type NetEmphasis } from './net-emphasis';
 
 /**
@@ -8,56 +8,64 @@ import { resolveNetEmphasis, type NetEmphasis } from './net-emphasis';
  * the diagram is attenuated while it is.
  *
  * Highlighting is view state only -- it never touches `WireEdgeData`, so it is
- * not persisted and cannot drift from the saved project. The wire edge template
- * reads {@link emphasisFor} to pick its stroke treatment; the properties
- * sidebar drives the toggles.
+ * not persisted and cannot drift from the saved project. Membership is derived
+ * from the current endpoints, including newly drawn and relinked wires.
  */
 @Injectable()
 export class NetHighlightService {
   private readonly modelService = inject(NgDiagramModelService);
-  private readonly _netId = signal<string | null>(null);
+  private readonly _highlightedEdgeId = signal<string | null>(null);
   private readonly _dimOthers = signal(true);
+  private readonly netsByEdgeId = computed(() =>
+    deriveLiveWireNets(this.modelService.nodes(), this.modelService.edges()),
+  );
 
-  readonly netId = this._netId.asReadonly();
+  readonly netId = computed(() => {
+    const edgeId = this._highlightedEdgeId();
+    return edgeId ? (this.netForEdge(edgeId)?.id ?? null) : null;
+  });
   readonly dimOthers = this._dimOthers.asReadonly();
-  readonly isActive = computed(() => this._netId() !== null);
+  readonly isActive = computed(() => this.netId() !== null);
 
   constructor() {
-    // Deleting or renaming the last wire in a highlighted net must not leave
-    // every remaining wire dimmed with no matching wire available to clear it.
+    // Deleting the anchor wire must not make the highlight reappear if another
+    // edge later reuses the same id.
     effect(() => {
-      const activeNetId = this._netId();
-      if (!activeNetId) return;
-      const stillExists = this.modelService
-        .edges()
-        .some((edge) => isWireEdge(edge) && edge.data.netId === activeNetId);
-      if (!stillExists) {
+      const edgeId = this._highlightedEdgeId();
+      if (!edgeId) return;
+      if (!this.netsByEdgeId().has(edgeId)) {
         untracked(() => {
-          this._netId.set(null);
+          this._highlightedEdgeId.set(null);
         });
       }
     });
   }
 
-  /** Start (or switch) the highlight. An empty/absent net id clears it instead. */
-  highlight(netId: string | null | undefined): void {
-    this._netId.set(netId === undefined || netId === '' ? null : netId);
+  netForEdge(edgeId: string): LiveWireNet | null {
+    return this.netsByEdgeId().get(edgeId) ?? null;
   }
 
-  toggle(netId: string | null | undefined): void {
-    const next = netId === undefined || netId === '' ? null : netId;
-    this._netId.update((current) => (current === next ? null : next));
+  toggleEdge(edgeId: string): void {
+    const next = this.netForEdge(edgeId);
+    if (!next) {
+      this.clear();
+      return;
+    }
+    this._highlightedEdgeId.update((currentEdgeId) => {
+      if (!currentEdgeId) return edgeId;
+      return this.netForEdge(currentEdgeId)?.id === next.id ? null : edgeId;
+    });
   }
 
   clear(): void {
-    this._netId.set(null);
+    this._highlightedEdgeId.set(null);
   }
 
   setDimOthers(dim: boolean): void {
     this._dimOthers.set(dim);
   }
 
-  emphasisFor(edgeNetId: string | undefined): NetEmphasis {
-    return resolveNetEmphasis(edgeNetId, this._netId(), this._dimOthers());
+  emphasisForEdge(edgeId: string): NetEmphasis {
+    return resolveNetEmphasis(this.netForEdge(edgeId)?.id, this.netId(), this._dimOthers());
   }
 }

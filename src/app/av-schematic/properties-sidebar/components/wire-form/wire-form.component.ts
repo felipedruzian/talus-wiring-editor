@@ -33,6 +33,8 @@ export class WireFormComponent {
   readonly edgeData = input.required<WireEdgeData>();
   readonly source = input.required<WireEndpointInfo | null>();
   readonly target = input.required<WireEndpointInfo | null>();
+  readonly netId = input<string>('');
+  readonly netName = input<string>('');
   readonly netSize = input<number>(0);
 
   protected readonly fieldTree = this.formService.fieldTree;
@@ -74,7 +76,7 @@ export class WireFormComponent {
     return `A cor personalizada ${emission.color} não pode ser emitida no YAML WireViz.`;
   });
 
-  protected readonly netId = computed(() => this.edgeData().netId ?? '');
+  protected readonly netLabel = computed(() => this.netName() || this.netId());
   protected readonly isNetHighlighted = computed(
     () => !!this.netId() && this.netHighlight.netId() === this.netId(),
   );
@@ -89,7 +91,7 @@ export class WireFormComponent {
   }
 
   protected onToggleNetHighlight(): void {
-    this.netHighlight.toggle(this.netId());
+    this.netHighlight.toggleEdge(this.edgeId());
   }
 
   protected onDimOthersChange(event: Event): void {
@@ -99,9 +101,9 @@ export class WireFormComponent {
   private syncFormWithInputs(): void {
     effect(() => {
       const edgeId = this.edgeId();
-      const edgeData = this.edgeData();
 
       untracked(() => {
+        const edgeData = this.edgeData();
         this.formService.loadFormData(
           edgeId,
           wireDataToFormData(edgeData),
