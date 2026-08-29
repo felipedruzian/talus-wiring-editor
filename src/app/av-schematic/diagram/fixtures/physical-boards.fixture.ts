@@ -2,6 +2,7 @@ import { type Edge, type Node } from 'ng-diagram';
 import { resolveWireColor } from '../../wireviz-import/wireviz-colors';
 import { allHoles } from '../model/board-geometry';
 import { rowTrace } from '../model/board-trace';
+import { junctionTapPortId } from '../model/canonical-project';
 import { cloneFootprint, getFootprint } from '../model/footprint';
 import { placementNodePosition, syncPortHolesToPlacement } from '../model/footprint-geometry';
 import { holePortId, tracePortId } from '../model/board-ports';
@@ -13,6 +14,7 @@ import {
   type BoardRotation,
   type DeviceNodeData,
   type DevicePort,
+  type JunctionNodeData,
   type WireEdgeData,
 } from '../model/interfaces';
 
@@ -28,9 +30,7 @@ import {
  * | placa A        | 6 x 11 | six full-width rails, one per power net       |
  * | protoboard sup.| 6 x 18 | mounted top circuit with a central channel    |
  * | placa de origem| 6 x 28 | none (uncut perfboard the pieces are cut from)|
- * | peca D         | 6 x 3  | L1 = 8V_MOT, L6 = GND_MOT                     |
  * | peca E         | 6 x 3  | UART divider node (a jumper) + a short L6 GND |
- * | peca F         | 6 x 3  | L1 = 5V_PI, L6 = GND_SYS                      |
  * | peca G         | 6 x 4  | L1 = GND_SYS, L6 = VBAT_SYS                   |
  *
  * Row/column addresses are 0-indexed here; the `L1..L6` / `C1..C11` names the
@@ -87,29 +87,9 @@ export const PROTOBOARD_SUPERIOR_BOARD: BoardNodeData = {
     'Capacitores bulk incorporados: 470 uF/25 V no VM da TB6612 e 470 uF/16 V na entrada do Pi.',
   rows: 6,
   cols: 18,
-  pitch: 14,
+  pitch: BOARD_PITCH,
   centerGap: 12,
   traces: [],
-};
-
-export const PECA_D_BOARD: BoardNodeData = {
-  type: 'board',
-  boardId: 'peca-d',
-  label: 'Peça D (6x3) - bulk no VM da TB6612',
-  rows: 6,
-  cols: 3,
-  pitch: BOARD_PITCH,
-  traces: [rowTrace('d-l1', 'L1', 0, 3, '8V_MOT'), rowTrace('d-l6', 'L6', 5, 3, 'GND_MOT')],
-};
-
-export const PECA_F_BOARD: BoardNodeData = {
-  type: 'board',
-  boardId: 'peca-f',
-  label: 'Peça F (6x3) - bulk na entrada do Pi',
-  rows: 6,
-  cols: 3,
-  pitch: BOARD_PITCH,
-  traces: [rowTrace('f-l1', 'L1', 0, 3, '5V_PI'), rowTrace('f-l6', 'L6', 5, 3, 'GND_SYS')],
 };
 
 export const PECA_G_BOARD: BoardNodeData = {
@@ -161,20 +141,16 @@ export const PECA_E_BOARD: BoardNodeData = {
 export const PHYSICAL_BOARDS: readonly BoardNodeData[] = [
   PROTOBOARD_SUPERIOR_BOARD,
   PLACA_ORIGEM_BOARD,
-  PECA_D_BOARD,
   PECA_E_BOARD,
-  PECA_F_BOARD,
   PECA_G_BOARD,
 ];
 
 /** Where each board node sits on the shared canvas. */
 export const BOARD_POSITIONS: Readonly<Record<string, { x: number; y: number }>> = {
   'board-a': { x: 60, y: 60 },
-  'protoboard-superior': { x: 360, y: 60 },
+  'protoboard-superior': { x: 520, y: 60 },
   'placa-origem': { x: 60, y: 300 },
-  'peca-d': { x: 60, y: 520 },
   'peca-e': { x: 200, y: 520 },
-  'peca-f': { x: 340, y: 520 },
   'peca-g': { x: 480, y: 520 },
 };
 
@@ -249,65 +225,12 @@ export const ALL_BOARDS_BY_ID: ReadonlyMap<string, BoardNodeData> = new Map(
   [PLACA_A_BOARD, ...PHYSICAL_BOARDS].map((board) => [board.boardId, board]),
 );
 
-const capPorts = (): DevicePort[] => [
-  { id: 'plus', label: '+', direction: 'input', connectorType: 'Power' },
-  { id: 'minus', label: '-', direction: 'output', connectorType: 'Power' },
-];
-
 const axialPorts = (labelA: string, labelB: string): DevicePort[] => [
   { id: 'a', label: labelA, direction: 'input', connectorType: 'Signal' },
   { id: 'b', label: labelB, direction: 'output', connectorType: 'Signal' },
 ];
 
 export const SEATED_COMPONENT_NODES: Node<DeviceNodeData>[] = [
-  seatedNode({
-    id: 'cap-d-bulk',
-    deviceId: 'C-D1',
-    manufacturer: 'generico',
-    model: '470uF/25V',
-    category: 'passive',
-    footprintId: 'cap-470u-25v',
-    boardId: 'peca-d',
-    anchor: { row: 0, col: 1 },
-    rotation: 0,
-    ports: capPorts(),
-  }),
-  seatedNode({
-    id: 'cap-d-hf',
-    deviceId: 'C-D2',
-    manufacturer: 'generico',
-    model: '100nF',
-    category: 'passive',
-    footprintId: 'cap-100n',
-    boardId: 'peca-d',
-    anchor: { row: 0, col: 2 },
-    rotation: 0,
-    ports: capPorts(),
-  }),
-  seatedNode({
-    id: 'cap-f-bulk',
-    deviceId: 'C-F1',
-    manufacturer: 'generico',
-    model: '470uF/16V',
-    category: 'passive',
-    footprintId: 'cap-470u-16v',
-    boardId: 'peca-f',
-    anchor: { row: 0, col: 1 },
-    rotation: 0,
-    ports: capPorts(),
-  }),
-  seatedNode({
-    id: 'cap-f-hf',
-    deviceId: 'C-F2',
-    manufacturer: 'generico',
-    model: '100nF',
-    category: 'passive',
-    footprintId: 'cap-100n',
-    boardId: 'peca-f',
-    anchor: { row: 0, col: 2 },
-    rotation: 0,
-    ports: capPorts(),
-  }),
   seatedNode({
     id: 'res-e-r1',
     deviceId: 'R1',
@@ -409,6 +332,40 @@ export const EXTERNAL_COMPONENT_NODES: Node<DeviceNodeData>[] = [
   },
 ];
 
+/**
+ * The reference draws two links toward these devices but does not identify
+ * either physical pin. Standalone one-tap junctions keep that uncertainty
+ * explicit while leaving a visible, connectable endpoint beside each device.
+ */
+export const PROTOBOARD_ENDPOINT_NODES: Node<JunctionNodeData>[] = [
+  {
+    id: 'proto-endpoint-tb6612',
+    type: NodeTemplateType.JunctionNode,
+    position: { x: 310, y: 62 },
+    data: {
+      type: 'junction',
+      junctionId: 'proto-endpoint-tb6612',
+      label: 'TB6612 · terminal provisório',
+      kind: 'junction',
+      taps: 1,
+      notes: 'Pino ainda não documentado na fonte.',
+    },
+  },
+  {
+    id: 'proto-endpoint-nano',
+    type: NodeTemplateType.JunctionNode,
+    position: { x: 310, y: 122 },
+    data: {
+      type: 'junction',
+      junctionId: 'proto-endpoint-nano',
+      label: 'Nano · terminal provisório',
+      kind: 'junction',
+      taps: 1,
+      notes: 'Pino ainda não documentado na fonte.',
+    },
+  },
+];
+
 // ---------------------------------------------------------------------------
 // Wires onto holes and traces
 // ---------------------------------------------------------------------------
@@ -450,7 +407,7 @@ export const PROTOBOARD_JUMPER_EDGES: Edge<WireEdgeData>[] = [
     netName: 'PROTO_NANO_SIGNAL',
     wireType: 'signal',
     source: ['protoboard-superior', holePortId({ row: 3, col: 17 })],
-    target: ['nano-1', 'd8'],
+    target: ['proto-endpoint-nano', junctionTapPortId(0)],
   }),
   wireEdge({
     id: 'jumper-proto-tb6612',
@@ -459,35 +416,17 @@ export const PROTOBOARD_JUMPER_EDGES: Edge<WireEdgeData>[] = [
     netName: 'PROTO_TB6612_SIGNAL',
     wireType: 'signal',
     source: ['protoboard-superior', holePortId({ row: 1, col: 17 })],
-    target: ['tb6612-1', 'stby'],
+    target: ['proto-endpoint-tb6612', junctionTapPortId(0)],
   }),
 ];
 
 /**
- * Every one of these lands on a board node, not on another component: the
- * `trace:*` and `hole:*` ports are what make "furos e trilhas funcionam como
- * endpoints conectaveis" true at the engine level, and because the association
- * lives in the edge's own `targetPort`, it round-trips through save/reload
- * with no side table to keep in sync.
+ * Board landings use `trace:*` or `hole:*` ports; the two provisional links
+ * use explicit one-tap junctions. In both cases the association lives in the
+ * edge itself and round-trips without a side table.
  */
 export const PHYSICAL_WIRE_EDGES: Edge<WireEdgeData>[] = [
   ...PROTOBOARD_JUMPER_EDGES,
-  wireEdge({
-    id: 'w-d-vm',
-    wireId: 'W-D1',
-    colorCode: 'RD',
-    netName: '8V_MOT',
-    source: ['tb6612-2', 'vm'],
-    target: ['peca-d', tracePortId('d-l1')],
-  }),
-  wireEdge({
-    id: 'w-d-gnd',
-    wireId: 'W-D2',
-    colorCode: 'BK',
-    netName: 'GND_MOT',
-    source: ['tb6612-2', 'gnd'],
-    target: ['peca-d', tracePortId('d-l6')],
-  }),
   wireEdge({
     id: 'w-g-vbat',
     wireId: 'W-G1',
@@ -503,22 +442,6 @@ export const PHYSICAL_WIRE_EDGES: Edge<WireEdgeData>[] = [
     netName: 'GND_SYS',
     source: ['xl4015-1', 'in-minus'],
     target: ['peca-g', tracePortId('g-l1')],
-  }),
-  wireEdge({
-    id: 'w-f-5vpi',
-    wireId: 'W-F1',
-    colorCode: 'RD',
-    netName: '5V_PI',
-    source: ['xl4015-1', 'out-plus'],
-    target: ['peca-f', tracePortId('f-l1')],
-  }),
-  wireEdge({
-    id: 'w-f-gnd',
-    wireId: 'W-F2',
-    colorCode: 'BK',
-    netName: 'GND_SYS',
-    source: ['xl4015-1', 'out-minus'],
-    target: ['peca-f', tracePortId('f-l6')],
   }),
   wireEdge({
     id: 'w-hall-gnd',

@@ -73,7 +73,13 @@ export function nearestHole(
   localPoint: { x: number; y: number },
 ): BoardHole {
   const localY = localPoint.y - BOARD_MARGIN;
-  const lastRowY = (board.rows - 1) * board.pitch + (board.rows > 1 ? (board.centerGap ?? 0) : 0);
+  const col = Math.round((localPoint.x - BOARD_MARGIN) / board.pitch);
+  const gap = board.rows > 1 ? (board.centerGap ?? 0) : 0;
+  if (gap <= 0) {
+    return { row: Math.round(localY / board.pitch), col };
+  }
+
+  const lastRowY = (board.rows - 1) * board.pitch + gap;
   let row: number;
   if (localY < 0) {
     row = Math.round(localY / board.pitch);
@@ -84,7 +90,7 @@ export function nearestHole(
       (closest, candidate) => {
         const closestY = holeLocalPoint(board, { row: closest, col: 0 }).y;
         const candidateY = holeLocalPoint(board, { row: candidate, col: 0 }).y;
-        return Math.abs(candidateY - localPoint.y) < Math.abs(closestY - localPoint.y)
+        return Math.abs(candidateY - localPoint.y) <= Math.abs(closestY - localPoint.y)
           ? candidate
           : closest;
       },
@@ -93,7 +99,7 @@ export function nearestHole(
   }
   return {
     row,
-    col: Math.round((localPoint.x - BOARD_MARGIN) / board.pitch),
+    col,
   };
 }
 

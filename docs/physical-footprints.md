@@ -7,11 +7,18 @@ desenho nem uma representação elétrica paralela.
 ## Modelo físico
 
 `BoardNodeData` descreve qualquer placa retangular por `rows`, `cols`, `pitch`,
-`holeDiameter` opcional, uma lista opcional de `holes` e uma lista opcional de
-`traces`. Sem `holes`, a placa usa toda a grade retangular; com a lista, pode
-representar recortes e posições sem furo. Cada trilha contém um ou mais
-segmentos horizontais ou verticais, inclusivos, e pode declarar a net elétrica
-correspondente. Nenhuma função presume 63 colunas.
+`holeDiameter` opcional, `centerGap` opcional, `notes` opcionais, uma lista
+opcional de `holes` e uma lista opcional de `traces`. Sem `holes`, a placa usa
+toda a grade retangular; com a lista, pode representar recortes e posições sem
+furo. Cada trilha contém um ou mais segmentos horizontais ou verticais,
+inclusivos, e pode declarar a net elétrica correspondente. Nenhuma função
+presume 63 colunas.
+
+`centerGap` acrescenta uma faixa vertical entre as duas metades das linhas sem
+alterar os endereços dos furos. Geometria, snap, footprints e `DXF` usam a mesma
+posição física; placas sem o campo preservam o arredondamento legado, inclusive
+o desempate para a linha de índice maior. A placa de ensaio superior usa o mesmo
+`pitch` 20 das outras placas físicas do seed.
 
 A distinção entre ausência e lista vazia é deliberada: omitir `holes` significa
 uma grade retangular completa, enquanto `holes: []` descreve uma placa sem
@@ -111,7 +118,7 @@ migrados pela fronteira de entrada existente.
 
 Os campos físicos opcionais são:
 
-- placas preservam `holes`, `holeDiameter` e `traces`;
+- placas preservam `holes`, `holeDiameter`, `centerGap`, `notes` e `traces`;
 - componentes físicos preservam `footprintId`, a definição `footprint` e
   `placement`;
 - a junção de cobre usa `boardId` e `boardPort` no layout;
@@ -150,9 +157,11 @@ corpus adversarial compartilhado é executado pelos validadores TypeScript e
 Node para manter equivalentes as regras duplicadas até a unificação futura.
 
 Para manter o canvas responsivo e limitar entradas não confiáveis, o formato
-aceita no máximo 128 linhas, 256 colunas, 4.096 furos por placa, pitch 256, 512
-trilhas, 4.096 segmentos por placa, footprints de 64 × 64 e 512 formas. Uma
-grade completa acima de 4.096 furos deve declarar uma lista esparsa explícita.
+aceita no máximo 128 linhas, 256 colunas, 4.096 furos por placa, `pitch` 256,
+`centerGap` 256, 512 trilhas, 4.096 segmentos por placa, footprints de 64 × 64
+e 512 formas. Uma grade completa acima de 4.096 furos deve declarar uma lista
+esparsa explícita. Quando presente, `centerGap` precisa ser positivo; zero deve
+ser omitido.
 
 ## Autoria nesta fatia
 
@@ -170,14 +179,21 @@ esse limite é de interface de autoria, não do modelo nem da persistência.
 | Placa | Dimensão | Conteúdo demonstrado |
 |---|---:|---|
 | Placa A | 6 × 11 | seis trilhas de distribuição |
+| `Protoboard superior` | 6 × 18 | canal central e capacitores bulk já incorporados |
 | Placa de origem | 6 × 28 | perfboard sem trilhas |
-| Peça D | 6 × 3 | alimentação do driver de motor |
 | Peça E | 6 × 3 | divisor de nível do UART e jumper |
-| Peça F | 6 × 3 | alimentação do Raspberry Pi |
 | Peça G | 6 × 4 | distribuição da base |
 
-O seed também inclui resistores, capacitores e um TB6612FNG encaixados, além de
-componentes externos ligados diretamente a furos ou trilhas.
+As antigas peças D e F e seus capacitores não fazem mais parte do seed: os dois
+bulk pertencem à placa de ensaio superior já montada. O seed preserva as peças E e
+G, seus resistores, um TB6612FNG encaixado e componentes externos ligados
+diretamente a furos ou trilhas.
+
+Os dois jumpers de sinal saem dos furos documentados `L4-C18` e `L2-C18`. Como
+a fonte não identifica os pinos de destino, cada jumper termina em uma junção
+conectável de um tap, rotulada como terminal provisório junto ao Nano ou à
+TB6612. Essas junções sobrevivem ao round-trip sem compartilhar os pinos `D8`
+ou `STBY` e, portanto, sem fundir ou renomear as nets existentes.
 
 As ilustrações foram desenhadas neste repositório com formas SVG simples. Não
 foram incorporados assets nem trechos de código de catálogos externos.

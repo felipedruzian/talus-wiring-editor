@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { diagramModel } from '../data';
 import {
   allHoles,
+  boardCenterGap,
   boardHoles,
   boardSize,
   findHoleCollisions,
@@ -10,6 +11,8 @@ import {
   isBoardHoleAvailable,
   isHoleInBounds,
   nearestAvailableHole,
+  nearestHole,
+  lowerBoardHalfStartRow,
   type BoardHoleClaim,
 } from './board-geometry';
 import { isBoardNode, isDeviceNode } from './guards';
@@ -41,6 +44,26 @@ describe('boardSize', () => {
   });
 });
 
+describe('central channel helpers', () => {
+  it('splits even and odd row counts deterministically', () => {
+    expect(lowerBoardHalfStartRow({ rows: 6 })).toBe(3);
+    expect(lowerBoardHalfStartRow({ rows: 3 })).toBe(2);
+  });
+
+  it('positions a configured channel midway between the two row halves', () => {
+    expect(boardCenterGap({ rows: 6, pitch: 20, centerGap: 12 })).toEqual({
+      y: 66,
+      height: 12,
+    });
+  });
+
+  it('omits the channel when it has no positive height or the board has one row', () => {
+    expect(boardCenterGap({ rows: 6, pitch: 20 })).toBeNull();
+    expect(boardCenterGap({ rows: 6, pitch: 20, centerGap: 0 })).toBeNull();
+    expect(boardCenterGap({ rows: 1, pitch: 20, centerGap: 12 })).toBeNull();
+  });
+});
+
 describe('holeLocalPoint', () => {
   it('places hole (0, 0) at the margin offset', () => {
     expect(holeLocalPoint(boardA, { row: 0, col: 0 })).toEqual({ x: 16, y: 16 });
@@ -54,6 +77,25 @@ describe('holeLocalPoint', () => {
     const protoboard = { rows: 6, cols: 18, pitch: 14, centerGap: 12 };
     expect(holeLocalPoint(protoboard, { row: 2, col: 0 }).y).toBe(44);
     expect(holeLocalPoint(protoboard, { row: 3, col: 0 }).y).toBe(70);
+  });
+});
+
+describe('nearestHole', () => {
+  it('snaps across a central channel to the physically nearest row', () => {
+    const protoboard = { rows: 6, pitch: 20, centerGap: 12 };
+    expect(nearestHole(protoboard, { x: 16, y: 67 })).toEqual({ row: 2, col: 0 });
+    expect(nearestHole(protoboard, { x: 16, y: 71 })).toEqual({ row: 3, col: 0 });
+    expect(nearestHole(protoboard, { x: 16, y: 72 })).toEqual({ row: 3, col: 0 });
+  });
+
+  it('preserves the legacy half-up tie for boards without a channel', () => {
+    expect(nearestHole(boardA, { x: 16, y: 66 })).toEqual({ row: 3, col: 0 });
+  });
+
+  it('keeps out-of-bounds rows unclamped with a central channel', () => {
+    const protoboard = { rows: 6, pitch: 20, centerGap: 12 };
+    expect(nearestHole(protoboard, { x: 16, y: -15 })).toEqual({ row: -2, col: 0 });
+    expect(nearestHole(protoboard, { x: 16, y: 159 })).toEqual({ row: 7, col: 0 });
   });
 });
 

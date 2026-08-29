@@ -3,7 +3,7 @@
     {{ data().label }}
   </span>
   @if (data().notes; as notes) {
-    <span class="board-node__notes">{{ notes }}</span>
+    <span class="board-node__notes" [attr.title]="notes">{{ notes }}</span>
   }
   <svg
     class="board-node__grid"

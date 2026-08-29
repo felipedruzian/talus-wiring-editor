@@ -94,7 +94,7 @@ src/app/av-schematic/
 │   │   ├── commands/                     # reshapeEdge data + lifecycle signals + dispatcher
 │   │   ├── middleware/                   # Endpoint-sync (node-move reflow) + lifecycle event emitters
 │   │   └── logic/                        # Pure orthogonal-path math (segment orientation, simplify, snap, etc.)
-│   ├── fixtures/                         # Placas A/origem/D/E/F/G e montagem física de demonstração
+│   ├── fixtures/                         # Placas A/protoboard/origem/E/G e montagem física de demonstração
 │   ├── node/                             # Templates DeviceNode, BoardNode, JunctionNode e FootprintNode
 │   ├── placement/                        # Reconciliação de drag, rotação e acompanhamento da placa
 │   └── node-visibility/                  # Viewport-aware overlay registration

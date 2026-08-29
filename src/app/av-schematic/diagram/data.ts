@@ -8,6 +8,7 @@ import { fromCanonicalProject, toCanonicalProject } from './model/canonical-proj
 import {
   EXTERNAL_COMPONENT_NODES,
   PHYSICAL_BOARD_NODES,
+  PROTOBOARD_ENDPOINT_NODES,
   PHYSICAL_WIRE_EDGES,
   PLACA_A_BOARD,
   SEATED_COMPONENT_NODES,
@@ -28,7 +29,7 @@ import {
  * edges that happen to match it.
  *
  * Issue #3 adds the physical layer on the same canvas: board A now carries
- * its six real copper rails, and the placa de origem plus pecas D/E/F/G and
+ * its six real copper rails, and the placa de origem plus pecas E/G and
  * their seated footprints come from `fixtures/physical-boards.fixture.ts`.
  *
  * Board A having copper is why the tracer devices below only address a hole
@@ -145,6 +146,7 @@ const importedModel = fromCanonicalProject({
 const nodes: Node<AvSchematicNodeData>[] = [
   ...PHYSICAL_BOARD_NODES,
   ...importedModel.nodes,
+  ...PROTOBOARD_ENDPOINT_NODES,
   ...SEATED_COMPONENT_NODES,
   ...EXTERNAL_COMPONENT_NODES,
 ];

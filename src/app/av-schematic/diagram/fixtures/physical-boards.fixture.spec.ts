@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { findHoleCollisions, findOutOfBoundsHoleClaims } from '../model/board-geometry';
+import { boardSize, findHoleCollisions, findOutOfBoundsHoleClaims } from '../model/board-geometry';
+import { holePortId } from '../model/board-ports';
 import {
   findTraceDefects,
   findTraceOverlaps,
@@ -7,20 +8,21 @@ import {
   netForHole,
 } from '../model/board-trace';
 import { deviceHoleClaims } from '../model/footprint-geometry';
+import { junctionTapPortId } from '../model/canonical-project';
 import { NodeTemplateType } from '../model/interfaces';
 import { physicalEdgeNet } from '../model/physical-connectivity';
 import {
   EXTERNAL_COMPONENT_NODES,
+  BOARD_POSITIONS,
   PHYSICAL_BOARDS,
   PHYSICAL_BOARD_NODES,
   PHYSICAL_WIRE_EDGES,
   PLACA_A_BOARD,
   PLACA_ORIGEM_BOARD,
+  PROTOBOARD_ENDPOINT_NODES,
   PROTOBOARD_JUMPER_EDGES,
   PROTOBOARD_SUPERIOR_BOARD,
-  PECA_D_BOARD,
   PECA_E_BOARD,
-  PECA_F_BOARD,
   PECA_G_BOARD,
   SEATED_COMPONENT_NODES,
 } from './physical-boards.fixture';
@@ -28,7 +30,7 @@ import {
 describe('physical board fixtures', () => {
   const boards = [PLACA_A_BOARD, ...PHYSICAL_BOARDS];
 
-  it('contains distinct placa A, source board, upper protoboard, and pieces D/E/F/G', () => {
+  it('contains distinct placa A, source board, upper protoboard, and only pieces E/G', () => {
     expect(PLACA_A_BOARD).toMatchObject({ rows: 6, cols: 11 });
     expect(PLACA_ORIGEM_BOARD).toMatchObject({ rows: 6, cols: 28 });
     expect(PROTOBOARD_SUPERIOR_BOARD).toMatchObject({
@@ -36,16 +38,27 @@ describe('physical board fixtures', () => {
       label: 'Protoboard superior',
       rows: 6,
       cols: 18,
+      pitch: 20,
       centerGap: 12,
     });
     expect(PROTOBOARD_SUPERIOR_BOARD.notes).toContain('470 uF');
-    expect(PECA_D_BOARD).toMatchObject({ rows: 6, cols: 3 });
     expect(PECA_E_BOARD).toMatchObject({ rows: 6, cols: 3 });
-    expect(PECA_F_BOARD).toMatchObject({ rows: 6, cols: 3 });
     expect(PECA_G_BOARD).toMatchObject({ rows: 6, cols: 4 });
-    expect(new Set(boards.map((board) => board.boardId)).size).toBe(7);
+    expect(PHYSICAL_BOARDS.map((board) => board.boardId)).toEqual([
+      'protoboard-superior',
+      'placa-origem',
+      'peca-e',
+      'peca-g',
+    ]);
+    expect(new Set(boards.map((board) => board.boardId)).size).toBe(5);
     expect(PROTOBOARD_SUPERIOR_BOARD.boardId).not.toBe(PLACA_A_BOARD.boardId);
     expect(PROTOBOARD_SUPERIOR_BOARD.boardId).not.toBe(PLACA_ORIGEM_BOARD.boardId);
+  });
+
+  it('uses the shared board pitch and leaves the upper protoboard clear of placa A', () => {
+    const boardARight = BOARD_POSITIONS[PLACA_A_BOARD.boardId].x + boardSize(PLACA_A_BOARD).width;
+    expect(PROTOBOARD_SUPERIOR_BOARD.pitch).toBe(PLACA_A_BOARD.pitch);
+    expect(BOARD_POSITIONS[PROTOBOARD_SUPERIOR_BOARD.boardId].x).toBeGreaterThan(boardARight);
   });
 
   it('defines only valid, non-overlapping traces', () => {
@@ -84,13 +97,24 @@ describe('physical component fixtures', () => {
     expect(rotated?.data.placement?.rotation).toBe(180);
   });
 
-  it('associates seated pins with their board holes and copper traces', () => {
-    const capacitor = SEATED_COMPONENT_NODES.find((node) => node.id === 'cap-d-bulk');
-    const plus = capacitor?.data.ports.find((port) => port.id === 'plus')?.hole;
-    const minus = capacitor?.data.ports.find((port) => port.id === 'minus')?.hole;
-    if (!plus || !minus) throw new Error('capacitor fixture has no resolved pin holes');
-    expect(netForHole(PECA_D_BOARD, plus)).toBe('8V_MOT');
-    expect(netForHole(PECA_D_BOARD, minus)).toBe('GND_MOT');
+  it('removes the former D/F bulk pieces and their capacitors from the active seed', () => {
+    expect(PHYSICAL_BOARDS.some((board) => ['peca-d', 'peca-f'].includes(board.boardId))).toBe(
+      false,
+    );
+    expect(
+      SEATED_COMPONENT_NODES.some(
+        (node) => node.id.startsWith('cap-d-') || node.id.startsWith('cap-f-'),
+      ),
+    ).toBe(false);
+    expect(
+      PHYSICAL_WIRE_EDGES.some(
+        (edge) =>
+          edge.source === 'peca-d' ||
+          edge.source === 'peca-f' ||
+          edge.target === 'peca-d' ||
+          edge.target === 'peca-f',
+      ),
+    ).toBe(false);
   });
 
   it('keeps the rotated UART divider junction separate from ground', () => {
@@ -112,26 +136,37 @@ describe('physical component fixtures', () => {
     expect(PHYSICAL_WIRE_EDGES.some((edge) => edge.targetPort?.startsWith('trace:'))).toBe(true);
   });
 
-  it('models exactly the two documented upper-protoboard jumpers with connectable endpoints', () => {
+  it('models exactly the two documented upper-protoboard jumpers with provisional endpoints', () => {
     expect(PROTOBOARD_JUMPER_EDGES).toHaveLength(2);
+    expect(PROTOBOARD_ENDPOINT_NODES).toHaveLength(2);
     const nano = PROTOBOARD_JUMPER_EDGES.find((edge) => edge.id === 'jumper-proto-nano');
     const tb6612 = PROTOBOARD_JUMPER_EDGES.find((edge) => edge.id === 'jumper-proto-tb6612');
     expect(nano?.source).toBe('protoboard-superior');
-    expect(nano?.sourcePort?.startsWith('hole:')).toBe(true);
-    expect(nano?.target).toBe('nano-1');
-    expect(nano?.targetPort).toBe('d8');
+    expect(nano?.sourcePort).toBe(holePortId({ row: 3, col: 17 }));
+    expect(nano?.target).toBe('proto-endpoint-nano');
+    expect(nano?.targetPort).toBe(junctionTapPortId(0));
     expect(nano?.data.wireType).toBe('signal');
     expect(nano?.data.netName).toBe('PROTO_NANO_SIGNAL');
     expect(tb6612?.source).toBe('protoboard-superior');
-    expect(tb6612?.sourcePort?.startsWith('hole:')).toBe(true);
-    expect(tb6612?.target).toBe('tb6612-1');
-    expect(tb6612?.targetPort).toBe('stby');
+    expect(tb6612?.sourcePort).toBe(holePortId({ row: 1, col: 17 }));
+    expect(tb6612?.target).toBe('proto-endpoint-tb6612');
+    expect(tb6612?.targetPort).toBe(junctionTapPortId(0));
     expect(tb6612?.data.wireType).toBe('signal');
     expect(tb6612?.data.netName).toBe('PROTO_TB6612_SIGNAL');
+    expect(
+      PROTOBOARD_ENDPOINT_NODES.every(
+        (node) => node.data.taps === 1 && node.data.notes?.includes('não documentado'),
+      ),
+    ).toBe(true);
   });
 
   it('stores authored net names without forging canonical net ids or copper shorts', () => {
-    const nodes = [...PHYSICAL_BOARD_NODES, ...SEATED_COMPONENT_NODES, ...EXTERNAL_COMPONENT_NODES];
+    const nodes = [
+      ...PHYSICAL_BOARD_NODES,
+      ...PROTOBOARD_ENDPOINT_NODES,
+      ...SEATED_COMPONENT_NODES,
+      ...EXTERNAL_COMPONENT_NODES,
+    ];
     expect(PHYSICAL_WIRE_EDGES.every((edge) => edge.data.netName && !edge.data.netId)).toBe(true);
     expect(
       PHYSICAL_WIRE_EDGES.every((edge) => physicalEdgeNet(nodes, edge).conflict.length === 0),
