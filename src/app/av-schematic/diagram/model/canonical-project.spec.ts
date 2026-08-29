@@ -12,7 +12,7 @@ import { parseCanonicalProject } from './canonical-project-parse';
 import { canonicalValidationCorpus } from './canonical-project-corpus.mjs';
 import { electricallyEquivalent } from './electrical-equivalence';
 import { isBoardNode, isDeviceNode } from './guards';
-import { NodeTemplateType, type DeviceNodeData, type WireEdgeData } from './interfaces';
+import { NodeTemplateType, type WireEdgeData } from './interfaces';
 import { OPERATIONAL_LIMITS } from './operational-limits.mjs';
 
 function must<T>(value: T | undefined): T {
@@ -291,7 +291,7 @@ describe('canonical project round-trip', () => {
       ...clone(source),
       position: { x: 812.5, y: 433.25 },
       data: {
-        ...(clone(source.data) as DeviceNodeData),
+        ...clone(source.data),
         boardId: undefined,
         placement: undefined,
         footprintRotation: 90,
