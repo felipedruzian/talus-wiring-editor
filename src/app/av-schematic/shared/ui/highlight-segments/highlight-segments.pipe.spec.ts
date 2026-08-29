@@ -11,4 +11,10 @@ describe('HighlightSegmentsPipe', () => {
       { text: ')', match: false },
     ]);
   });
+
+  it('treats a query containing only combining marks as empty', () => {
+    const pipe = new HighlightSegmentsPipe();
+
+    expect(pipe.transform('provisório', '\u0301')).toEqual([{ text: 'provisório', match: false }]);
+  });
 });

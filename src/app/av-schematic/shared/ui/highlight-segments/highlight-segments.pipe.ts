@@ -15,6 +15,7 @@ export class HighlightSegmentsPipe implements PipeTransform {
 
     const haystack = normalizeSearchText(source);
     const normalizedNeedle = normalizeSearchText(needle);
+    if (!normalizedNeedle) return [{ text: source, match: false }];
     const segments: HighlightSegment[] = [];
 
     let cursor = 0;

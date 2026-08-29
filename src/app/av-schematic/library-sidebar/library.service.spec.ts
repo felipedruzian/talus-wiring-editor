@@ -64,6 +64,15 @@ describe('LibraryService', () => {
     ]);
   });
 
+  it('treats a query containing only combining marks as empty', () => {
+    vi.stubGlobal('localStorage', new MemoryStorage());
+    const service = new LibraryService();
+
+    service.searchQuery.set('\u0301');
+
+    expect(service.filteredDevices()).toEqual(SEED_LIBRARY);
+  });
+
   it('persists manual create, edit and remove operations in a versioned schema', () => {
     const storage = new MemoryStorage();
     vi.stubGlobal('localStorage', storage);
