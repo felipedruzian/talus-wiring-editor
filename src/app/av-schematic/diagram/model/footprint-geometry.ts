@@ -18,6 +18,9 @@ import {
 /** Padding (px, at pitch scale 1) around a footprint's cell box, so leads aren't clipped. */
 export const FOOTPRINT_PADDING_CELLS = 0.75;
 
+/** Visual pitch used by detached legacy footprints that do not persist one yet. */
+export const DETACHED_FOOTPRINT_FALLBACK_PITCH = 20;
+
 export interface CellBox {
   rows: number;
   cols: number;

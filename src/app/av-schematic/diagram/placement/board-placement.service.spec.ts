@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { NgDiagramModelService, type Edge, type Node } from 'ng-diagram';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  DETACHED_FOOTPRINT_FALLBACK_PITCH,
   FOOTPRINT_PADDING_CELLS,
   footprintNodeSize,
   placementNodePosition,
@@ -202,7 +203,7 @@ describe('BoardPlacementService', () => {
       footprintNodeSize(
         footprint,
         unseated.data.footprintRotation ?? 0,
-        unseated.data.footprintPitch ?? 20,
+        unseated.data.footprintPitch ?? DETACHED_FOOTPRINT_FALLBACK_PITCH,
       ),
     ).toEqual(footprintNodeSize(footprint, placement.rotation, boardNode.data.pitch));
     expect(unseated.data.ports.every((port) => port.hole === undefined)).toBe(true);
@@ -302,6 +303,47 @@ describe('BoardPlacementService', () => {
     await service.settleDrag(new Set(['part']));
 
     expect(service.conflict()).toBeNull();
+  });
+
+  it('keeps a legacy detached footprint second drag outside boards conflict-free', async () => {
+    const part = device('part', { x: 999, y: 999 });
+    part.type = NodeTemplateType.FootprintNode;
+    model.nodes = [part];
+
+    await service.settleDrag(new Set(['part']));
+
+    expect(service.conflict()).toBeNull();
+  });
+
+  it('uses the legacy visual anchor when reseating on a high-pitch board', async () => {
+    const boardNode = board();
+    boardNode.data = { ...boardNode.data, pitch: 60 };
+    const expectedPlacement = {
+      boardId: boardNode.data.boardId,
+      anchor: { row: 1, col: 1 },
+      rotation: 0 as const,
+    };
+    const seatedPosition = placementNodePosition(
+      { board: boardNode.data, position: boardNode.position },
+      expectedPlacement,
+    );
+    const part = device('part', {
+      x:
+        seatedPosition.x +
+        FOOTPRINT_PADDING_CELLS * boardNode.data.pitch -
+        FOOTPRINT_PADDING_CELLS * DETACHED_FOOTPRINT_FALLBACK_PITCH,
+      y:
+        seatedPosition.y +
+        FOOTPRINT_PADDING_CELLS * boardNode.data.pitch -
+        FOOTPRINT_PADDING_CELLS * DETACHED_FOOTPRINT_FALLBACK_PITCH,
+    });
+    part.type = NodeTemplateType.FootprintNode;
+    model.nodes = [boardNode, part];
+
+    await service.settleDrag(new Set(['part']));
+
+    const reseated = model.nodes.find((node) => node.id === 'part') as Node<DeviceNodeData>;
+    expect(reseated.data.placement).toEqual(expectedPlacement);
   });
 
   it('leaves a generic component on the generic renderer', async () => {

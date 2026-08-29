@@ -6,6 +6,7 @@ import {
   type Node,
 } from 'ng-diagram';
 import {
+  DETACHED_FOOTPRINT_FALLBACK_PITCH,
   FOOTPRINT_PADDING_CELLS,
   footprintNodeSize,
   footprintPinHoles,
@@ -30,8 +31,6 @@ export interface FootprintPinView {
   port: boolean;
   primary: boolean;
 }
-
-const FALLBACK_PITCH = 20;
 
 export function footprintPinViews(
   footprint: Footprint,
@@ -83,7 +82,7 @@ export class FootprintNodeComponent implements NgDiagramNodeTemplate<DeviceNodeD
         .find((candidate) => candidate.data.boardId === placement.boardId);
       if (board) return board.data.pitch;
     }
-    return this.data().footprintPitch ?? FALLBACK_PITCH;
+    return this.data().footprintPitch ?? DETACHED_FOOTPRINT_FALLBACK_PITCH;
   });
 
   protected readonly size = computed(() => {

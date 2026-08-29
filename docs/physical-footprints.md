@@ -126,7 +126,8 @@ Snapshots canônicos v2 salvos antes da introdução de `footprintRotation` e
 `footprintPitch` não contêm a geometria anterior de um footprint desencaixado.
 Na primeira abertura por uma versão nova, esses componentes usam uma única vez
 a rotação `0` e o pitch de fallback `20`, podendo mudar de tamanho; depois do
-próximo salvamento, a geometria preservada elimina novos redimensionamentos.
+primeiro encaixe, giro ou desencaixe, a geometria estabilizada elimina novos
+redimensionamentos, inclusive nos salvamentos seguintes.
 
 Os endpoints elétricos v2 permanecem apenas `pin` e `junction`. Furos de uma
 mesma trilha apontam para uma única `CanonicalJunction`; o índice `fromTap` ou

@@ -5,6 +5,7 @@ import { holeKey, type BoardHoleClaim } from '../model/board-geometry';
 import { selectPlacementBoard } from '../model/board-selection';
 import { resolveFootprint, type Footprint } from '../model/footprint';
 import {
+  DETACHED_FOOTPRINT_FALLBACK_PITCH,
   anchorAfterRotation,
   anchorForNodePosition,
   deviceHoleClaims,
@@ -207,7 +208,11 @@ export class BoardPlacementService {
         await this.unseat(node);
         return;
       }
-      if (node.data.footprintRotation !== undefined || node.data.footprintPitch !== undefined) {
+      if (
+        node.type === NodeTemplateType.FootprintNode ||
+        node.data.footprintRotation !== undefined ||
+        node.data.footprintPitch !== undefined
+      ) {
         this._conflict.set(null);
         return;
       }
@@ -223,7 +228,12 @@ export class BoardPlacementService {
 
     const rotation = node.data.placement?.rotation ?? node.data.footprintRotation ?? 0;
     const currentBoard = this.findBoardById(node.data.placement?.boardId);
-    const visualPitch = currentBoard?.data.pitch ?? node.data.footprintPitch ?? board.data.pitch;
+    const visualPitch =
+      currentBoard?.data.pitch ??
+      node.data.footprintPitch ??
+      (node.type === NodeTemplateType.FootprintNode
+        ? DETACHED_FOOTPRINT_FALLBACK_PITCH
+        : board.data.pitch);
     const anchor = anchorForNodePosition(
       { board: board.data, position: board.position },
       node.position,
