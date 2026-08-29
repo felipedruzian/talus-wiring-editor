@@ -1,8 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import {
-  DEVICE_CATEGORIES,
-  deviceCategoryLabel,
-} from '../../../diagram/model/device-categories';
+import { DEVICE_CATEGORIES, deviceCategoryLabel } from '../../../diagram/model/device-categories';
 import { TooltipDirective } from '../../../shared/directives/tooltip/tooltip.directive';
 import { LibraryService } from '../../library.service';
 import { type LibraryDevice } from '../../seed-library';

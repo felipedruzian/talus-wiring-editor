@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type DeviceNodeData } from '../../../diagram/model/interfaces';
-import {
-  HALL_HEADER_PIN_X_POSITIONS,
-  resolveDeviceIllustration,
-} from './device-illustration';
+import { HALL_HEADER_PIN_X_POSITIONS, resolveDeviceIllustration } from './device-illustration';
 
 const device = (manufacturer: string, model: string): DeviceNodeData => ({
   type: 'device',
