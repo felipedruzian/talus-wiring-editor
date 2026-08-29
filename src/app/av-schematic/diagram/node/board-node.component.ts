@@ -3,6 +3,7 @@ import { NgDiagramPortComponent, type NgDiagramNodeTemplate, type Node } from 'n
 import {
   BOARD_MARGIN,
   DEFAULT_HOLE_DIAMETER,
+  boardCenterGap,
   boardHoles,
   boardSize,
   holeKey,
@@ -89,6 +90,8 @@ export class BoardNodeComponent implements NgDiagramNodeTemplate<BoardNodeData> 
   protected readonly data = computed(() => this.node().data);
 
   protected readonly size = computed(() => boardSize(this.data()));
+
+  protected readonly centerGap = computed(() => boardCenterGap(this.data()));
 
   protected readonly holeRadius = computed(
     () => (this.data().holeDiameter ?? DEFAULT_HOLE_DIAMETER) / 2,

@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { ProjectStorageService } from './project-storage.service';
 
-const DEFAULT_PROJECT_ID = 'projeto-1';
+export const DEFAULT_PROJECT_ID = 'talus-droid';
 
 /**
  * Accessible Salvar/Abrir (Save/Open) controls for the local persistence

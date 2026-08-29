@@ -1115,11 +1115,12 @@ function validateV2Layout(
         );
       }
       const anchor = holes[0];
+      const anchorPoint = holeLocalPoint(board, anchor);
       layout.hole = { ...anchor };
       layout.taps = holes.length;
       layout.position = {
-        x: board.position.x + BOARD_MARGIN + anchor.col * board.pitch,
-        y: board.position.y + BOARD_MARGIN + anchor.row * board.pitch,
+        x: board.position.x + anchorPoint.x,
+        y: board.position.y + anchorPoint.y,
       };
       boardPortsByJunction.set(layout.junctionId, {
         boardId: layout.boardId,
@@ -1482,9 +1483,19 @@ function footprintOccupiedHoles(footprint, placement) {
 
 function placementNodePosition(board, placement) {
   const pad = FOOTPRINT_PADDING_CELLS * board.pitch;
+  const anchor = holeLocalPoint(board, placement.anchor);
   return {
-    x: board.position.x + BOARD_MARGIN + placement.anchor.col * board.pitch - pad,
-    y: board.position.y + BOARD_MARGIN + placement.anchor.row * board.pitch - pad,
+    x: board.position.x + anchor.x - pad,
+    y: board.position.y + anchor.y - pad,
+  };
+}
+
+function holeLocalPoint(board, hole) {
+  const lowerHalfStart = Math.ceil(board.rows / 2);
+  const gapOffset = hole.row >= lowerHalfStart ? (board.centerGap ?? 0) : 0;
+  return {
+    x: BOARD_MARGIN + hole.col * board.pitch,
+    y: BOARD_MARGIN + hole.row * board.pitch + gapOffset,
   };
 }
 
@@ -1622,6 +1633,7 @@ function parseBoard(raw, label) {
   return {
     id: expectNonEmptyString(obj['id'], `${label}.id`),
     label: expectString(obj['label'], `${label}.label`),
+    notes: expectOptionalString(obj['notes'], `${label}.notes`),
     rows: expectBoundedPositiveInteger(
       obj['rows'],
       `${label}.rows`,
@@ -1640,6 +1652,15 @@ function parseBoard(raw, label) {
       OPERATIONAL_LIMITS.maxBoardPitch,
       'pitch',
     ),
+    centerGap:
+      obj['centerGap'] === undefined
+        ? undefined
+        : expectBoundedPositiveFiniteNumber(
+            obj['centerGap'],
+            `${label}.centerGap`,
+            OPERATIONAL_LIMITS.maxBoardPitch,
+            'central gap',
+          ),
     holes:
       obj['holes'] === undefined
         ? undefined

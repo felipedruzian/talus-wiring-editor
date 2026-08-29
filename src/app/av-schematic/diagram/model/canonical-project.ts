@@ -242,9 +242,12 @@ export interface CanonicalLayout {
 export interface CanonicalBoard {
   id: string;
   label: string;
+  notes?: string;
   rows: number;
   cols: number;
   pitch: number;
+  /** Optional extra clearance between the upper and lower row halves. */
+  centerGap?: number;
   /** Explicit hole list for an irregular board. Absent means the full rows x cols grid. */
   holes?: BoardHole[];
   /** Drawn hole diameter in px. Absent falls back to `DEFAULT_HOLE_DIAMETER`. */
@@ -1167,9 +1170,11 @@ function toCanonicalBoard(node: Node<BoardNodeData>): CanonicalBoard {
   return {
     id: node.id,
     label: node.data.label,
+    notes: node.data.notes,
     rows: node.data.rows,
     cols: node.data.cols,
     pitch: node.data.pitch,
+    centerGap: node.data.centerGap,
     holes: node.data.holes?.map((hole) => ({ ...hole })),
     holeDiameter: node.data.holeDiameter,
     traces: node.data.traces?.map(cloneBoardTrace),
@@ -1281,9 +1286,11 @@ function fromCanonicalBoard(board: CanonicalBoard): Node<BoardNodeData> {
       type: 'board',
       boardId: board.id,
       label: board.label,
+      notes: board.notes,
       rows: board.rows,
       cols: board.cols,
       pitch: board.pitch,
+      centerGap: board.centerGap,
       holes: board.holes?.map((hole) => ({ ...hole })),
       holeDiameter: board.holeDiameter,
       traces: board.traces?.map(cloneBoardTrace),

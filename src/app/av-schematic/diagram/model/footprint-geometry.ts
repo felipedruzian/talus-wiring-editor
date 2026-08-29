@@ -1,5 +1,5 @@
 import {
-  BOARD_MARGIN,
+  holeLocalPoint,
   holeKey,
   isBoardHoleAvailable,
   nearestAvailableHole,
@@ -169,7 +169,7 @@ export function clampAnchorToBoard(
 }
 
 export interface BoardFrame {
-  board: Pick<BoardNodeData, 'rows' | 'cols' | 'pitch' | 'holes'>;
+  board: Pick<BoardNodeData, 'rows' | 'cols' | 'pitch' | 'holes' | 'centerGap'>;
   /** Board node position in diagram (flow) coordinates. */
   position: { x: number; y: number };
 }
@@ -186,9 +186,10 @@ export function placementNodePosition(
   placement: Pick<DevicePlacement, 'anchor' | 'rotation'>,
 ): { x: number; y: number } {
   const pad = FOOTPRINT_PADDING_CELLS * frame.board.pitch;
+  const anchor = holeLocalPoint(frame.board, placement.anchor);
   return {
-    x: frame.position.x + BOARD_MARGIN + placement.anchor.col * frame.board.pitch - pad,
-    y: frame.position.y + BOARD_MARGIN + placement.anchor.row * frame.board.pitch - pad,
+    x: frame.position.x + anchor.x - pad,
+    y: frame.position.y + anchor.y - pad,
   };
 }
 

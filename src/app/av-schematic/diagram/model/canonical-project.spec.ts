@@ -124,7 +124,7 @@ describe('canonical project round-trip', () => {
     expect(project.formatVersion).toBe(2);
     expect(project.electrical.nets.length).toBeGreaterThanOrEqual(2);
     expect(project.electrical.components.length).toBeGreaterThan(2);
-    expect(project.layout.boards).toHaveLength(6);
+    expect(project.layout.boards).toHaveLength(7);
     expect(project.layout.components).toHaveLength(project.electrical.components.length);
     expect(project.layout.conductors.length).toBeGreaterThan(diagramModel.edges.length);
     expect(project.electrical).not.toHaveProperty('boards');
@@ -135,7 +135,7 @@ describe('canonical project round-trip', () => {
     const project = toCanonicalProject(diagramModel.nodes, diagramModel.edges);
     const rebuilt = fromCanonicalProject(project);
 
-    expect(rebuilt.nodes.filter(isBoardNode)).toHaveLength(6);
+    expect(rebuilt.nodes.filter(isBoardNode)).toHaveLength(7);
     expect(rebuilt.nodes.filter(isDeviceNode)).toHaveLength(project.electrical.components.length);
     expect(rebuilt.edges).toHaveLength(diagramModel.edges.length);
 
@@ -200,6 +200,39 @@ describe('canonical project round-trip', () => {
     const first = toCanonicalProject(diagramModel.nodes, diagramModel.edges);
     const rebuilt = fromCanonicalProject(first);
     expect(toCanonicalProject(rebuilt.nodes, rebuilt.edges, rebuilt.cableInventory)).toEqual(first);
+  });
+
+  it('preserves the upper protoboard geometry, bulk notes, and both jumper endpoints', () => {
+    const project = parseCanonicalProject(
+      clone(toCanonicalProject(diagramModel.nodes, diagramModel.edges)),
+    );
+    const protoboard = must(
+      project.layout.boards.find((board) => board.id === 'protoboard-superior'),
+    );
+    expect(protoboard).toMatchObject({
+      label: 'Protoboard superior',
+      rows: 6,
+      cols: 18,
+      centerGap: 12,
+    });
+    expect(protoboard.notes).toContain('470 uF');
+
+    const rebuilt = fromCanonicalProject(project);
+    const jumpers = rebuilt.edges.filter((edge) =>
+      ['jumper-proto-nano', 'jumper-proto-tb6612'].includes(edge.id),
+    );
+    const nano = must(jumpers.find((edge) => edge.id === 'jumper-proto-nano'));
+    const tb6612 = must(jumpers.find((edge) => edge.id === 'jumper-proto-tb6612'));
+    expect(nano.source).toBe('protoboard-superior');
+    expect(nano.sourcePort?.startsWith('hole:')).toBe(true);
+    expect(nano.target).toBe('nano-1');
+    expect(nano.targetPort).toBe('d8');
+    expect(nano.data.wireType).toBe('signal');
+    expect(tb6612.source).toBe('protoboard-superior');
+    expect(tb6612.sourcePort?.startsWith('hole:')).toBe(true);
+    expect(tb6612.target).toBe('tb6612-1');
+    expect(tb6612.targetPort).toBe('stby');
+    expect(tb6612.data.wireType).toBe('signal');
   });
 
   it('canonicalizes every landing on one copper trace to one v2 junction', () => {

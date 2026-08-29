@@ -16,6 +16,8 @@ import {
   PHYSICAL_WIRE_EDGES,
   PLACA_A_BOARD,
   PLACA_ORIGEM_BOARD,
+  PROTOBOARD_JUMPER_EDGES,
+  PROTOBOARD_SUPERIOR_BOARD,
   PECA_D_BOARD,
   PECA_E_BOARD,
   PECA_F_BOARD,
@@ -26,14 +28,24 @@ import {
 describe('physical board fixtures', () => {
   const boards = [PLACA_A_BOARD, ...PHYSICAL_BOARDS];
 
-  it('contains placa A, the 6x28 origin board, and pieces D/E/F/G', () => {
+  it('contains distinct placa A, source board, upper protoboard, and pieces D/E/F/G', () => {
     expect(PLACA_A_BOARD).toMatchObject({ rows: 6, cols: 11 });
     expect(PLACA_ORIGEM_BOARD).toMatchObject({ rows: 6, cols: 28 });
+    expect(PROTOBOARD_SUPERIOR_BOARD).toMatchObject({
+      boardId: 'protoboard-superior',
+      label: 'Protoboard superior',
+      rows: 6,
+      cols: 18,
+      centerGap: 12,
+    });
+    expect(PROTOBOARD_SUPERIOR_BOARD.notes).toContain('470 uF');
     expect(PECA_D_BOARD).toMatchObject({ rows: 6, cols: 3 });
     expect(PECA_E_BOARD).toMatchObject({ rows: 6, cols: 3 });
     expect(PECA_F_BOARD).toMatchObject({ rows: 6, cols: 3 });
     expect(PECA_G_BOARD).toMatchObject({ rows: 6, cols: 4 });
-    expect(new Set(boards.map((board) => board.boardId)).size).toBe(6);
+    expect(new Set(boards.map((board) => board.boardId)).size).toBe(7);
+    expect(PROTOBOARD_SUPERIOR_BOARD.boardId).not.toBe(PLACA_A_BOARD.boardId);
+    expect(PROTOBOARD_SUPERIOR_BOARD.boardId).not.toBe(PLACA_ORIGEM_BOARD.boardId);
   });
 
   it('defines only valid, non-overlapping traces', () => {
@@ -98,6 +110,24 @@ describe('physical component fixtures', () => {
   it('connects external components directly to board holes and traces', () => {
     expect(PHYSICAL_WIRE_EDGES.some((edge) => edge.targetPort?.startsWith('hole:'))).toBe(true);
     expect(PHYSICAL_WIRE_EDGES.some((edge) => edge.targetPort?.startsWith('trace:'))).toBe(true);
+  });
+
+  it('models exactly the two documented upper-protoboard jumpers with connectable endpoints', () => {
+    expect(PROTOBOARD_JUMPER_EDGES).toHaveLength(2);
+    const nano = PROTOBOARD_JUMPER_EDGES.find((edge) => edge.id === 'jumper-proto-nano');
+    const tb6612 = PROTOBOARD_JUMPER_EDGES.find((edge) => edge.id === 'jumper-proto-tb6612');
+    expect(nano?.source).toBe('protoboard-superior');
+    expect(nano?.sourcePort?.startsWith('hole:')).toBe(true);
+    expect(nano?.target).toBe('nano-1');
+    expect(nano?.targetPort).toBe('d8');
+    expect(nano?.data.wireType).toBe('signal');
+    expect(nano?.data.netName).toBe('PROTO_NANO_SIGNAL');
+    expect(tb6612?.source).toBe('protoboard-superior');
+    expect(tb6612?.sourcePort?.startsWith('hole:')).toBe(true);
+    expect(tb6612?.target).toBe('tb6612-1');
+    expect(tb6612?.targetPort).toBe('stby');
+    expect(tb6612?.data.wireType).toBe('signal');
+    expect(tb6612?.data.netName).toBe('PROTO_TB6612_SIGNAL');
   });
 
   it('stores authored net names without forging canonical net ids or copper shorts', () => {

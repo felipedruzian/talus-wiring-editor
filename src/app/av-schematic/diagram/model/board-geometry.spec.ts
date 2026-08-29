@@ -28,6 +28,17 @@ describe('boardSize', () => {
   it('collapses to just the margins for a single-hole board', () => {
     expect(boardSize({ rows: 1, cols: 1, pitch: 20 })).toEqual({ width: 32, height: 32 });
   });
+
+  it('adds an optional central channel without changing legacy board dimensions', () => {
+    expect(boardSize({ rows: 6, cols: 18, pitch: 14, centerGap: 12 })).toEqual({
+      width: (18 - 1) * 14 + 32,
+      height: (6 - 1) * 14 + 32 + 12,
+    });
+    expect(boardSize({ rows: 6, cols: 18, pitch: 14 })).toEqual({
+      width: (18 - 1) * 14 + 32,
+      height: (6 - 1) * 14 + 32,
+    });
+  });
 });
 
 describe('holeLocalPoint', () => {
@@ -37,6 +48,12 @@ describe('holeLocalPoint', () => {
 
   it('scales by pitch for later holes', () => {
     expect(holeLocalPoint(boardA, { row: 2, col: 3 })).toEqual({ x: 16 + 60, y: 16 + 40 });
+  });
+
+  it('places the lower half after the optional central channel', () => {
+    const protoboard = { rows: 6, cols: 18, pitch: 14, centerGap: 12 };
+    expect(holeLocalPoint(protoboard, { row: 2, col: 0 }).y).toBe(44);
+    expect(holeLocalPoint(protoboard, { row: 3, col: 0 }).y).toBe(70);
   });
 });
 

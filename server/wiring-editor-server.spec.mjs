@@ -316,10 +316,13 @@ describe('wiring-editor-server', () => {
     });
 
     it('preserves and normalizes the complete physical v2 layout', async () => {
+      const project = basePhysicalProject();
+      project.layout.boards[0].notes = 'Bulk incorporado';
+      project.layout.boards[0].centerGap = 12;
       const putRes = await fetch(`${server.baseUrl}/api/projects/physical`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(basePhysicalProject()),
+        body: JSON.stringify(project),
       });
       expect(putRes.status).toBe(200);
 
@@ -328,12 +331,14 @@ describe('wiring-editor-server', () => {
       expect(saved.electrical.nets[0].name).toBe('AUTHORED');
       expect(saved.layout.boards[0]).toMatchObject({
         pitch: 17,
+        notes: 'Bulk incorporado',
+        centerGap: 12,
         holeDiameter: 5,
         traces: [{ id: 'vcc', net: 'VCC' }],
       });
       expect(saved.layout.components[0]).toMatchObject({
         footprintId: 'inline-link',
-        position: { x: 30.25, y: 57.25 },
+        position: { x: 30.25, y: 69.25 },
         pinHoles: [
           { pinId: 'a', hole: { row: 2, col: 1 } },
           { pinId: 'b', hole: { row: 2, col: 2 } },

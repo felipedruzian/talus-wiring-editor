@@ -184,10 +184,14 @@ export interface BoardNodeData {
   type: 'board';
   boardId: string;
   label: string;
+  /** Human-facing assembly notes kept with the board across project saves. */
+  notes?: string;
   rows: number;
   cols: number;
   /** Distance between adjacent holes, in diagram px (both axes). */
   pitch: number;
+  /** Extra vertical clearance between the two row halves, for a protoboard channel. */
+  centerGap?: number;
   /**
    * Explicit holes present on the board. Absence means the complete rectangular
    * `rows x cols` grid, preserving the compact representation used by earlier

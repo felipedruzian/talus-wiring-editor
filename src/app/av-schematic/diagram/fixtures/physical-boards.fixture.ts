@@ -26,6 +26,7 @@ import {
  * | fixture        | grid   | traces                                        |
  * |----------------|--------|-----------------------------------------------|
  * | placa A        | 6 x 11 | six full-width rails, one per power net       |
+ * | protoboard sup.| 6 x 18 | mounted top circuit with a central channel    |
  * | placa de origem| 6 x 28 | none (uncut perfboard the pieces are cut from)|
  * | peca D         | 6 x 3  | L1 = 8V_MOT, L6 = GND_MOT                     |
  * | peca E         | 6 x 3  | UART divider node (a jumper) + a short L6 GND |
@@ -74,6 +75,20 @@ export const PLACA_ORIGEM_BOARD: BoardNodeData = {
   rows: 6,
   cols: 28,
   pitch: BOARD_PITCH,
+  traces: [],
+};
+
+/** Mounted upper protoboard shown in the ressoldering reference artifact. */
+export const PROTOBOARD_SUPERIOR_BOARD: BoardNodeData = {
+  type: 'board',
+  boardId: 'protoboard-superior',
+  label: 'Protoboard superior',
+  notes:
+    'Capacitores bulk incorporados: 470 uF/25 V no VM da TB6612 e 470 uF/16 V na entrada do Pi.',
+  rows: 6,
+  cols: 18,
+  pitch: 14,
+  centerGap: 12,
   traces: [],
 };
 
@@ -144,6 +159,7 @@ export const PECA_E_BOARD: BoardNodeData = {
 };
 
 export const PHYSICAL_BOARDS: readonly BoardNodeData[] = [
+  PROTOBOARD_SUPERIOR_BOARD,
   PLACA_ORIGEM_BOARD,
   PECA_D_BOARD,
   PECA_E_BOARD,
@@ -154,6 +170,7 @@ export const PHYSICAL_BOARDS: readonly BoardNodeData[] = [
 /** Where each board node sits on the shared canvas. */
 export const BOARD_POSITIONS: Readonly<Record<string, { x: number; y: number }>> = {
   'board-a': { x: 60, y: 60 },
+  'protoboard-superior': { x: 360, y: 60 },
   'placa-origem': { x: 60, y: 300 },
   'peca-d': { x: 60, y: 520 },
   'peca-e': { x: 200, y: 520 },
@@ -401,6 +418,7 @@ interface WireSpec {
   wireId: string;
   colorCode: string;
   netName: string;
+  wireType?: string;
   source: [nodeId: string, portId: string];
   target: [nodeId: string, portId: string];
 }
@@ -416,12 +434,34 @@ function wireEdge(spec: WireSpec): Edge<WireEdgeData> {
     data: {
       type: 'wire',
       wireId: spec.wireId,
-      wireType: 'power',
+      wireType: spec.wireType ?? 'power',
       netName: spec.netName,
       ...resolveWireColor(spec.colorCode),
     },
   };
 }
+
+/** The two explicit links drawn from the mounted protoboard in the reference artifact. */
+export const PROTOBOARD_JUMPER_EDGES: Edge<WireEdgeData>[] = [
+  wireEdge({
+    id: 'jumper-proto-nano',
+    wireId: 'J-PROTO-NANO',
+    colorCode: 'TQ',
+    netName: 'PROTO_NANO_SIGNAL',
+    wireType: 'signal',
+    source: ['protoboard-superior', holePortId({ row: 3, col: 17 })],
+    target: ['nano-1', 'd8'],
+  }),
+  wireEdge({
+    id: 'jumper-proto-tb6612',
+    wireId: 'J-PROTO-TB6612',
+    colorCode: 'YE',
+    netName: 'PROTO_TB6612_SIGNAL',
+    wireType: 'signal',
+    source: ['protoboard-superior', holePortId({ row: 1, col: 17 })],
+    target: ['tb6612-1', 'stby'],
+  }),
+];
 
 /**
  * Every one of these lands on a board node, not on another component: the
@@ -431,6 +471,7 @@ function wireEdge(spec: WireSpec): Edge<WireEdgeData> {
  * with no side table to keep in sync.
  */
 export const PHYSICAL_WIRE_EDGES: Edge<WireEdgeData>[] = [
+  ...PROTOBOARD_JUMPER_EDGES,
   wireEdge({
     id: 'w-d-vm',
     wireId: 'W-D1',

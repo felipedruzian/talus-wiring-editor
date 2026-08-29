@@ -13,7 +13,25 @@ export interface BoardSize {
 
 /** Grid bounds plus an optional sparse hole list, without a whole `BoardNodeData`. */
 export type BoardGrid = Pick<BoardNodeData, 'rows' | 'cols' | 'holes'>;
-export type BoardMetrics = Pick<BoardNodeData, 'rows' | 'cols' | 'pitch'>;
+export type BoardMetrics = Pick<BoardNodeData, 'rows' | 'cols' | 'pitch' | 'centerGap'>;
+
+/** First row below the optional central channel. */
+export function lowerBoardHalfStartRow(board: Pick<BoardNodeData, 'rows'>): number {
+  return Math.ceil(board.rows / 2);
+}
+
+/** Top and height of the channel in board-local pixels, when one is configured. */
+export function boardCenterGap(
+  board: Pick<BoardNodeData, 'rows' | 'pitch' | 'centerGap'>,
+): { y: number; height: number } | null {
+  const height = board.centerGap ?? 0;
+  if (height <= 0 || board.rows < 2) return null;
+  const upperRow = lowerBoardHalfStartRow(board) - 1;
+  return {
+    y: BOARD_MARGIN + upperRow * board.pitch + board.pitch / 2,
+    height,
+  };
+}
 
 /**
  * Pixel size of a board's rendered body, derived from its hole grid.
@@ -21,9 +39,10 @@ export type BoardMetrics = Pick<BoardNodeData, 'rows' | 'cols' | 'pitch'>;
  * first and last hole on each axis.
  */
 export function boardSize(board: BoardMetrics): BoardSize {
+  const gap = board.rows > 1 ? (board.centerGap ?? 0) : 0;
   return {
     width: (board.cols - 1) * board.pitch + BOARD_MARGIN * 2,
-    height: (board.rows - 1) * board.pitch + BOARD_MARGIN * 2,
+    height: (board.rows - 1) * board.pitch + BOARD_MARGIN * 2 + gap,
   };
 }
 
@@ -33,10 +52,14 @@ export function boardSize(board: BoardMetrics): BoardSize {
  * diagram space).
  */
 export function holeLocalPoint(
-  board: Pick<BoardNodeData, 'pitch'>,
+  board: Pick<BoardNodeData, 'rows' | 'pitch' | 'centerGap'>,
   hole: BoardHole,
 ): { x: number; y: number } {
-  return { x: BOARD_MARGIN + hole.col * board.pitch, y: BOARD_MARGIN + hole.row * board.pitch };
+  const gapOffset = hole.row >= lowerBoardHalfStartRow(board) ? (board.centerGap ?? 0) : 0;
+  return {
+    x: BOARD_MARGIN + hole.col * board.pitch,
+    y: BOARD_MARGIN + hole.row * board.pitch + gapOffset,
+  };
 }
 
 /**
@@ -46,11 +69,30 @@ export function holeLocalPoint(
  * ("you dropped past the edge") that the caller decides what to do with.
  */
 export function nearestHole(
-  board: Pick<BoardNodeData, 'pitch'>,
+  board: Pick<BoardNodeData, 'rows' | 'pitch' | 'centerGap'>,
   localPoint: { x: number; y: number },
 ): BoardHole {
+  const localY = localPoint.y - BOARD_MARGIN;
+  const lastRowY = (board.rows - 1) * board.pitch + (board.rows > 1 ? (board.centerGap ?? 0) : 0);
+  let row: number;
+  if (localY < 0) {
+    row = Math.round(localY / board.pitch);
+  } else if (localY > lastRowY) {
+    row = board.rows - 1 + Math.round((localY - lastRowY) / board.pitch);
+  } else {
+    row = Array.from({ length: board.rows }, (_, candidate) => candidate).reduce(
+      (closest, candidate) => {
+        const closestY = holeLocalPoint(board, { row: closest, col: 0 }).y;
+        const candidateY = holeLocalPoint(board, { row: candidate, col: 0 }).y;
+        return Math.abs(candidateY - localPoint.y) < Math.abs(closestY - localPoint.y)
+          ? candidate
+          : closest;
+      },
+      0,
+    );
+  }
   return {
-    row: Math.round((localPoint.y - BOARD_MARGIN) / board.pitch),
+    row,
     col: Math.round((localPoint.x - BOARD_MARGIN) / board.pitch),
   };
 }
@@ -68,11 +110,13 @@ export function nearestAvailableHole(
   const rounded = nearestHole(board, localPoint);
   if (board.holes === undefined) return rounded;
   if (board.holes.length === 0) return null;
-  const pointRow = (localPoint.y - BOARD_MARGIN) / board.pitch;
-  const pointCol = (localPoint.x - BOARD_MARGIN) / board.pitch;
   return board.holes.reduce((closest, candidate) => {
-    const closestDistance = (closest.row - pointRow) ** 2 + (closest.col - pointCol) ** 2;
-    const candidateDistance = (candidate.row - pointRow) ** 2 + (candidate.col - pointCol) ** 2;
+    const closestPoint = holeLocalPoint(board, closest);
+    const candidatePoint = holeLocalPoint(board, candidate);
+    const closestDistance =
+      (closestPoint.y - localPoint.y) ** 2 + (closestPoint.x - localPoint.x) ** 2;
+    const candidateDistance =
+      (candidatePoint.y - localPoint.y) ** 2 + (candidatePoint.x - localPoint.x) ** 2;
     return candidateDistance < closestDistance ? candidate : closest;
   });
 }
