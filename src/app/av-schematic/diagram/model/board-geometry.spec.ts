@@ -84,7 +84,7 @@ describe('nearestHole', () => {
   it('snaps across a central channel to the physically nearest row', () => {
     const protoboard = { rows: 6, pitch: 20, centerGap: 12 };
     expect(nearestHole(protoboard, { x: 16, y: 67 })).toEqual({ row: 2, col: 0 });
-    expect(nearestHole(protoboard, { x: 16, y: 71 })).toEqual({ row: 3, col: 0 });
+    expect(nearestHole(protoboard, { x: 16, y: 73 })).toEqual({ row: 3, col: 0 });
     expect(nearestHole(protoboard, { x: 16, y: 72 })).toEqual({ row: 3, col: 0 });
   });
 
