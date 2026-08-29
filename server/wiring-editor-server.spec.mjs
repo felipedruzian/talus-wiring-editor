@@ -240,6 +240,24 @@ function emptyV2Payload() {
   };
 }
 
+function detachedFootprintProject() {
+  const project = JSON.parse(JSON.stringify(basePhysicalProject()));
+  const layout = project.layout.components[0];
+  delete layout.placement;
+  delete layout.boardId;
+  delete layout.pinHoles;
+  layout.position = { x: 812.5, y: 433.25 };
+  layout.footprintRotation = 90;
+  layout.footprintPitch = 17;
+  project.electrical.junctions = [];
+  project.electrical.cables = [];
+  project.electrical.nets = [];
+  project.layout.boards = [];
+  project.layout.junctions = [];
+  project.layout.conductors = [];
+  return project;
+}
+
 function canonicalCableBudgetPayload(total) {
   const project = emptyV2Payload();
   let remaining = total;
@@ -341,6 +359,25 @@ describe('wiring-editor-server', () => {
       });
       expect(saved.layout.junctions[0].boardPort).toBe('trace:vcc');
       expect(saved.layout.conductors.every((layout) => layout.physicalBinding)).toBe(true);
+    });
+
+    it('preserves detached footprint geometry through PUT and GET', async () => {
+      const project = detachedFootprintProject();
+      const putRes = await fetch(`${server.baseUrl}/api/projects/detached-footprint`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(putRes.status).toBe(200);
+
+      const getRes = await fetch(`${server.baseUrl}/api/projects/detached-footprint`);
+      expect(getRes.status).toBe(200);
+      const saved = await getRes.json();
+      expect(saved.layout.components[0]).toMatchObject({
+        position: { x: 812.5, y: 433.25 },
+        footprintRotation: 90,
+        footprintPitch: 17,
+      });
     });
 
     it('continues accepting legacy v1 snapshots for older clients', async () => {

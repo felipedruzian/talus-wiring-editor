@@ -11,13 +11,22 @@ import {
   footprintPinHoles,
   rotatedFootprintBox,
 } from '../model/footprint-geometry';
-import { resolveFootprint, type FootprintPaint, type FootprintShape } from '../model/footprint';
+import {
+  resolveFootprint,
+  type Footprint,
+  type FootprintPaint,
+  type FootprintShape,
+} from '../model/footprint';
 import { isBoardNode } from '../model/guards';
-import { type BoardRotation, type DeviceNodeData } from '../model/interfaces';
+import {
+  type BoardRotation,
+  type DeviceNodeData,
+  type DevicePort,
+} from '../model/interfaces';
 import { BoardPlacementService } from '../placement/board-placement.service';
 import { centerLeftPortBoxPosition } from '../edge-reshaping/logic/port-position';
 
-interface PinView {
+export interface FootprintPinView {
   id: string;
   label: string;
   x: number;
@@ -27,6 +36,25 @@ interface PinView {
 }
 
 const FALLBACK_PITCH = 20;
+
+export function footprintPinViews(
+  footprint: Footprint,
+  rotation: BoardRotation,
+  pitch: number,
+  ports: readonly DevicePort[],
+): FootprintPinView[] {
+  const portIds = new Set(ports.map((port) => port.id));
+  const pinsById = new Map(footprint.pins.map((pin) => [pin.id, pin]));
+  const pad = FOOTPRINT_PADDING_CELLS * pitch;
+  return footprintPinHoles(footprint, { anchor: { row: 0, col: 0 }, rotation }).map((pin) => ({
+    id: pin.pinId,
+    label: pin.label,
+    x: pad + pin.cell.col * pitch,
+    y: pad + pin.cell.row * pitch,
+    port: portIds.has(pin.pinId),
+    primary: pinsById.get(pin.pinId)?.primary ?? false,
+  }));
+}
 
 @Component({
   selector: 'app-footprint-node',
@@ -46,16 +74,20 @@ export class FootprintNodeComponent implements NgDiagramNodeTemplate<DeviceNodeD
 
   protected readonly data = computed(() => this.node().data);
   protected readonly footprint = computed(() => resolveFootprint(this.data()));
-  protected readonly rotation = computed<BoardRotation>(() => this.data().placement?.rotation ?? 0);
+  protected readonly rotation = computed<BoardRotation>(
+    () => this.data().placement?.rotation ?? this.data().footprintRotation ?? 0,
+  );
 
   protected readonly pitch = computed(() => {
     const placement = this.data().placement;
-    if (!placement) return FALLBACK_PITCH;
-    const board = this.modelService
-      .nodes()
-      .filter(isBoardNode)
-      .find((candidate) => candidate.data.boardId === placement.boardId);
-    return board?.data.pitch ?? FALLBACK_PITCH;
+    if (placement) {
+      const board = this.modelService
+        .nodes()
+        .filter(isBoardNode)
+        .find((candidate) => candidate.data.boardId === placement.boardId);
+      if (board) return board.data.pitch;
+    }
+    return this.data().footprintPitch ?? FALLBACK_PITCH;
   });
 
   protected readonly size = computed(() => {
@@ -87,21 +119,10 @@ export class FootprintNodeComponent implements NgDiagramNodeTemplate<DeviceNodeD
     }
   });
 
-  protected readonly pins = computed<PinView[]>(() => {
+  protected readonly pins = computed<FootprintPinView[]>(() => {
     const footprint = this.footprint();
-    const placement = this.data().placement;
-    if (!footprint || !placement) return [];
-    const portIds = new Set(this.data().ports.map((port) => port.id));
-    const pinsById = new Map(footprint.pins.map((pin) => [pin.id, pin]));
-    const pad = FOOTPRINT_PADDING_CELLS * this.pitch();
-    return footprintPinHoles(footprint, placement).map((pin) => ({
-      id: pin.pinId,
-      label: pin.label,
-      x: pad + pin.cell.col * this.pitch(),
-      y: pad + pin.cell.row * this.pitch(),
-      port: portIds.has(pin.pinId),
-      primary: pinsById.get(pin.pinId)?.primary ?? false,
-    }));
+    if (!footprint) return [];
+    return footprintPinViews(footprint, this.rotation(), this.pitch(), this.data().ports);
   });
 
   protected readonly conflictMessage = computed(() => {
@@ -111,11 +132,11 @@ export class FootprintNodeComponent implements NgDiagramNodeTemplate<DeviceNodeD
 
   protected readonly portSize = computed(() => Math.max(4, Math.min(this.pitch() - 2, 14)));
 
-  protected portLeft(pin: PinView): number {
+  protected portLeft(pin: FootprintPinView): number {
     return centerLeftPortBoxPosition(pin, this.portSize()).x;
   }
 
-  protected portTop(pin: PinView): number {
+  protected portTop(pin: FootprintPinView): number {
     return centerLeftPortBoxPosition(pin, this.portSize()).y;
   }
 

@@ -201,7 +201,7 @@ export class BoardPlacementService {
       return;
     }
 
-    const rotation = node.data.placement?.rotation ?? 0;
+    const rotation = node.data.placement?.rotation ?? node.data.footprintRotation ?? 0;
     const anchor = anchorForNodePosition(
       { board: board.data, position: board.position },
       node.position,
@@ -241,7 +241,13 @@ export class BoardPlacementService {
     }
 
     this._conflict.set(null);
-    const data = syncPortHolesToPlacement({ ...node.data, placement, boardId: placement.boardId });
+    const data = syncPortHolesToPlacement({
+      ...node.data,
+      placement,
+      boardId: placement.boardId,
+      footprintRotation: placement.rotation,
+      footprintPitch: board.data.pitch,
+    });
     const previousNodes = this.modelService.getModel().getNodes();
     const connectedEdges = this.modelService.getConnectedEdges(node.id).filter(isWireEdge);
     const modelEdges = this.modelService.getModel().getEdges().filter(isWireEdge);
@@ -283,14 +289,17 @@ export class BoardPlacementService {
   /** Detaches a footprint from its board without changing its electrical wires. */
   private async unseat(node: Node<DeviceNodeData>): Promise<void> {
     this._conflict.set(null);
+    const board = this.findBoardById(node.data.placement?.boardId);
     await this.modelService.updateNode(
       node.id,
       {
-        type: NodeTemplateType.DeviceNode,
+        type: NodeTemplateType.FootprintNode,
         data: {
           ...node.data,
           boardId: undefined,
           placement: undefined,
+          footprintRotation: node.data.placement?.rotation ?? node.data.footprintRotation ?? 0,
+          footprintPitch: board?.data.pitch ?? node.data.footprintPitch,
           ports: node.data.ports.map((port) => ({ ...port, hole: undefined })),
         },
       },

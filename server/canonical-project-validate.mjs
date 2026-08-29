@@ -674,6 +674,14 @@ function parseV2ComponentLayout(raw, label) {
       obj['placement'] === undefined
         ? undefined
         : parseDevicePlacement(obj['placement'], `${label}.placement`),
+    footprintRotation:
+      obj['footprintRotation'] === undefined
+        ? undefined
+        : parseBoardRotation(obj['footprintRotation'], `${label}.footprintRotation`),
+    footprintPitch:
+      obj['footprintPitch'] === undefined
+        ? undefined
+        : expectPositiveFiniteNumber(obj['footprintPitch'], `${label}.footprintPitch`),
     pinHoles:
       obj['pinHoles'] === undefined
         ? undefined
@@ -986,6 +994,14 @@ function validateV2Layout(
     }
     if (layout.placement !== undefined && layout.footprint === undefined) {
       throw new CanonicalProjectValidationError(`${label}: placement requires a footprint`);
+    }
+    if (
+      (layout.footprintRotation !== undefined || layout.footprintPitch !== undefined) &&
+      layout.footprint === undefined
+    ) {
+      throw new CanonicalProjectValidationError(
+        `${label}: footprint display geometry requires a footprint`,
+      );
     }
     if (layout.placement && layout.footprint) {
       const board = boardsById.get(layout.placement.boardId);
@@ -1687,17 +1703,20 @@ function parseBoardTraceSegment(raw, label) {
 
 function parseDevicePlacement(raw, label) {
   const obj = expectRecord(raw, label);
-  const rotation = expectFiniteNumber(obj['rotation'], `${label}.rotation`);
-  if (!ALLOWED_BOARD_ROTATIONS.includes(rotation)) {
-    throw new CanonicalProjectValidationError(
-      `${label}.rotation: expected 0, 90, 180 or 270`,
-    );
-  }
+  const rotation = parseBoardRotation(obj['rotation'], `${label}.rotation`);
   return {
     boardId: expectNonEmptyString(obj['boardId'], `${label}.boardId`),
     anchor: expectHole(obj['anchor'], `${label}.anchor`),
     rotation,
   };
+}
+
+function parseBoardRotation(raw, label) {
+  const rotation = expectFiniteNumber(raw, label);
+  if (!ALLOWED_BOARD_ROTATIONS.includes(rotation)) {
+    throw new CanonicalProjectValidationError(`${label}: expected 0, 90, 180 or 270`);
+  }
+  return rotation;
 }
 
 function parseFootprint(raw, label) {
