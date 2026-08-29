@@ -13,9 +13,7 @@ const device = (manufacturer: string, model: string): DeviceNodeData => ({
 describe('resolveDeviceIllustration', () => {
   it('resolves the exact illustrated catalog families', () => {
     expect(resolveDeviceIllustration(device('Arduino', 'Nano'))).toBe('arduino-nano');
-    expect(resolveDeviceIllustration(device('Raspberry Pi', '4 Model B'))).toBe(
-      'raspberry-pi-4',
-    );
+    expect(resolveDeviceIllustration(device('Raspberry Pi', '4 Model B'))).toBe('raspberry-pi-4');
     expect(resolveDeviceIllustration(device('InvenSense', 'MPU6050 / GY-521'))).toBe('mpu6050');
     expect(resolveDeviceIllustration(device('Toshiba', 'TB6612FNG'))).toBe('tb6612fng');
     expect(resolveDeviceIllustration(device('Texas Instruments', 'LM2596S'))).toBe('lm2596s');
