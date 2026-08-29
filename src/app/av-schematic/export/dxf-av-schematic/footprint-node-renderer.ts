@@ -16,7 +16,7 @@ export const renderFootprintNode: DxfNodeRenderer = (ctx, node) => {
   const footprint = resolveFootprint(data);
   if (!footprint) return;
 
-  const rotation = data.placement?.rotation ?? 0;
+  const rotation = data.placement?.rotation ?? data.footprintRotation ?? 0;
   const pitch = resolvePitch(ctx, data);
   const pad = FOOTPRINT_PADDING_CELLS * pitch;
   const origin = { x: node.position.x + pad, y: node.position.y + pad };
@@ -68,7 +68,7 @@ export const renderFootprintNode: DxfNodeRenderer = (ctx, node) => {
 
 function resolvePitch(ctx: DxfRenderContext, data: DeviceNodeData): number {
   const boardId = data.placement?.boardId;
-  if (!boardId) return FALLBACK_PITCH;
+  if (!boardId) return data.footprintPitch ?? FALLBACK_PITCH;
   return (
     ctx.nodes.filter(isBoardNode).find((board) => board.data.boardId === boardId)?.data.pitch ??
     FALLBACK_PITCH

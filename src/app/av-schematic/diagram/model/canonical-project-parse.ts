@@ -581,6 +581,14 @@ function validateLayout(
     ) {
       throw new CanonicalProjectError(`${label}: footprint display geometry requires a footprint`);
     }
+    if (
+      layout.placement !== undefined &&
+      (layout.footprintRotation !== undefined || layout.footprintPitch !== undefined)
+    ) {
+      throw new CanonicalProjectError(
+        `${label}: placement cannot be combined with footprint display geometry`,
+      );
+    }
 
     if (layout.placement && layout.footprint) {
       const board = boardsById.get(layout.placement.boardId);
@@ -1348,7 +1356,12 @@ function parseComponentLayout(raw: unknown, label: string): CanonicalComponentLa
     footprintPitch:
       obj['footprintPitch'] === undefined
         ? undefined
-        : expectPositiveFiniteNumber(obj['footprintPitch'], `${label}.footprintPitch`),
+        : expectBoundedPositiveFiniteNumber(
+            obj['footprintPitch'],
+            `${label}.footprintPitch`,
+            OPERATIONAL_LIMITS.maxBoardPitch,
+            'pitch',
+          ),
     pinHoles:
       obj['pinHoles'] === undefined
         ? undefined

@@ -681,7 +681,12 @@ function parseV2ComponentLayout(raw, label) {
     footprintPitch:
       obj['footprintPitch'] === undefined
         ? undefined
-        : expectPositiveFiniteNumber(obj['footprintPitch'], `${label}.footprintPitch`),
+        : expectBoundedPositiveFiniteNumber(
+            obj['footprintPitch'],
+            `${label}.footprintPitch`,
+            OPERATIONAL_LIMITS.maxBoardPitch,
+            'pitch',
+          ),
     pinHoles:
       obj['pinHoles'] === undefined
         ? undefined
@@ -1001,6 +1006,14 @@ function validateV2Layout(
     ) {
       throw new CanonicalProjectValidationError(
         `${label}: footprint display geometry requires a footprint`,
+      );
+    }
+    if (
+      layout.placement !== undefined &&
+      (layout.footprintRotation !== undefined || layout.footprintPitch !== undefined)
+    ) {
+      throw new CanonicalProjectValidationError(
+        `${label}: placement cannot be combined with footprint display geometry`,
       );
     }
     if (layout.placement && layout.footprint) {

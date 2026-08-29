@@ -9,7 +9,7 @@ import {
   type DeviceNodeData,
   type WireEdgeData,
 } from '../../diagram/model/interfaces';
-import { DxfCircle, DxfLwPolyline } from '../dxf/dxf-entity';
+import { DxfCircle, DxfLwPolyline, DxfText } from '../dxf/dxf-entity';
 import { CoordinateMapper } from '../dxf/dxf-coordinate-mapper';
 import { DxfExporter } from '../dxf/dxf-exporter';
 import { buildAvDxfConfig } from './av-dxf-config';
@@ -89,6 +89,36 @@ const edge: Edge<WireEdgeData> = {
   data: { type: 'wire', wireId: 'W-PHYSICAL' },
 };
 
+const detachedComponent: Node<DeviceNodeData> = {
+  ...component,
+  id: 'link-detached',
+  position: { x: 210, y: 100 },
+  data: {
+    ...component.data,
+    deviceId: 'LINK-DETACHED',
+    boardId: undefined,
+    placement: undefined,
+    footprintRotation: 90,
+    footprintPitch: 17,
+  },
+};
+const detachedSourcePoint = {
+  x: detachedComponent.position.x + 12.75,
+  y: detachedComponent.position.y + 12.75,
+};
+const detachedSecondPinPoint = {
+  x: detachedSourcePoint.x,
+  y: detachedSourcePoint.y + 17,
+};
+const detachedTargetPoint = { x: 150, y: 233 };
+const detachedEdge: Edge<WireEdgeData> = {
+  ...edge,
+  id: 'wire-detached',
+  source: detachedComponent.id,
+  points: [detachedSourcePoint, detachedTargetPoint],
+  data: { type: 'wire', wireId: 'W-DETACHED' },
+};
+
 describe('physical DXF renderers', () => {
   const bounds = { x: 0, y: 0, width: 400, height: 400 };
   const doc = new DxfExporter(buildAvDxfConfig()).export([board, component], [edge], bounds);
@@ -139,5 +169,54 @@ describe('physical DXF renderers', () => {
       mapper.mapPoint(sourcePoint.x, sourcePoint.y),
       mapper.mapPoint(targetPoint.x, targetPoint.y),
     ]);
+  });
+});
+
+describe('detached footprint DXF rendering', () => {
+  const bounds = { x: 0, y: 0, width: 400, height: 400 };
+  const doc = new DxfExporter(buildAvDxfConfig()).export(
+    [board, detachedComponent],
+    [detachedEdge],
+    bounds,
+  );
+  const mapper = CoordinateMapper.fromScale(bounds, DXF_SCALE_MM_PER_PX, DIAGRAM_PADDING);
+
+  it('places pads with the retained footprint rotation and pitch', () => {
+    const pads = doc
+      .getEntities()
+      .filter(
+        (entity): entity is DxfCircle =>
+          entity instanceof DxfCircle && entity.layerName === LAYERS.FOOTPRINTS,
+      );
+
+    expect(pads.map((pad) => ({ x: pad.x, y: pad.y }))).toEqual([
+      mapper.mapPoint(detachedSourcePoint.x, detachedSourcePoint.y),
+      mapper.mapPoint(detachedSecondPinPoint.x, detachedSecondPinPoint.y),
+    ]);
+  });
+
+  it('keeps the wire endpoint on the retained physical pad center', () => {
+    const wire = doc
+      .getEntities()
+      .find(
+        (entity): entity is DxfLwPolyline =>
+          entity instanceof DxfLwPolyline && entity.layerName === LAYERS.WIRES,
+      );
+
+    expect(wire?.points).toEqual([
+      mapper.mapPoint(detachedSourcePoint.x, detachedSourcePoint.y),
+      mapper.mapPoint(detachedTargetPoint.x, detachedTargetPoint.y),
+    ]);
+  });
+
+  it('labels the detached footprint with its retained rotation', () => {
+    const caption = doc
+      .getEntities()
+      .find(
+        (entity): entity is DxfText =>
+          entity instanceof DxfText && entity.layerName === LAYERS.FOOTPRINTS,
+      );
+
+    expect(caption?.text).toBe('LINK-DETACHED vertical-link 90 deg');
   });
 });

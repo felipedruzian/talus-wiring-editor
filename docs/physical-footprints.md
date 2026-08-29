@@ -122,6 +122,12 @@ Os campos físicos opcionais são:
 - um condutor oculto `binding:<componentId>/<pinId>` associa cada pino encaixado
   à junção canônica de seu furo ou de sua trilha.
 
+Snapshots canônicos v2 salvos antes da introdução de `footprintRotation` e
+`footprintPitch` não contêm a geometria anterior de um footprint desencaixado.
+Na primeira abertura por uma versão nova, esses componentes usam uma única vez
+a rotação `0` e o pitch de fallback `20`, podendo mudar de tamanho; depois do
+próximo salvamento, a geometria preservada elimina novos redimensionamentos.
+
 Os endpoints elétricos v2 permanecem apenas `pin` e `junction`. Furos de uma
 mesma trilha apontam para uma única `CanonicalJunction`; o índice `fromTap` ou
 `toTap` preserva o furo visual específico. Assim, salvar e reabrir conserva a

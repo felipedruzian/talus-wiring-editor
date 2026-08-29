@@ -127,13 +127,29 @@ export class BoardPlacementService {
     return moved;
   }
 
-  /** Rotates a seated component 90 degrees, refusing the turn if it no longer fits. */
+  /** Rotates a component 90 degrees, validating the seat when it is on a board. */
   async rotate(nodeId: string, step: 1 | -1): Promise<boolean> {
     const node = this.modelService.getNodeById<DeviceNodeData>(nodeId);
     if (!node || !isDeviceNode(node)) return false;
     const placement = node.data.placement;
     const footprint = resolveFootprint(node.data);
-    if (!placement || !footprint) return false;
+    if (!footprint) return false;
+
+    if (!placement) {
+      this._conflict.set(null);
+      await this.modelService.updateNode(
+        nodeId,
+        {
+          data: {
+            ...node.data,
+            footprintRotation: stepRotation(node.data.footprintRotation ?? 0, step),
+          },
+        },
+        { waitForMeasurements: true },
+      );
+      await applyEdgeStretchOnSelectionMoved(this.modelService, new Set([nodeId]), true);
+      return true;
+    }
 
     const board = this.findBoardById(placement.boardId);
     if (!board) {
@@ -191,6 +207,10 @@ export class BoardPlacementService {
         await this.unseat(node);
         return;
       }
+      if (node.data.footprintRotation !== undefined || node.data.footprintPitch !== undefined) {
+        this._conflict.set(null);
+        return;
+      }
       this._conflict.set({
         kind: 'unknown-board',
         nodeId: node.id,
@@ -202,9 +222,12 @@ export class BoardPlacementService {
     }
 
     const rotation = node.data.placement?.rotation ?? node.data.footprintRotation ?? 0;
+    const currentBoard = this.findBoardById(node.data.placement?.boardId);
+    const visualPitch = currentBoard?.data.pitch ?? node.data.footprintPitch ?? board.data.pitch;
     const anchor = anchorForNodePosition(
       { board: board.data, position: board.position },
       node.position,
+      visualPitch,
     );
     if (!anchor) {
       this._conflict.set({
