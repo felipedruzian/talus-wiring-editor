@@ -14,9 +14,9 @@ export const CONNECTOR_TYPES: readonly string[] = [
   'RJ45',
   'Speakon',
   'TRS',
+  'UART',
   'USB',
   'USB-C',
-  'UART',
   'VGA',
   'XLR',
 ];

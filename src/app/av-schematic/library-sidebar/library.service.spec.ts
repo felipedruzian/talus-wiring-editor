@@ -52,6 +52,14 @@ describe('LibraryService', () => {
     expect(service.filteredDevices().map((device) => device.libraryId)).toEqual([
       'lib-arduino-nano',
     ]);
+    service.searchQuery.set('provisorio');
+    expect(service.filteredDevices().map((device) => device.libraryId)).toEqual([
+      'lib-hall-a3144-lm393',
+    ]);
+    service.searchQuery.set('serigrafia');
+    expect(service.filteredDevices().map((device) => device.libraryId)).toEqual([
+      'lib-hall-a3144-lm393',
+    ]);
   });
 
   it('persists manual create, edit and remove operations in a versioned schema', () => {
@@ -100,5 +108,71 @@ describe('LibraryService', () => {
       JSON.stringify({ version: LIBRARY_STORAGE_VERSION, devices: [{ libraryId: 'bad' }] }),
     );
     expect(loadLibraryDevices(storage)).toBe(SEED_LIBRARY);
+  });
+
+  it('salvages valid v1 entries individually and repairs the persisted payload', () => {
+    const storage = new MemoryStorage();
+    const valid = {
+      libraryId: 'lib-custom-valid',
+      template: {
+        ...createBlankTemplate(),
+        manufacturer: 'Talus',
+        model: 'Sensor válido',
+      },
+    };
+    storage.setItem(
+      LIBRARY_STORAGE_KEY,
+      JSON.stringify({
+        version: LIBRARY_STORAGE_VERSION,
+        devices: [valid, { libraryId: 'broken', template: { type: 'nope' } }, valid],
+      }),
+    );
+
+    expect(loadLibraryDevices(storage)).toEqual([valid]);
+    expect(JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}')).toEqual({
+      version: LIBRARY_STORAGE_VERSION,
+      devices: [valid],
+    });
+  });
+
+  it('preserves an intentionally empty persisted catalog', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      LIBRARY_STORAGE_KEY,
+      JSON.stringify({ version: LIBRARY_STORAGE_VERSION, devices: [] }),
+    );
+
+    expect(loadLibraryDevices(storage)).toEqual([]);
+  });
+
+  it('restores current seeds while preserving custom components', () => {
+    const storage = new MemoryStorage();
+    const custom = {
+      libraryId: 'lib-custom-kept',
+      template: {
+        ...createBlankTemplate(),
+        manufacturer: 'Talus',
+        model: 'Personalizado',
+      },
+    };
+    const overriddenSeed = {
+      ...SEED_LIBRARY[0],
+      template: { ...SEED_LIBRARY[0].template, model: 'Override local' },
+    };
+    storage.setItem(
+      LIBRARY_STORAGE_KEY,
+      JSON.stringify({
+        version: LIBRARY_STORAGE_VERSION,
+        devices: [overriddenSeed, custom],
+      }),
+    );
+    vi.stubGlobal('localStorage', storage);
+    const service = new LibraryService();
+
+    service.restoreDefaults();
+
+    expect(service.devices()).toEqual([...SEED_LIBRARY, custom]);
+    expect(service.devices()).not.toBe(SEED_LIBRARY);
+    expect(new LibraryService().devices()).toEqual([...SEED_LIBRARY, custom]);
   });
 });

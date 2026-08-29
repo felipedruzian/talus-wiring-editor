@@ -9,14 +9,25 @@ export type DeviceIllustrationId =
   | 'hall-a3144'
   | null;
 
+export const HALL_HEADER_PIN_X_POSITIONS = [51.5, 54.5, 57.5, 60.5] as const;
+
 export function resolveDeviceIllustration(data: DeviceNodeData): DeviceIllustrationId {
-  const identity = `${data.manufacturer} ${data.model}`.toLowerCase();
-  if (identity.includes('arduino') && identity.includes('nano')) return 'arduino-nano';
-  if (identity.includes('raspberry pi') && identity.includes('4')) return 'raspberry-pi-4';
-  if (identity.includes('mpu6050') || identity.includes('gy-521')) return 'mpu6050';
-  if (identity.includes('tb6612fng')) return 'tb6612fng';
-  if (identity.includes('lm2596s')) return 'lm2596s';
-  if (identity.includes('a3144') || identity.includes('lm393')) return 'hall-a3144';
+  const manufacturer = data.manufacturer.trim().toLowerCase();
+  const model = data.model.trim().toLowerCase();
+  const identity = `${manufacturer} ${model}`;
+  if (/\barduino\b/.test(manufacturer) && /^nano(?:\s+(?:classic|v?3(?:\.\d+)?))?$/.test(model)) {
+    return 'arduino-nano';
+  }
+  if (
+    /\braspberry pi\b/.test(manufacturer) &&
+    /^(?:raspberry pi\s+)?4(?:\s+model\s+b)?$/.test(model)
+  ) {
+    return 'raspberry-pi-4';
+  }
+  if (/\bmpu6050\b/.test(identity) || /\bgy-521\b/.test(identity)) return 'mpu6050';
+  if (/\btb6612fng\b/.test(identity)) return 'tb6612fng';
+  if (/\blm2596s?\b/.test(identity)) return 'lm2596s';
+  if (/\ba3144\b/.test(identity) && /\blm393\b/.test(identity)) return 'hall-a3144';
   return null;
 }
 

@@ -28,6 +28,13 @@
           Novo componente
         }
       </span>
+      @if (device().template.notes; as notes) {
+        <span class="device-row__notes p10">
+          @for (seg of notes | highlightSegments: searchQuery(); track $index) {
+            <span [class.is-match]="seg.match">{{ seg.text }}</span>
+          }
+        </span>
+      }
     </div>
     @if (categoryLabel()) {
       <span class="device-row__chip">{{ categoryLabel() }}</span>

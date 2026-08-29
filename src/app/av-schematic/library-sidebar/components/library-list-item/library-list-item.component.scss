@@ -57,6 +57,16 @@
   white-space: nowrap;
 }
 
+.device-row__notes {
+  color: var(--ngd-txt-secondary-default);
+  display: -webkit-box;
+  font-size: 10px;
+  line-height: 1.3;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
 .is-match {
   background: var(--ngd-colors-acc1-500);
   border-radius: 2px;

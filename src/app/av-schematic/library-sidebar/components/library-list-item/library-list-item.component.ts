@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { NgDiagramPaletteItemComponent, NgDiagramPaletteItemPreviewComponent } from 'ng-diagram';
+import { deviceCategoryLabel } from '../../../diagram/model/device-categories';
 import { HighlightSegmentsPipe } from '../../../shared/ui/highlight-segments/highlight-segments.pipe';
 import { DeviceIllustrationComponent } from '../../../shared/ui/device-illustration/device-illustration.component';
 import { LibraryService } from '../../library.service';
@@ -29,7 +30,7 @@ export class LibraryListItemComponent {
 
   protected readonly categoryLabel = computed(() => {
     const c = this.device().template.category?.trim();
-    return c ? c.replace(/-/g, ' ') : '';
+    return c ? deviceCategoryLabel(c) : '';
   });
 
   protected onOpenDetail(): void {

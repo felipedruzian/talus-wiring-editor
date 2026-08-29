@@ -23,8 +23,12 @@ export function loadLibraryDevices(storage: Storage | null): LibraryDevice[] {
     const serialized = storage.getItem(LIBRARY_STORAGE_KEY);
     if (!serialized) return SEED_LIBRARY;
     const parsed: unknown = JSON.parse(serialized);
-    if (!isPersistedLibrary(parsed)) return SEED_LIBRARY;
-    return parsed.devices;
+    const recovered = recoverPersistedLibrary(parsed);
+    if (!recovered) return SEED_LIBRARY;
+    if (recovered.wasRepaired) {
+      persistLibraryDevices(storage, recovered.devices);
+    }
+    return recovered.devices;
   } catch {
     return SEED_LIBRARY;
   }
@@ -40,11 +44,26 @@ export function persistLibraryDevices(storage: Storage | null, devices: LibraryD
   }
 }
 
-function isPersistedLibrary(value: unknown): value is PersistedLibrary {
-  if (!isRecord(value) || value['version'] !== LIBRARY_STORAGE_VERSION) return false;
-  if (!Array.isArray(value['devices']) || !value['devices'].every(isLibraryDevice)) return false;
-  const ids = value['devices'].map((device) => device.libraryId);
-  return new Set(ids).size === ids.length;
+function recoverPersistedLibrary(
+  value: unknown,
+): { devices: LibraryDevice[]; wasRepaired: boolean } | null {
+  if (!isRecord(value) || value['version'] !== LIBRARY_STORAGE_VERSION) return null;
+  if (!Array.isArray(value['devices'])) return null;
+
+  if (value['devices'].length === 0) {
+    return { devices: [], wasRepaired: false };
+  }
+
+  const devices: LibraryDevice[] = [];
+  const seenIds = new Set<string>();
+  for (const candidate of value['devices']) {
+    if (!isLibraryDevice(candidate) || seenIds.has(candidate.libraryId)) continue;
+    devices.push(candidate);
+    seenIds.add(candidate.libraryId);
+  }
+
+  if (devices.length === 0) return null;
+  return { devices, wasRepaired: devices.length !== value['devices'].length };
 }
 
 function isLibraryDevice(value: unknown): value is LibraryDevice {

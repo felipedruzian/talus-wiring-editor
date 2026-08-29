@@ -2,7 +2,7 @@ import { computed, Injectable, signal } from '@angular/core';
 import { type DeviceNodeData } from '../diagram/model/interfaces';
 import { browserLocalStorage, loadLibraryDevices, persistLibraryDevices } from './library-storage';
 import { matchesLibrarySearch } from './library-search';
-import { type LibraryDevice } from './seed-library';
+import { SEED_LIBRARY, type LibraryDevice } from './seed-library';
 
 type LibraryEditMode = 'create' | 'edit';
 
@@ -24,7 +24,7 @@ export class LibraryService {
   });
 
   readonly filteredDevices = computed<LibraryDevice[]>(() => {
-    const query = this.searchQuery().trim().toLowerCase();
+    const query = this.searchQuery().trim();
     if (!query) return this.devices();
     return this.devices().filter((device) => matchesLibrarySearch(device, query));
   });
@@ -71,6 +71,17 @@ export class LibraryService {
     if (this.editingDeviceId() === libraryId) {
       this.closeDetail();
     }
+  }
+
+  restoreDefaults(): void {
+    const seedIds = new Set(SEED_LIBRARY.map((device) => device.libraryId));
+    const restored = [
+      ...structuredClone(SEED_LIBRARY),
+      ...this.devices().filter((device) => !seedIds.has(device.libraryId)),
+    ];
+    this.devices.set(restored);
+    persistLibraryDevices(this.storage, restored);
+    this.closeDetail();
   }
 }
 
