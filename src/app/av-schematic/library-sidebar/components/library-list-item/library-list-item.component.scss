@@ -34,6 +34,12 @@
   flex: 1;
 }
 
+.device-row__illustration {
+  width: 42px;
+  height: 28px;
+  flex: 0 0 42px;
+}
+
 .device-row__manufacturer {
   color: var(--ngd-txt-secondary-default);
   font-size: 11px;
@@ -86,6 +92,12 @@
   background: var(--ngd-ui-bg-tertiary-default);
   border-radius: var(--ngd-token-radius-element-12);
   text-align: center;
+}
+
+.device-preview__illustration {
+  width: 54px;
+  height: 34px;
+  margin-bottom: 2px;
 }
 
 .device-preview__id {

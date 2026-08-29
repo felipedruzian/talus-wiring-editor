@@ -7,7 +7,7 @@ import { LibraryListItemComponent } from '../library-list-item/library-list-item
 import { LibrarySearchComponent } from '../library-search/library-search.component';
 
 const UNCATEGORIZED_KEY = '__uncategorized__';
-const UNCATEGORIZED_LABEL = 'Other';
+const UNCATEGORIZED_LABEL = 'Outros';
 
 interface DeviceGroup {
   key: string;
@@ -50,7 +50,7 @@ export class LibraryListComponent {
   }
 
   protected groupTooltip(group: DeviceGroup): string {
-    return this.isGroupOpen(group.key) ? `Collapse ${group.label}` : `Expand ${group.label}`;
+    return this.isGroupOpen(group.key) ? `Recolher ${group.label}` : `Expandir ${group.label}`;
   }
 
   protected onAddDevice(): void {

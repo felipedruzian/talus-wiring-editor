@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { NgDiagramPaletteItemComponent, NgDiagramPaletteItemPreviewComponent } from 'ng-diagram';
 import { HighlightSegmentsPipe } from '../../../shared/ui/highlight-segments/highlight-segments.pipe';
+import { DeviceIllustrationComponent } from '../../../shared/ui/device-illustration/device-illustration.component';
 import { LibraryService } from '../../library.service';
 import { type LibraryDevice } from '../../seed-library';
 import { asDevicePaletteItem } from './palette-item-cast';
@@ -10,6 +11,7 @@ import { asDevicePaletteItem } from './palette-item-cast';
   imports: [
     NgDiagramPaletteItemComponent,
     NgDiagramPaletteItemPreviewComponent,
+    DeviceIllustrationComponent,
     HighlightSegmentsPipe,
   ],
   templateUrl: './library-list-item.component.html',
