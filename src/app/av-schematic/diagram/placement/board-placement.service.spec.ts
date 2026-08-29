@@ -221,7 +221,7 @@ describe('BoardPlacementService', () => {
 
     part.position = placementNodePosition(
       { board: boardNode.data, position: boardNode.position },
-      { boardId: boardNode.id, anchor: { row: 1, col: 1 }, rotation: 90 },
+      { anchor: { row: 1, col: 1 }, rotation: 90 },
     );
     await service.settleDrag(new Set(['part']));
 
