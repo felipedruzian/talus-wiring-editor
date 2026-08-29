@@ -18,11 +18,7 @@ import {
   type FootprintShape,
 } from '../model/footprint';
 import { isBoardNode } from '../model/guards';
-import {
-  type BoardRotation,
-  type DeviceNodeData,
-  type DevicePort,
-} from '../model/interfaces';
+import { type BoardRotation, type DeviceNodeData, type DevicePort } from '../model/interfaces';
 import { BoardPlacementService } from '../placement/board-placement.service';
 import { centerLeftPortBoxPosition } from '../edge-reshaping/logic/port-position';
 
