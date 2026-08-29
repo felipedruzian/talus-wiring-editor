@@ -18,19 +18,19 @@ export function browserLocalStorage(): Storage | null {
 }
 
 export function loadLibraryDevices(storage: Storage | null): LibraryDevice[] {
-  if (!storage) return SEED_LIBRARY;
+  if (!storage) return cloneSeedLibrary();
   try {
     const serialized = storage.getItem(LIBRARY_STORAGE_KEY);
-    if (!serialized) return SEED_LIBRARY;
+    if (!serialized) return cloneSeedLibrary();
     const parsed: unknown = JSON.parse(serialized);
     const recovered = recoverPersistedLibrary(parsed);
-    if (!recovered) return SEED_LIBRARY;
+    if (!recovered) return cloneSeedLibrary();
     if (recovered.wasRepaired) {
       persistLibraryDevices(storage, recovered.devices);
     }
     return recovered.devices;
   } catch {
-    return SEED_LIBRARY;
+    return cloneSeedLibrary();
   }
 }
 
@@ -62,7 +62,9 @@ function recoverPersistedLibrary(
     seenIds.add(candidate.libraryId);
   }
 
-  if (devices.length === 0) return null;
+  if (devices.length === 0) {
+    return { devices: cloneSeedLibrary(), wasRepaired: true };
+  }
   return { devices, wasRepaired: devices.length !== value['devices'].length };
 }
 
@@ -110,3 +112,5 @@ const optionalString = (value: unknown): boolean =>
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+
+const cloneSeedLibrary = (): LibraryDevice[] => structuredClone(SEED_LIBRARY);

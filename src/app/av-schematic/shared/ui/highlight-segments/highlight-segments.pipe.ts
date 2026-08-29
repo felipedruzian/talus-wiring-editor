@@ -1,4 +1,5 @@
 import { Pipe, PipeTransform } from '@angular/core';
+import { normalizeSearchText } from '../../utils/search-text';
 
 export interface HighlightSegment {
   text: string;
@@ -12,13 +13,13 @@ export class HighlightSegmentsPipe implements PipeTransform {
     const needle = query?.trim() ?? '';
     if (!needle || !source) return [{ text: source, match: false }];
 
-    const haystack = source.toLowerCase();
-    const lowerNeedle = needle.toLowerCase();
+    const haystack = normalizeSearchText(source);
+    const normalizedNeedle = normalizeSearchText(needle);
     const segments: HighlightSegment[] = [];
 
     let cursor = 0;
     while (cursor < source.length) {
-      const idx = haystack.indexOf(lowerNeedle, cursor);
+      const idx = haystack.indexOf(normalizedNeedle, cursor);
       if (idx === -1) {
         segments.push({ text: source.slice(cursor), match: false });
         break;
@@ -26,8 +27,8 @@ export class HighlightSegmentsPipe implements PipeTransform {
       if (idx > cursor) {
         segments.push({ text: source.slice(cursor, idx), match: false });
       }
-      segments.push({ text: source.slice(idx, idx + lowerNeedle.length), match: true });
-      cursor = idx + lowerNeedle.length;
+      segments.push({ text: source.slice(idx, idx + normalizedNeedle.length), match: true });
+      cursor = idx + normalizedNeedle.length;
     }
 
     return segments;

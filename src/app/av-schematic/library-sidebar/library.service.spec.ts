@@ -48,6 +48,8 @@ describe('LibraryService', () => {
     expect(service.filteredDevices().map((device) => device.libraryId)).toEqual(['lib-lm2596s']);
     service.searchQuery.set('motor-driver');
     expect(service.filteredDevices().map((device) => device.libraryId)).toEqual(['lib-tb6612fng']);
+    service.searchQuery.set('Drivers de motor');
+    expect(service.filteredDevices().map((device) => device.libraryId)).toEqual(['lib-tb6612fng']);
     service.searchQuery.set('HALL_L');
     expect(service.filteredDevices().map((device) => device.libraryId)).toEqual([
       'lib-arduino-nano',
@@ -100,14 +102,21 @@ describe('LibraryService', () => {
     const storage = new MemoryStorage();
 
     storage.setItem(LIBRARY_STORAGE_KEY, '{broken');
-    expect(loadLibraryDevices(storage)).toBe(SEED_LIBRARY);
+    expect(loadLibraryDevices(storage)).toEqual(SEED_LIBRARY);
+    expect(loadLibraryDevices(storage)).not.toBe(SEED_LIBRARY);
     storage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify({ version: 99, devices: [] }));
-    expect(loadLibraryDevices(storage)).toBe(SEED_LIBRARY);
+    expect(loadLibraryDevices(storage)).toEqual(SEED_LIBRARY);
+    expect(loadLibraryDevices(storage)).not.toBe(SEED_LIBRARY);
     storage.setItem(
       LIBRARY_STORAGE_KEY,
       JSON.stringify({ version: LIBRARY_STORAGE_VERSION, devices: [{ libraryId: 'bad' }] }),
     );
-    expect(loadLibraryDevices(storage)).toBe(SEED_LIBRARY);
+    expect(loadLibraryDevices(storage)).toEqual(SEED_LIBRARY);
+    expect(loadLibraryDevices(storage)).not.toBe(SEED_LIBRARY);
+    expect(JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}')).toEqual({
+      version: LIBRARY_STORAGE_VERSION,
+      devices: SEED_LIBRARY,
+    });
   });
 
   it('salvages valid v1 entries individually and repairs the persisted payload', () => {
@@ -159,11 +168,19 @@ describe('LibraryService', () => {
       ...SEED_LIBRARY[0],
       template: { ...SEED_LIBRARY[0].template, model: 'Override local' },
     };
+    const legacy = {
+      libraryId: 'lib-legacy-camera',
+      template: {
+        ...createBlankTemplate(),
+        manufacturer: 'Legado',
+        model: 'Câmera antiga',
+      },
+    };
     storage.setItem(
       LIBRARY_STORAGE_KEY,
       JSON.stringify({
         version: LIBRARY_STORAGE_VERSION,
-        devices: [overriddenSeed, custom],
+        devices: [overriddenSeed, custom, legacy],
       }),
     );
     vi.stubGlobal('localStorage', storage);
@@ -172,6 +189,7 @@ describe('LibraryService', () => {
     service.restoreDefaults();
 
     expect(service.devices()).toEqual([...SEED_LIBRARY, custom]);
+    expect(service.devices().some((device) => device.libraryId === legacy.libraryId)).toBe(false);
     expect(service.devices()).not.toBe(SEED_LIBRARY);
     expect(new LibraryService().devices()).toEqual([...SEED_LIBRARY, custom]);
   });

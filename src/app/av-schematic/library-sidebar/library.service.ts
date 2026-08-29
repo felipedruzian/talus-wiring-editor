@@ -74,10 +74,9 @@ export class LibraryService {
   }
 
   restoreDefaults(): void {
-    const seedIds = new Set(SEED_LIBRARY.map((device) => device.libraryId));
     const restored = [
       ...structuredClone(SEED_LIBRARY),
-      ...this.devices().filter((device) => !seedIds.has(device.libraryId)),
+      ...this.devices().filter((device) => device.libraryId.startsWith('lib-custom-')),
     ];
     this.devices.set(restored);
     persistLibraryDevices(this.storage, restored);

@@ -7,7 +7,11 @@
     (keydown.enter)="onOpenDetail()"
     (keydown.space)="onOpenDetail(); $event.preventDefault()"
   >
-    <app-device-illustration class="device-row__illustration" [device]="device().template" />
+    <app-device-illustration
+      class="device-row__illustration"
+      [device]="device().template"
+      [decorative]="true"
+    />
     <div class="device-row__main">
       @if (device().template.manufacturer) {
         <span class="device-row__manufacturer p10">
