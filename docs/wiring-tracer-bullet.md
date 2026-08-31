@@ -63,17 +63,16 @@ mesa:
   com os nodes novos. O card mantém exatamente a mesma marcação genérica
   (cabeçalho + duas colunas de portas) usada por qualquer outro dispositivo
   AV — nenhum tipo de node novo, nenhuma mudança de schema. O que muda é
-  puramente visual: `DeviceNodeComponent` deriva uma
-  `DeviceIllustration` (`'arduino-nano' | 'tb6612fng' | null`) limitada a
-  partir de `manufacturer`/`model`, e só Nano/TB6612FNG resolvem para um
-  valor não nulo. Esse valor adiciona uma classe CSS modificadora que
-  reveste o card com um visual compacto e visualmente distinto (glifo SVG
-  original, cor semelhante à de uma placa, footprint menor), enquanto
-  qualquer dispositivo AV — para o qual `resolveIllustration()` sempre
-  retorna `null` — continua renderizando o card genérico sem alteração.
-  Ainda não é uma ilustração literal de pinagem DIP/header (ver "Pendente"
-  abaixo); é a prova visual delimitada que a issue #1 pede, não o sistema
-  geral de footprints da issue #3.
+  puramente visual: `DeviceNodeComponent` delega ao
+  `DeviceIllustrationComponent`, que deriva um `DeviceIllustrationId` a
+  partir de `manufacturer`/`model`. `resolveDeviceIllustration()` reconhece
+  os seis componentes atuais do Talus-Droid — Arduino Nano, Raspberry Pi 4,
+  MPU6050/GY-521, TB6612FNG, LM2596S e Hall A3144/LM393 — e renderiza para
+  eles uma ilustração SVG/CSS original. Qualquer dispositivo sem uma
+  correspondência estrita recebe `null` e continua renderizando o card
+  genérico sem alteração. Ainda não é uma ilustração literal de pinagem
+  DIP/header (ver "Pendente" abaixo); é a prova visual delimitada que a
+  issue #1 pede, não o sistema geral de footprints da issue #3.
 - **`DevicePort` ganhou um campo opcional: `hole: { row, col }`.** Esse é o
   requisito de "pinos/furos endereçáveis" — todo pino que deve se alinhar a
   um furo da placa carrega um endereço de grade determinístico. É aditivo e
