@@ -19,17 +19,20 @@ esta fatia especificamente fez com cada uma.
 | `Garth-42/WireForm` | `github.com/Garth-42/WireForm` | `5658987` | **GPL-3.0** | **Não — não incorporado.** | Licença e existência do commit confirmadas via `gh api repos/Garth-42/WireForm` em 2026-08-27. A importação e exportação WireViz (`wireviz-import/*`) são implementações **clean-room**, agora cobrindo também o fixture multi-drop da issue #2, junções, relatório e equivalência elétrica. Nenhum código-fonte, teste, fixture ou asset do `WireForm` foi copiado ou adaptado. Por restrição explícita desta tarefa, **nenhum código GPL-3.0 está presente neste repositório nesta fatia.** |
 | WireViz (o formato/ferramenta) | `github.com/wireviz/WireViz` | n/a — apenas a sintaxe pública de interoperabilidade foi consultada | GPL-3.0 (a ferramenta WireViz em si) | **Nenhum código usado — apenas compatibilidade de formato.** | Licença confirmada via `gh api repos/wireviz/WireViz` em 2026-08-27. Fixtures, parser e emissor foram escritos de forma independente; a documentação oficial de sintaxe orientou o comportamento interoperável, sem cópia ou transcrição do código Python. Esta descrição técnica não substitui análise jurídica. |
 | `fritzing/fritzing-parts` | `github.com/fritzing/fritzing-parts` | `27535f2` | CC BY-SA 3.0 (assets/docs) | **Não — fora do escopo desta issue.** | Existência do commit confirmada via `gh api repos/fritzing/fritzing-parts` em 2026-08-27. A licença CC BY-SA 3.0 foi confirmada lendo o conteúdo de `LICENSE.txt` no repositório (a API de detecção de licença do GitHub reporta `NOASSERTION` para esse repositório, então o texto do arquivo foi conferido diretamente em vez de confiar apenas no campo `license` da API). Nenhuma peça, SVG ou documento foi importado. As ilustrações de Nano/TB6612FNG nesta fatia são CSS/SVG originais, construídas para este repositório (ver "Assets" abaixo), especificamente para evitar qualquer obrigação de atribuição/compartilhamento-pelas-mesmas-regras da CC BY-SA nesta etapa inicial. Reaproveitamento seletivo e individualmente atribuído continua possível depois, conforme `talus-core#339`, nunca importação em bloco. |
+| Fotografias privadas dos módulos do Talus-Droid | Acervo fotográfico privado no Goblin | Referências privadas inspecionadas em 2026-08-28 | Licença de redistribuição **não comprovada** | **Não — somente referência privada.** | As imagens serviram apenas para reconhecer cor, proporção e elementos distintivos dos módulos reais. Nenhum pixel, traçado vetorial, texto de vendedor, logotipo ou arquivo derivado foi copiado para o repositório. As seis ilustrações do catálogo são marcação SVG e CSS originais, escritas manualmente para este projeto. |
 | `pallab-js/PiForge` | `github.com/pallab-js/PiForge` | `fba850a` | MIT | **Não.** | Licença confirmada via `gh api repos/pallab-js/PiForge` em 2026-08-27 (o registro anterior deste documento listava a licença como "n/a"; corrigido aqui). Não é um baseline; nenhum código foi considerado para esta fatia. |
 
 ## Assets
 
 Nenhum asset de imagem, ícone ou footprint de terceiros foi adicionado
 nesta fatia. A grade de furos da placa é desenhada como círculos SVG a
-partir de geometria pura (`board-geometry.ts`); Nano e TB6612FNG são
-renderizados através do card existente do `DeviceNodeComponent` (CSS + a
-marcação de portas do próprio app) — nenhuma arte bitmap ou vetorial foi
-importada. Se uma fatia futura adicionar arte realista de chip/placa,
-ela precisa de sua própria entrada aqui (origem, licença, revisão) **antes**
+partir de geometria pura (`board-geometry.ts`). Arduino Nano, Raspberry Pi 4,
+MPU6050/GY-521, TB6612FNG, LM2596S e Hall A3144/LM393 são representados por
+geometria SVG e CSS originais no `DeviceIllustrationComponent`, combinada à
+marcação de portas do próprio aplicativo. Nenhuma arte bitmap ou vetorial foi
+importada; em particular, as referências fotográficas privadas não existem no
+histórico Git. Se uma fatia futura adicionar arte realista de chip ou placa,
+ela precisa de sua própria entrada aqui (origem, licença e revisão) **antes**
 de ser mesclada, assim como código.
 
 ## Licença consolidada do repositório

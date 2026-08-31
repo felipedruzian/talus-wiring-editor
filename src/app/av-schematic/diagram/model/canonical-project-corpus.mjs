@@ -124,8 +124,29 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function baseDetachedFootprintProject() {
+  const raw = basePhysicalProject();
+  const layout = raw.layout.components[0];
+  delete layout.boardId;
+  delete layout.placement;
+  delete layout.pinHoles;
+  layout.footprintRotation = 90;
+  layout.footprintPitch = 17;
+  raw.electrical.junctions = [];
+  raw.electrical.nets = [];
+  raw.layout.junctions = [];
+  raw.layout.conductors = [];
+  return raw;
+}
+
 function changed(name, change) {
   const raw = basePhysicalProject();
+  change(raw);
+  return { name, accepted: false, raw };
+}
+
+function changedDetached(name, change) {
+  const raw = baseDetachedFootprintProject();
   change(raw);
   return { name, accepted: false, raw };
 }
@@ -179,8 +200,37 @@ export const canonicalValidationCorpus = [
     accepted: true,
     raw: emptyBoard,
   },
+  {
+    name: 'accepts retained footprint geometry without a placement',
+    accepted: true,
+    raw: baseDetachedFootprintProject(),
+  },
   changed('rejects footprintId without an embedded footprint', (raw) => {
     delete raw.layout.components[0].footprint;
+  }),
+  changedDetached('rejects footprint rotation without an embedded footprint', (raw) => {
+    delete raw.layout.components[0].footprint;
+    delete raw.layout.components[0].footprintId;
+  }),
+  changedDetached('rejects footprint pitch without an embedded footprint', (raw) => {
+    delete raw.layout.components[0].footprint;
+    delete raw.layout.components[0].footprintId;
+    delete raw.layout.components[0].footprintRotation;
+  }),
+  changedDetached('rejects an invalid detached footprint rotation', (raw) => {
+    raw.layout.components[0].footprintRotation = 45;
+  }),
+  changedDetached('rejects a non-positive detached footprint pitch', (raw) => {
+    raw.layout.components[0].footprintPitch = 0;
+  }),
+  changedDetached('rejects a detached footprint pitch above the operational limit', (raw) => {
+    raw.layout.components[0].footprintPitch = OPERATIONAL_LIMITS.maxBoardPitch + 1;
+  }),
+  changed('rejects footprint rotation together with placement', (raw) => {
+    raw.layout.components[0].footprintRotation = 90;
+  }),
+  changed('rejects footprint pitch together with placement', (raw) => {
+    raw.layout.components[0].footprintPitch = 17;
   }),
   changed('rejects a mismatched embedded footprint id', (raw) => {
     raw.layout.components[0].footprint.id = 'different-footprint';

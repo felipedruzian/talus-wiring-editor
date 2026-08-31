@@ -194,17 +194,20 @@ Left-side collapsible panel that holds **device templates** — recipes (no `id`
 | File | Purpose |
 |---|---|
 | `library-sidebar/seed-library.ts` | Initial set of templates. Each entry is `{ libraryId, template: DeviceNodeData }`. `deviceId` and `location` are kept empty — they're instance fields, not template fields |
-| `library-sidebar/library.service.ts` | Page-scoped state: `devices`, `isExpanded`, `editingDeviceId`, `editingMode`. `beginCreate()` / `beginEdit()` / `commitDraft()` / `closeDetail()` / `removeDevice()` |
+| `library-sidebar/library.service.ts` | Estado da página: `devices`, expansão, edição, busca e persistência. `restoreDefaults()` repõe os seeds atuais sem remover componentes personalizados |
+| `library-sidebar/library-storage.ts` | Persistência `localStorage` v1. Recupera entradas válidas individualmente, remove entradas corrompidas/duplicadas e preserva um catálogo vazio intencional |
 | `library-sidebar/library-draft.service.ts` | Per-detail-session draft buffer. While the detail view is open, every form change writes here (not to the library). **Save** commits via `LibraryService.commitDraft`; **Back** simply tears the component down and the draft with it |
-| `library-sidebar/components/library-list-item/*` | Each row wraps its content in `<ng-diagram-palette-item [item]="…">` with a custom `<ng-diagram-palette-item-preview>` ghost card. `<ng-diagram>` auto-handles the drop. Manufacturer / model render as `HighlightSegmentsPipe` segments so search matches stand out |
-| `library-sidebar/components/library-search/*` | Search input above the list. 150 ms debounced; writes to `LibraryService.searchQuery`, which drives `filteredDevices` (case-insensitive match against `manufacturer` or `model`). Survives navigation into the detail view and back |
+| `library-sidebar/components/library-list-item/*` | Cada linha combina o item arrastável, a ilustração, a categoria localizada e notas visíveis. `HighlightSegmentsPipe` destaca os trechos encontrados |
+| `library-sidebar/components/library-search/*` | Busca com debounce de 150 ms por fabricante, modelo, categoria, notas e rótulos de pino, sem diferenciar maiúsculas, minúsculas ou diacríticos. O termo permanece ao abrir um detalhe e voltar |
 | `library-sidebar/components/library-detail/*` | Reuses `<app-device-form>` with a local `DeviceFormService` provider and an overridden `ON_DEVICE_FIELD_CHANGE` token that writes to the draft service. Hides `deviceId` and `location` by providing `DEVICE_FORM_HIDDEN_FIELDS = ['deviceId', 'location']` |
 | `diagram/model/device-categories.ts` | Canonical category dictionary — `DEVICE_CATEGORY_PREFIXES` (`microphone` → `MIC`, `camera` → `CAM`, …), `DEVICE_CATEGORIES` (the keys, used by the combobox), `FALLBACK_DEVICE_PREFIX = 'DEV'` |
 | `diagram/model/auto-device-id.ts` | `generateDeviceId(category, existingNodes)` — returns `<PREFIX>-<N>` where `N` is the smallest positive integer not already in use by a device of that prefix. Called from `(paletteItemDropped)` in `DiagramComponent` |
 
 **Adding a category.** Add an entry to `DEVICE_CATEGORY_PREFIXES` in `device-categories.ts` and the combobox plus the ID generator pick it up automatically. Unmapped categories fall through to `DEV-N`.
 
-**Adding library entries.** Append to `SEED_LIBRARY` in `seed-library.ts`. Stable `libraryId`s, empty `deviceId` (auto-generated on drop), realistic `manufacturer` / `model` / `category` / `ports`. Or use the in-app **+ Add device** button at the bottom of the list to build one interactively.
+**Adição de entradas.** Acrescente os padrões a `SEED_LIBRARY` em `seed-library.ts`, com `libraryId` estável, `deviceId` vazio (gerado automaticamente no drop) e dados realistas. Para um item apenas local, use **+ Adicionar componente** no rodapé da lista.
+
+O storage v1 mantém o catálogo salvo pelo usuário sem fazer merge automático com os seeds, inclusive quando a lista salva é `[]`. A ação visível **Restaurar padrões** repõe os seis seeds da versão atual, descarta apenas edições ou remoções locais desses ids e mantém os componentes personalizados `lib-custom-*`; portanto, ela também aplica correções e novas entradas adicionadas posteriormente a `SEED_LIBRARY` sem apagar criações do usuário.
 
 **Why `paletteItemDropped`?** ng-diagram's `<ng-diagram>` registers `PaletteDropDirective` automatically — the drop creates a node from the palette item's `data` without any wiring on our side. We only listen to the event so we can auto-assign a `deviceId` if the template's was empty (which is the default for library entries).
 

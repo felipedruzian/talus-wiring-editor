@@ -13,7 +13,7 @@ import { parseCanonicalProject } from './canonical-project-parse';
 import { canonicalValidationCorpus } from './canonical-project-corpus.mjs';
 import { electricallyEquivalent } from './electrical-equivalence';
 import { isBoardNode, isDeviceNode, isJunctionNode } from './guards';
-import { type WireEdgeData } from './interfaces';
+import { NodeTemplateType, type WireEdgeData } from './interfaces';
 import { OPERATIONAL_LIMITS } from './operational-limits.mjs';
 
 function must<T>(value: T | undefined): T {
@@ -365,6 +365,56 @@ describe('canonical project round-trip', () => {
 
     expect(layout.footprint).toMatchObject({ id: footprintId });
     expect(() => parseCanonicalProject(project)).not.toThrow();
+  });
+
+  it('round-trips an unseated footprint with its physical renderer and geometry', () => {
+    const source = must(
+      diagramModel.nodes.find(
+        (node) => isDeviceNode(node) && node.type === NodeTemplateType.FootprintNode,
+      ),
+    );
+    if (!isDeviceNode(source)) throw new Error('fixture has no footprinted component');
+    const unseated: typeof source = {
+      ...clone(source),
+      position: { x: 812.5, y: 433.25 },
+      data: {
+        ...clone(source.data),
+        boardId: undefined,
+        placement: undefined,
+        footprintRotation: 90,
+        footprintPitch: 17,
+        ports: source.data.ports.map((port) => ({ ...port, hole: undefined })),
+      },
+    };
+
+    const saved = toCanonicalProject([unseated], []);
+    const reopened = fromCanonicalProject(parseCanonicalProject(clone(saved)));
+    const rebuilt = must(reopened.nodes.find(isDeviceNode));
+
+    expect(rebuilt.type).toBe(NodeTemplateType.FootprintNode);
+    expect(rebuilt.position).toEqual(unseated.position);
+    expect(rebuilt.data.placement).toBeUndefined();
+    expect(rebuilt.data.footprintRotation).toBe(90);
+    expect(rebuilt.data.footprintPitch).toBe(17);
+    expect(toCanonicalProject(reopened.nodes, reopened.edges)).toEqual(saved);
+  });
+
+  it('keeps a component without a footprint on the generic renderer', () => {
+    const project = emptyV2();
+    project.electrical.components.push({
+      id: 'generic',
+      deviceId: 'GEN-1',
+      manufacturer: '',
+      model: 'Generic',
+      pins: [{ id: 'p1', label: 'P1', direction: 'input' }],
+    });
+    project.layout.components.push({ componentId: 'generic', position: { x: 20, y: 30 } });
+
+    const rebuilt = must(fromCanonicalProject(project).nodes.find(isDeviceNode));
+
+    expect(rebuilt.type).toBe(NodeTemplateType.DeviceNode);
+    expect(rebuilt.data.footprintId).toBeUndefined();
+    expect(rebuilt.data.footprint).toBeUndefined();
   });
 
   it('rejects exporting a dangling edge', () => {

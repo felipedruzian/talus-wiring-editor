@@ -124,18 +124,21 @@ src/app/av-schematic/
 │   ├── dxf/                              # Generic, domain-free DXF library
 │   └── dxf-av-schematic/                 # av-schematic-specific node/edge renderers
 ├── device-form/                          # Device fields (signals form). DEVICE_FORM_HIDDEN_FIELDS DI token controls visibility per-host
-├── library-sidebar/                      # Left panel: drag-drop palette of device templates
-│   ├── library.service.ts                # Devices, expand/collapse, editing mode (create/edit)
+├── library-sidebar/                      # Painel esquerdo: catálogo pesquisável e arrastável de componentes
+│   ├── library.service.ts                # Estado, busca, edição, persistência e restauração dos padrões
 │   ├── library-draft.service.ts          # Per-detail-session draft buffer (Save commits; Back discards)
+│   ├── library-search.ts                 # Busca normalizada por identidade, categoria, notas e pinos
+│   ├── library-storage.ts                # Storage local v1, validação, recuperação e reparo
 │   ├── seed-library.ts                   # Initial templates + createBlankTemplate factory
 │   └── components/
-│       ├── library-list/                 # Scrollable list + "Add device" button
+│       ├── library-list/                 # Lista agrupada + ações de adicionar e restaurar padrões
 │       ├── library-list-item/            # Draggable row wrapping <ng-diagram-palette-item>
 │       ├── library-search/               # Debounced search input feeding LibraryService.searchQuery
 │       └── library-detail/               # Reuses <app-device-form> with overridden ON_DEVICE_FIELD_CHANGE
 ├── shared/                               # Generic, reusable building blocks (no domain coupling)
 │   ├── ui/                               # Visual building blocks
 │   │   ├── combobox/                     # Editable combobox (FormValueControl<string>)
+│   │   ├── device-illustration/           # Ilustrações SVG/CSS originais dos componentes do Talus-Droid
 │   │   ├── form-field/                   # Label + projected input wrapper
 │   │   ├── highlight-segments/           # Pipe that splits text into matched / unmatched segments for safe (no innerHTML) highlighting
 │   │   └── ports-editor/                 # Tabbed (Inputs / Outputs) ports editor (FormValueControl<DevicePort[]>)
@@ -147,7 +150,8 @@ src/app/av-schematic/
 │   ├── styles/                           # SCSS partials shared across features
 │   │   └── sidebar-shell/                # common :host / .sidebar / animation rules
 │   └── utils/                            # Pure functions
-│       └── random-short-id.ts
+│       ├── random-short-id.ts
+│       └── search-text.ts                 # Normalização compartilhada de caixa e diacríticos
 ├── top-navbar/                           # Navigation bar + theme toggle + export menu + menu Salvar/Abrir (app-project-storage-menu, de ../project-storage/)
 │   ├── theme-toggle/                     # Light/dark theme switcher
 │   └── export-menu/                      # PNG/DXF export trigger

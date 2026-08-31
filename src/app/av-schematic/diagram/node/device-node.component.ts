@@ -9,26 +9,22 @@ import {
 import { PortFocusService } from '../port-focus.service';
 import { RelinkTargetHighlightService } from '../edge-relinking/relink-target-highlight.service';
 import { type DeviceNodeData, type DevicePort } from '../model/interfaces';
+import { DeviceIllustrationComponent } from '../../shared/ui/device-illustration/device-illustration.component';
+import {
+  resolveDeviceIllustration,
+  type DeviceIllustrationId,
+} from '../../shared/ui/device-illustration/device-illustration';
 
 /**
- * Bounded, seed-only physical illustration variants (issue #1 tracer
- * bullet). Purely a visual reskin of the same generic device-node
- * card/ports — not a persisted field, not the general footprint system from
- * issue #3. Resolved from `manufacturer`/`model` so any other device
- * (including every existing AV seed/library entry) keeps rendering as the
- * plain generic card, unchanged.
+ * Catalog illustrations are resolved from manufacturer/model and remain
+ * independent from the physical footprint model. Unknown/manual devices keep
+ * the generic card rendering.
  */
-export type DeviceIllustration = 'arduino-nano' | 'tb6612fng' | null;
-
-function resolveIllustration(data: DeviceNodeData): DeviceIllustration {
-  if (data.manufacturer === 'Arduino' && data.model === 'Nano') return 'arduino-nano';
-  if (data.model === 'TB6612FNG') return 'tb6612fng';
-  return null;
-}
+export type DeviceIllustration = DeviceIllustrationId;
 
 @Component({
   selector: 'app-device-node',
-  imports: [NgDiagramPortComponent],
+  imports: [NgDiagramPortComponent, DeviceIllustrationComponent],
   templateUrl: './device-node.component.html',
   styleUrl: './device-node.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -50,7 +46,7 @@ export class DeviceNodeComponent implements NgDiagramNodeTemplate<DeviceNodeData
   protected readonly data = computed(() => this.node().data);
 
   protected readonly illustration = computed<DeviceIllustration>(() =>
-    resolveIllustration(this.data()),
+    resolveDeviceIllustration(this.data()),
   );
 
   protected readonly inputPorts = computed(() => this.portsByDirection('input'));

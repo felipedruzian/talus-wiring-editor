@@ -200,24 +200,15 @@
 }
 
 // ---------------------------------------------------------------------------
-// Bounded physical illustration variants (issue #1 tracer bullet).
+// Compact catalog illustration variant.
 //
 // Original, hand-authored reskin of the same generic card/port markup above
-// — no assets or code adapted from any third-party silkscreen/footprint
-// library. Only the two seeded components (Arduino Nano, TB6612FNG) ever
-// carry these classes (see DeviceNodeComponent.resolveIllustration); every
-// other device, including all existing AV seed/library entries, keeps
-// rendering the plain generic card untouched.
+// - no assets or code adapted from any third-party silkscreen/footprint
+// library. The six catalog components carry this layout; unknown manual
+// components keep rendering the plain generic card.
 //
-// Sized to actually fit inside board A's rendered footprint (232 x 132px for
-// rows=6/cols=11/pitch=20 — see board-geometry.ts::boardSize / data.ts).
-// TB6612FNG is the tighter case at 5 port rows: header (26px) + separator
-// (1px) + 5 * row (18px) = 117px, leaving real clearance under 132px at the
-// board-overlapping y offset data.ts seeds it at. Nano (4 rows) fits with
-// more room to spare. The header drops the manufacturer line in this variant
-// (id + model only) and lays the glyph + text out as a row instead of a
-// column, which is what buys back the vertical space a 3-line stacked header
-// would have spent.
+// The compact header drops the manufacturer line and lays out the illustration
+// and text in a row. Port labels remain the source of pin identity.
 // ---------------------------------------------------------------------------
 
 .device-node--illustrated {
@@ -261,46 +252,8 @@
   }
 }
 
-.device-node__glyph {
-  width: 14px;
-  height: 14px;
+.device-node__illustration {
+  width: 24px;
+  height: 18px;
   flex-shrink: 0;
-}
-
-.device-node--arduino-nano {
-  --card-header-bg: #0b5345;
-
-  .device-node__glyph rect:not(.device-node__glyph-accent) {
-    fill: #12866f;
-    stroke: #063a30;
-    stroke-width: 1;
-  }
-
-  .device-node__glyph-accent {
-    fill: #eafff8;
-  }
-
-  .device-node__id,
-  .device-node__info {
-    color: #eafff8;
-  }
-}
-
-.device-node--tb6612fng {
-  --card-header-bg: #1c1c1f;
-
-  .device-node__glyph rect:not(.device-node__glyph-accent) {
-    fill: #2b2b30;
-    stroke: #000;
-    stroke-width: 1;
-  }
-
-  .device-node__glyph-accent {
-    fill: #d4af37;
-  }
-
-  .device-node__id,
-  .device-node__info {
-    color: #f2f2f2;
-  }
 }

@@ -1,7 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { NgDiagramModelService, type Edge, type Node } from 'ng-diagram';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { placementNodePosition, syncPortHolesToPlacement } from '../model/footprint-geometry';
+import {
+  DETACHED_FOOTPRINT_FALLBACK_PITCH,
+  FOOTPRINT_PADDING_CELLS,
+  footprintNodeSize,
+  placementNodePosition,
+  syncPortHolesToPlacement,
+} from '../model/footprint-geometry';
 import { type Footprint } from '../model/footprint';
 import { rowTrace } from '../model/board-trace';
 import {
@@ -155,9 +161,9 @@ describe('BoardPlacementService', () => {
     );
   });
 
-  it('unseats a part dropped outside every board without rewriting its wire', async () => {
+  it('unseats a footprint without changing its renderer, geometry or wire', async () => {
     const boardNode = board();
-    const placement = { boardId: 'board', anchor: { row: 1, col: 1 }, rotation: 0 as const };
+    const placement = { boardId: 'board', anchor: { row: 1, col: 1 }, rotation: 90 as const };
     const part = device('part', { x: 999, y: 999 });
     part.type = NodeTemplateType.FootprintNode;
     part.data = syncPortHolesToPlacement({ ...part.data, boardId: 'board', placement });
@@ -188,14 +194,171 @@ describe('BoardPlacementService', () => {
     await service.settleDrag(new Set(['part']));
 
     const unseated = model.nodes.find((node) => node.id === 'part') as Node<DeviceNodeData>;
-    expect(unseated.type).toBe(NodeTemplateType.DeviceNode);
+    expect(unseated.type).toBe(NodeTemplateType.FootprintNode);
     expect(unseated.data.placement).toBeUndefined();
     expect(unseated.data.boardId).toBeUndefined();
+    expect(unseated.data.footprintRotation).toBe(90);
+    expect(unseated.data.footprintPitch).toBe(boardNode.data.pitch);
+    expect(
+      footprintNodeSize(
+        footprint,
+        unseated.data.footprintRotation ?? 0,
+        unseated.data.footprintPitch ?? DETACHED_FOOTPRINT_FALLBACK_PITCH,
+      ),
+    ).toEqual(footprintNodeSize(footprint, placement.rotation, boardNode.data.pitch));
     expect(unseated.data.ports.every((port) => port.hole === undefined)).toBe(true);
     expect(model.edges[0]).toEqual(wire);
   });
 
-  it('reports an unseated footprint dropped outside every board', async () => {
+  it('reseats an unseated footprint with its preserved rotation', async () => {
+    const boardNode = board();
+    const part = device('part', { x: 999, y: 999 });
+    part.type = NodeTemplateType.FootprintNode;
+    part.data = {
+      ...part.data,
+      footprintRotation: 90,
+      footprintPitch: boardNode.data.pitch,
+    };
+    model.nodes = [boardNode, part];
+
+    part.position = placementNodePosition(
+      { board: boardNode.data, position: boardNode.position },
+      { anchor: { row: 1, col: 1 }, rotation: 90 },
+    );
+    await service.settleDrag(new Set(['part']));
+
+    const reseated = model.nodes.find((node) => node.id === 'part') as Node<DeviceNodeData>;
+    expect(reseated.type).toBe(NodeTemplateType.FootprintNode);
+    expect(reseated.data.placement).toEqual({
+      boardId: boardNode.id,
+      anchor: { row: 1, col: 1 },
+      rotation: 90,
+    });
+  });
+
+  it('uses the detached visual anchor when reseating on a different pitch', async () => {
+    const boardNode = board();
+    const detachedPitch = 40;
+    const expectedPlacement = {
+      boardId: boardNode.data.boardId,
+      anchor: { row: 1, col: 1 },
+      rotation: 0 as const,
+    };
+    const seatedPosition = placementNodePosition(
+      { board: boardNode.data, position: boardNode.position },
+      expectedPlacement,
+    );
+    const part = device('part', {
+      x:
+        seatedPosition.x +
+        FOOTPRINT_PADDING_CELLS * boardNode.data.pitch -
+        FOOTPRINT_PADDING_CELLS * detachedPitch,
+      y:
+        seatedPosition.y +
+        FOOTPRINT_PADDING_CELLS * boardNode.data.pitch -
+        FOOTPRINT_PADDING_CELLS * detachedPitch,
+    });
+    part.type = NodeTemplateType.FootprintNode;
+    part.data = {
+      ...part.data,
+      footprintRotation: 0,
+      footprintPitch: detachedPitch,
+    };
+    model.nodes = [boardNode, part];
+
+    await service.settleDrag(new Set(['part']));
+
+    const reseated = model.nodes.find((node) => node.id === 'part') as Node<DeviceNodeData>;
+    expect(reseated.data.placement).toEqual(expectedPlacement);
+  });
+
+  it('rotates a detached footprint and preserves its detached state', async () => {
+    const part = device('part', { x: 999, y: 999 });
+    part.type = NodeTemplateType.FootprintNode;
+    part.data = {
+      ...part.data,
+      footprintRotation: 90,
+      footprintPitch: 17,
+    };
+    model.nodes = [part];
+
+    expect(await service.rotate('part', 1)).toBe(true);
+
+    const rotated = model.nodes.find((node) => node.id === 'part') as Node<DeviceNodeData>;
+    expect(rotated.data.placement).toBeUndefined();
+    expect(rotated.data.footprintRotation).toBe(180);
+    expect(rotated.data.footprintPitch).toBe(17);
+  });
+
+  it('keeps a second detached drag outside boards conflict-free', async () => {
+    const part = device('part', { x: 999, y: 999 });
+    part.type = NodeTemplateType.FootprintNode;
+    part.data = {
+      ...part.data,
+      footprintRotation: 90,
+      footprintPitch: 17,
+    };
+    model.nodes = [part];
+
+    await service.settleDrag(new Set(['part']));
+
+    expect(service.conflict()).toBeNull();
+  });
+
+  it('keeps a legacy detached footprint second drag outside boards conflict-free', async () => {
+    const part = device('part', { x: 999, y: 999 });
+    part.type = NodeTemplateType.FootprintNode;
+    model.nodes = [part];
+
+    await service.settleDrag(new Set(['part']));
+
+    expect(service.conflict()).toBeNull();
+  });
+
+  it('uses the legacy visual anchor when reseating on a high-pitch board', async () => {
+    const boardNode = board();
+    boardNode.data = { ...boardNode.data, pitch: 60 };
+    const expectedPlacement = {
+      boardId: boardNode.data.boardId,
+      anchor: { row: 1, col: 1 },
+      rotation: 0 as const,
+    };
+    const seatedPosition = placementNodePosition(
+      { board: boardNode.data, position: boardNode.position },
+      expectedPlacement,
+    );
+    const part = device('part', {
+      x:
+        seatedPosition.x +
+        FOOTPRINT_PADDING_CELLS * boardNode.data.pitch -
+        FOOTPRINT_PADDING_CELLS * DETACHED_FOOTPRINT_FALLBACK_PITCH,
+      y:
+        seatedPosition.y +
+        FOOTPRINT_PADDING_CELLS * boardNode.data.pitch -
+        FOOTPRINT_PADDING_CELLS * DETACHED_FOOTPRINT_FALLBACK_PITCH,
+    });
+    part.type = NodeTemplateType.FootprintNode;
+    model.nodes = [boardNode, part];
+
+    await service.settleDrag(new Set(['part']));
+
+    const reseated = model.nodes.find((node) => node.id === 'part') as Node<DeviceNodeData>;
+    expect(reseated.data.placement).toEqual(expectedPlacement);
+  });
+
+  it('leaves a generic component on the generic renderer', async () => {
+    const generic = device('generic', { x: 999, y: 999 });
+    generic.data = { ...generic.data, footprintId: undefined, footprint: undefined };
+    model.nodes = [generic];
+
+    await service.settleDrag(new Set(['generic']));
+
+    expect(model.nodes[0]?.type).toBe(NodeTemplateType.DeviceNode);
+    expect(model.nodes[0]?.data).not.toHaveProperty('footprintRotation');
+    expect(model.nodes[0]?.data).not.toHaveProperty('footprintPitch');
+  });
+
+  it('reports a new footprint dropped outside every board', async () => {
     const part = device('part', { x: 999, y: 999 });
     model.nodes = [part];
 

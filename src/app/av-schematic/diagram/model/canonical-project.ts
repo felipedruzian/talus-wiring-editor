@@ -24,6 +24,7 @@ import {
   type AvSchematicNodeData,
   type BoardHole,
   type BoardNodeData,
+  type BoardRotation,
   type BoardTrace,
   type DeviceNodeData,
   type DevicePlacement,
@@ -277,6 +278,10 @@ export interface CanonicalComponentLayout {
   footprint?: Footprint;
   /** Seat on a board. Only meaningful together with `footprintId`. */
   placement?: DevicePlacement;
+  /** Visual rotation retained while the footprint is not seated. */
+  footprintRotation?: BoardRotation;
+  /** Visual pitch retained while the footprint is not seated. */
+  footprintPitch?: number;
   pinHoles?: CanonicalPinPlacement[];
 }
 
@@ -1108,6 +1113,8 @@ function toComponentLayout(node: Node<DeviceNodeData>): CanonicalComponentLayout
     footprintId: node.data.footprintId,
     footprint: footprint ? cloneFootprint(footprint) : undefined,
     placement: node.data.placement ? clonePlacement(node.data.placement) : undefined,
+    footprintRotation: node.data.placement ? undefined : node.data.footprintRotation,
+    footprintPitch: node.data.placement ? undefined : node.data.footprintPitch,
     pinHoles: pinHoles.length > 0 ? pinHoles : undefined,
   };
 }
@@ -1306,7 +1313,7 @@ function fromCanonicalComponent(
   const holesByPin = new Map((layout?.pinHoles ?? []).map((entry) => [entry.pinId, entry.hole]));
   const footprint = layout?.footprint ? cloneFootprint(layout.footprint) : undefined;
   const placement = layout?.placement ? clonePlacement(layout.placement) : undefined;
-  const seated = !!layout?.footprintId && !!footprint && !!placement;
+  const physical = !!layout?.footprintId && !!footprint;
 
   const board = placement ? boardsById.get(placement.boardId) : undefined;
   const data: DeviceNodeData = {
@@ -1314,6 +1321,8 @@ function fromCanonicalComponent(
     footprintId: layout?.footprintId,
     footprint,
     placement,
+    footprintRotation: placement?.rotation ?? layout?.footprintRotation,
+    footprintPitch: board?.data.pitch ?? layout?.footprintPitch,
     deviceId: component.deviceId,
     manufacturer: component.manufacturer,
     model: component.model,
@@ -1343,14 +1352,14 @@ function fromCanonicalComponent(
 
   return {
     id: component.id,
-    // A seated part is drawn as its physical footprint; everything else keeps
-    // the generic AV card. Same `DeviceNodeData`, only the template differs.
-    type: seated ? NodeTemplateType.FootprintNode : NodeTemplateType.DeviceNode,
+    // Footprint identity controls the renderer independently of whether the
+    // component is currently seated on a board.
+    type: physical ? NodeTemplateType.FootprintNode : NodeTemplateType.DeviceNode,
     position:
-      seated && board && placement
+      physical && board && placement
         ? placementNodePosition({ board: board.data, position: board.position }, placement)
         : (layout?.position ?? DEFAULT_POSITION),
-    data: seated ? syncPortHolesToPlacement(data) : data,
+    data: physical && placement ? syncPortHolesToPlacement(data) : data,
   };
 }
 

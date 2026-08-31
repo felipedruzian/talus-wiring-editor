@@ -18,6 +18,9 @@ import {
 /** Padding (px, at pitch scale 1) around a footprint's cell box, so leads aren't clipped. */
 export const FOOTPRINT_PADDING_CELLS = 0.75;
 
+/** Visual pitch used by detached legacy footprints that do not persist one yet. */
+export const DETACHED_FOOTPRINT_FALLBACK_PITCH = 20;
+
 export interface CellBox {
   rows: number;
   cols: number;
@@ -197,13 +200,16 @@ export function placementNodePosition(
  * The anchor hole a node dropped at `nodePosition` should snap to - the
  * inverse of `placementNodePosition`, rounded to the nearest hole. Not clamped
  * (see `clampAnchorToBoard`) so callers can tell "off the edge" from "fits".
+ * `nodePitch` preserves the node's current visual padding while it moves
+ * between boards whose pitches differ.
  * Returns null when an explicit hole list is empty.
  */
 export function anchorForNodePosition(
   frame: BoardFrame,
   nodePosition: { x: number; y: number },
+  nodePitch = frame.board.pitch,
 ): BoardHole | null {
-  const pad = FOOTPRINT_PADDING_CELLS * frame.board.pitch;
+  const pad = FOOTPRINT_PADDING_CELLS * nodePitch;
   return nearestAvailableHole(frame.board, {
     x: nodePosition.x - frame.position.x + pad,
     y: nodePosition.y - frame.position.y + pad,
