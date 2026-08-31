@@ -6,10 +6,11 @@ export enum NodeTemplateType {
   BoardNode = 'boardNode',
   JunctionNode = 'junctionNode',
   /**
-   * A device drawn as a physical footprint seated on a board, instead of as the
-   * generic AV card. Same `DeviceNodeData` payload - only the template differs,
-   * so the properties sidebar, DXF export, `generateDeviceId` and every other
-   * subsystem that keys on `data.type === 'device'` keep working unchanged.
+   * A device drawn as a physical footprint, whether seated on a board or free
+   * on the canvas, instead of as the generic AV card. Same `DeviceNodeData`
+   * payload - only the template differs, so the properties sidebar, DXF export,
+   * `generateDeviceId` and every other subsystem that keys on
+   * `data.type === 'device'` keep working unchanged.
    */
   FootprintNode = 'footprintNode',
 }
@@ -141,6 +142,10 @@ export interface DeviceNodeData extends WireVizConnectorMetadata {
   footprint?: Footprint;
   /** Seat on a board. Only meaningful together with `footprintId`. */
   placement?: DevicePlacement;
+  /** Visual rotation retained while the footprint is not seated on a board. */
+  footprintRotation?: BoardRotation;
+  /** Visual pitch retained while the footprint is not seated on a board. */
+  footprintPitch?: number;
   ports: DevicePort[];
 }
 

@@ -5,6 +5,7 @@ import { holeKey, type BoardHoleClaim } from '../model/board-geometry';
 import { selectPlacementBoard } from '../model/board-selection';
 import { resolveFootprint, type Footprint } from '../model/footprint';
 import {
+  DETACHED_FOOTPRINT_FALLBACK_PITCH,
   anchorAfterRotation,
   anchorForNodePosition,
   deviceHoleClaims,
@@ -127,13 +128,29 @@ export class BoardPlacementService {
     return moved;
   }
 
-  /** Rotates a seated component 90 degrees, refusing the turn if it no longer fits. */
+  /** Rotates a component 90 degrees, validating the seat when it is on a board. */
   async rotate(nodeId: string, step: 1 | -1): Promise<boolean> {
     const node = this.modelService.getNodeById<DeviceNodeData>(nodeId);
     if (!node || !isDeviceNode(node)) return false;
     const placement = node.data.placement;
     const footprint = resolveFootprint(node.data);
-    if (!placement || !footprint) return false;
+    if (!footprint) return false;
+
+    if (!placement) {
+      this._conflict.set(null);
+      await this.modelService.updateNode(
+        nodeId,
+        {
+          data: {
+            ...node.data,
+            footprintRotation: stepRotation(node.data.footprintRotation ?? 0, step),
+          },
+        },
+        { waitForMeasurements: true },
+      );
+      await applyEdgeStretchOnSelectionMoved(this.modelService, new Set([nodeId]), true);
+      return true;
+    }
 
     const board = this.findBoardById(placement.boardId);
     if (!board) {
@@ -191,6 +208,14 @@ export class BoardPlacementService {
         await this.unseat(node);
         return;
       }
+      if (
+        node.type === NodeTemplateType.FootprintNode ||
+        node.data.footprintRotation !== undefined ||
+        node.data.footprintPitch !== undefined
+      ) {
+        this._conflict.set(null);
+        return;
+      }
       this._conflict.set({
         kind: 'unknown-board',
         nodeId: node.id,
@@ -201,10 +226,18 @@ export class BoardPlacementService {
       return;
     }
 
-    const rotation = node.data.placement?.rotation ?? 0;
+    const rotation = node.data.placement?.rotation ?? node.data.footprintRotation ?? 0;
+    const currentBoard = this.findBoardById(node.data.placement?.boardId);
+    const visualPitch =
+      currentBoard?.data.pitch ??
+      node.data.footprintPitch ??
+      (node.type === NodeTemplateType.FootprintNode
+        ? DETACHED_FOOTPRINT_FALLBACK_PITCH
+        : board.data.pitch);
     const anchor = anchorForNodePosition(
       { board: board.data, position: board.position },
       node.position,
+      visualPitch,
     );
     if (!anchor) {
       this._conflict.set({
@@ -241,7 +274,13 @@ export class BoardPlacementService {
     }
 
     this._conflict.set(null);
-    const data = syncPortHolesToPlacement({ ...node.data, placement, boardId: placement.boardId });
+    const data = syncPortHolesToPlacement({
+      ...node.data,
+      placement,
+      boardId: placement.boardId,
+      footprintRotation: placement.rotation,
+      footprintPitch: board.data.pitch,
+    });
     const previousNodes = this.modelService.getModel().getNodes();
     const connectedEdges = this.modelService.getConnectedEdges(node.id).filter(isWireEdge);
     const modelEdges = this.modelService.getModel().getEdges().filter(isWireEdge);
@@ -283,14 +322,17 @@ export class BoardPlacementService {
   /** Detaches a footprint from its board without changing its electrical wires. */
   private async unseat(node: Node<DeviceNodeData>): Promise<void> {
     this._conflict.set(null);
+    const board = this.findBoardById(node.data.placement?.boardId);
     await this.modelService.updateNode(
       node.id,
       {
-        type: NodeTemplateType.DeviceNode,
+        type: NodeTemplateType.FootprintNode,
         data: {
           ...node.data,
           boardId: undefined,
           placement: undefined,
+          footprintRotation: node.data.placement?.rotation ?? node.data.footprintRotation ?? 0,
+          footprintPitch: board?.data.pitch ?? node.data.footprintPitch,
           ports: node.data.ports.map((port) => ({ ...port, hole: undefined })),
         },
       },

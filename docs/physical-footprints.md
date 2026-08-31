@@ -61,8 +61,11 @@ reposicionados a partir das âncoras, sem acumular erro de pixels.
 
 Arrastar um componente encaixado para fora de todas as placas o desencaixa: o
 footprint incorporado permanece disponível, mas `placement`, `boardId` e os
-furos derivados são removidos. O componente volta ao cartão genérico no mesmo
-canvas e seus fios, nomes de rede e trechos manuais são preservados.
+furos derivados são removidos. O componente continua usando o renderer físico,
+com seus pinos conectáveis, e preserva a última rotação e o último pitch em
+`footprintRotation` e `footprintPitch`; seus fios, nomes de rede e trechos
+manuais também são preservados. Ao voltar para uma placa compatível, ele usa
+essa rotação para calcular o novo encaixe.
 
 Quando corpos de placas se sobrepõem, um placement existente permanece na sua
 placa enquanto ela ainda contém o ponto. Para um componente novo, vence a menor
@@ -113,10 +116,18 @@ Os campos físicos opcionais são:
 
 - placas preservam `holes`, `holeDiameter` e `traces`;
 - componentes físicos preservam `footprintId`, a definição `footprint` e
-  `placement`;
+  `placement`; quando desencaixados, `footprintRotation` e `footprintPitch`
+  mantêm a geometria visual sem fingir que ainda existe um encaixe;
 - a junção de cobre usa `boardId` e `boardPort` no layout;
 - um condutor oculto `binding:<componentId>/<pinId>` associa cada pino encaixado
   à junção canônica de seu furo ou de sua trilha.
+
+Snapshots canônicos v2 salvos antes da introdução de `footprintRotation` e
+`footprintPitch` não contêm a geometria anterior de um footprint desencaixado.
+Na primeira abertura por uma versão nova, esses componentes usam uma única vez
+a rotação `0` e o pitch de fallback `20`, podendo mudar de tamanho; depois do
+primeiro encaixe, giro ou desencaixe, a geometria estabilizada elimina novos
+redimensionamentos, inclusive nos salvamentos seguintes.
 
 Os endpoints elétricos v2 permanecem apenas `pin` e `junction`. Furos de uma
 mesma trilha apontam para uma única `CanonicalJunction`; o índice `fromTap` ou
