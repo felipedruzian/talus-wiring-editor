@@ -180,8 +180,9 @@ export interface BoardTrace {
  * A physical board with an addressable rows x cols hole grid.
  *
  * Nothing here presumes a particular size or a particular kind of board: the
- * 6 x 11 placa A, the uncut 6 x 28 origin perfboard and the small 6 x 3 / 6 x 4
- * pecas D/E/F/G are all the same type with different numbers. Rendered as its
+ * 6 x 11 placa A, the 6 x 18 upper protoboard, the uncut 6 x 28 origin
+ * perfboard and the small 6 x 3 / 6 x 4 pecas E/G are all the same type with
+ * different numbers. Rendered as its
  * own node so it shares the single ng-diagram canvas/coordinate plane with
  * devices and wires -- not a second canvas, not a background image.
  */
@@ -189,10 +190,14 @@ export interface BoardNodeData {
   type: 'board';
   boardId: string;
   label: string;
+  /** Human-facing assembly notes kept with the board across project saves. */
+  notes?: string;
   rows: number;
   cols: number;
   /** Distance between adjacent holes, in diagram px (both axes). */
   pitch: number;
+  /** Extra vertical clearance between the two row halves, for a protoboard channel. */
+  centerGap?: number;
   /**
    * Explicit holes present on the board. Absence means the complete rectangular
    * `rows x cols` grid, preserving the compact representation used by earlier

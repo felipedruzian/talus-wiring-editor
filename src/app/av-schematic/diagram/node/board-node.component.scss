@@ -40,12 +40,35 @@
   color: var(--ngd-txt-secondary-default);
   white-space: nowrap;
   user-select: none;
+
+  &--with-notes {
+    top: -34px;
+  }
+}
+
+.board-node__notes {
+  position: absolute;
+  top: -19px;
+  left: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--ngd-txt-secondary-default);
+  font-size: 9px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: none;
 }
 
 .board-node__grid {
   display: block;
   position: absolute;
   inset: 0;
+}
+
+.board-node__center-gap {
+  fill: var(--av-color-board-channel, #5b6579);
+  opacity: 0.62;
 }
 
 .board-node__trace-run {

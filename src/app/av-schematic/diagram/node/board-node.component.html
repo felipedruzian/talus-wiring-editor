@@ -1,5 +1,10 @@
 <div class="board-node" [style.width.px]="size().width" [style.height.px]="size().height">
-  <span class="board-node__label">{{ data().label }}</span>
+  <span class="board-node__label" [class.board-node__label--with-notes]="data().notes">
+    {{ data().label }}
+  </span>
+  @if (data().notes; as notes) {
+    <span class="board-node__notes" [attr.title]="notes">{{ notes }}</span>
+  }
   <svg
     class="board-node__grid"
     [attr.width]="size().width"
@@ -7,6 +12,15 @@
     [attr.viewBox]="'0 0 ' + size().width + ' ' + size().height"
     aria-hidden="true"
   >
+    @if (centerGap(); as gap) {
+      <rect
+        class="board-node__center-gap"
+        x="0"
+        [attr.y]="gap.y"
+        [attr.width]="size().width"
+        [attr.height]="gap.height"
+      />
+    }
     @for (trace of traces(); track trace.id) {
       <g class="board-node__trace" [attr.stroke]="trace.color" [attr.fill]="trace.color">
         @for (bridge of trace.bridges; track $index) {

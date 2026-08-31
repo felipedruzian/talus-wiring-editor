@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { NgDiagramModelService, type Edge, type Node } from 'ng-diagram';
+import { NgDiagramModelService, NgDiagramViewportService, type Edge, type Node } from 'ng-diagram';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   EdgeTemplateType,
@@ -103,6 +103,7 @@ describe('ProjectStorageService save/open', () => {
       addEdges,
       updateEdges: vi.fn(() => Promise.resolve()),
     };
+    const zoomToFit = vi.fn(() => Promise.resolve());
     const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === 'PUT') {
         if (typeof init.body !== 'string') {
@@ -118,6 +119,7 @@ describe('ProjectStorageService save/open', () => {
       providers: [
         ProjectStorageService,
         { provide: NgDiagramModelService, useValue: modelService },
+        { provide: NgDiagramViewportService, useValue: { zoomToFit } },
       ],
     });
     const storage = TestBed.inject(ProjectStorageService);
@@ -189,5 +191,6 @@ describe('ProjectStorageService save/open', () => {
     expect(typeof restoredWireData?.netId).toBe('string');
     expect(storage.status()).toBe('success');
     expect(storage.message()).toContain('carregado com sucesso');
+    expect(zoomToFit).toHaveBeenCalledOnce();
   });
 });

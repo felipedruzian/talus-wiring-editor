@@ -333,7 +333,7 @@ describe('wiring-editor-server', () => {
       expect(await clientB.json()).toEqual(project);
     });
 
-    it('preserves and normalizes the complete physical v2 layout', async () => {
+    it('preserves and normalizes the complete physical v2 layout without centerGap', async () => {
       const putRes = await fetch(`${server.baseUrl}/api/projects/physical`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -349,6 +349,7 @@ describe('wiring-editor-server', () => {
         holeDiameter: 5,
         traces: [{ id: 'vcc', net: 'VCC' }],
       });
+      expect(saved.layout.boards[0]).not.toHaveProperty('centerGap');
       expect(saved.layout.components[0]).toMatchObject({
         footprintId: 'inline-link',
         position: { x: 30.25, y: 57.25 },
@@ -378,6 +379,26 @@ describe('wiring-editor-server', () => {
         footprintRotation: 90,
         footprintPitch: 17,
       });
+    });
+
+    it('preserves and applies centerGap and board notes', async () => {
+      const project = basePhysicalProject();
+      project.layout.boards[0].notes = 'Bulk incorporado';
+      project.layout.boards[0].centerGap = 12;
+      const putRes = await fetch(`${server.baseUrl}/api/projects/physical-gap`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(putRes.status).toBe(200);
+
+      const getRes = await fetch(`${server.baseUrl}/api/projects/physical-gap`);
+      const saved = await getRes.json();
+      expect(saved.layout.boards[0]).toMatchObject({
+        notes: 'Bulk incorporado',
+        centerGap: 12,
+      });
+      expect(saved.layout.components[0].position).toEqual({ x: 30.25, y: 69.25 });
     });
 
     it('continues accepting legacy v1 snapshots for older clients', async () => {

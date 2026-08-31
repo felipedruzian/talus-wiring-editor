@@ -1,6 +1,6 @@
 import {
-  BOARD_MARGIN,
   findHoleCollisions,
+  holeLocalPoint,
   holeKey,
   isBoardHoleAvailable,
   isHoleInBounds,
@@ -725,11 +725,12 @@ function validateLayout(
       }
       const anchor = holes[0];
       if (!anchor) throw new CanonicalProjectError(`${label}.boardPort: port has no anchor`);
+      const anchorPoint = holeLocalPoint(board, anchor);
       layout.hole = { ...anchor };
       layout.taps = holes.length;
       layout.position = {
-        x: board.position.x + BOARD_MARGIN + anchor.col * board.pitch,
-        y: board.position.y + BOARD_MARGIN + anchor.row * board.pitch,
+        x: board.position.x + anchorPoint.x,
+        y: board.position.y + anchorPoint.y,
       };
       boardPortsByJunction.set(layout.junctionId, {
         boardId: layout.boardId,
@@ -1271,6 +1272,7 @@ function parseBoard(raw: unknown, label: string): CanonicalBoard {
   return {
     id: expectNonEmptyString(obj['id'], `${label}.id`),
     label: expectString(obj['label'], `${label}.label`),
+    notes: expectOptionalString(obj['notes'], `${label}.notes`),
     rows: expectBoundedPositiveInteger(
       obj['rows'],
       `${label}.rows`,
@@ -1289,6 +1291,15 @@ function parseBoard(raw: unknown, label: string): CanonicalBoard {
       OPERATIONAL_LIMITS.maxBoardPitch,
       'pitch',
     ),
+    centerGap:
+      obj['centerGap'] === undefined
+        ? undefined
+        : expectBoundedPositiveFiniteNumber(
+            obj['centerGap'],
+            `${label}.centerGap`,
+            OPERATIONAL_LIMITS.maxBoardPitch,
+            'central gap',
+          ),
     holes:
       obj['holes'] === undefined
         ? undefined

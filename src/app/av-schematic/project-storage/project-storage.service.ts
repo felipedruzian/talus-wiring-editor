@@ -1,5 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { NgDiagramModelService, type Edge, type Node } from 'ng-diagram';
+import { NgDiagramModelService, NgDiagramViewportService, type Edge, type Node } from 'ng-diagram';
+import { AV_SCHEMATIC_CONFIG } from '../av-schematic.config';
 import { applyEdgeStretchOnSelectionMoved } from '../diagram/edge-reshaping/middleware/edge-stretch-on-move';
 import {
   CanonicalProjectError,
@@ -13,6 +14,7 @@ import {
   inspectPhysicalLayout,
   type PhysicalDiagnostic,
 } from '../diagram/model/physical-diagnostics';
+import { NodeVisibilityConfigService } from '../diagram/node-visibility/node-visibility-config.service';
 
 /**
  * Same-origin project persistence client for the local wiring-editor service
@@ -35,6 +37,9 @@ export type ProjectStorageStatus = 'idle' | 'loading' | 'success' | 'error';
 @Injectable()
 export class ProjectStorageService {
   private readonly modelService = inject(NgDiagramModelService);
+  private readonly viewportService = inject(NgDiagramViewportService, { optional: true });
+  private readonly visibilityConfig = inject(NodeVisibilityConfigService, { optional: true });
+  private readonly avConfig = inject(AV_SCHEMATIC_CONFIG);
 
   private readonly _status = signal<ProjectStorageStatus>('idle');
   private readonly _operation = signal<ProjectStorageOperation | null>(null);
@@ -111,6 +116,7 @@ export class ProjectStorageService {
       const raw: unknown = await response.json();
       const project = parseCanonicalProject(raw);
       await this.replaceProject(project);
+      await this.fitContent();
 
       this.setSuccess('open', `Projeto "${projectId}" carregado com sucesso.`);
     } catch (err) {
@@ -203,6 +209,20 @@ export class ProjectStorageService {
         true,
       );
     }
+  }
+
+  private async fitContent(): Promise<void> {
+    if (!this.viewportService) return;
+    const insets = this.visibilityConfig?.getViewportInsets() ?? {};
+    const pad = this.avConfig.viewport.zoomToFitPadding;
+    await this.viewportService.zoomToFit({
+      padding: [
+        (insets.top ?? 0) + pad,
+        (insets.right ?? 0) + pad,
+        (insets.bottom ?? 0) + pad,
+        (insets.left ?? 0) + pad,
+      ],
+    });
   }
 
   private begin(operation: ProjectStorageOperation): void {

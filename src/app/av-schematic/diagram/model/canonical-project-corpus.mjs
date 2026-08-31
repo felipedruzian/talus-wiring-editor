@@ -154,6 +154,10 @@ function changedDetached(name, change) {
 const completeGridWithoutHoleList = basePhysicalProject();
 delete completeGridWithoutHoleList.layout.boards[0].holes;
 
+const boardWithCenterGapAndNotes = basePhysicalProject();
+boardWithCenterGapAndNotes.layout.boards[0].centerGap = 12;
+boardWithCenterGapAndNotes.layout.boards[0].notes = 'Canal central e bulk incorporado';
+
 const emptyBoard = {
   formatVersion: 2,
   electrical: { components: [], junctions: [], cables: [], nets: [] },
@@ -185,6 +189,11 @@ export const canonicalValidationCorpus = [
     name: 'accepts an omitted hole list as a complete rectangular grid',
     accepted: true,
     raw: completeGridWithoutHoleList,
+  },
+  {
+    name: 'accepts centerGap and notes on a physical board',
+    accepted: true,
+    raw: boardWithCenterGapAndNotes,
   },
   {
     name: 'accepts an explicit empty hole list as a board with no holes',
@@ -266,6 +275,21 @@ export const canonicalValidationCorpus = [
   }),
   changed('rejects a hole diameter larger than pitch', (raw) => {
     raw.layout.boards[0].holeDiameter = 18;
+  }),
+  changed('rejects a negative centerGap', (raw) => {
+    raw.layout.boards[0].centerGap = -1;
+  }),
+  changed('rejects a zero centerGap', (raw) => {
+    raw.layout.boards[0].centerGap = 0;
+  }),
+  changed('rejects a non-numeric centerGap', (raw) => {
+    raw.layout.boards[0].centerGap = '12';
+  }),
+  changed('rejects a centerGap above the board-pitch limit', (raw) => {
+    raw.layout.boards[0].centerGap = OPERATIONAL_LIMITS.maxBoardPitch + 1;
+  }),
+  changed('rejects non-string board notes', (raw) => {
+    raw.layout.boards[0].notes = ['bulk'];
   }),
   changed('rejects a diagonal trace', (raw) => {
     raw.layout.boards[0].traces[0].segments[0].to = { row: 1, col: 3 };
