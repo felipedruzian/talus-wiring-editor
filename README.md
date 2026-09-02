@@ -56,7 +56,7 @@ Open [http://localhost:4200](http://localhost:4200).
 | `npm run lint:fix` | Run ESLint with autofix |
 | `npm run type-check` | `tsc -b --noEmit` — type-check both app and spec configs via project references |
 
-CI (`.github/workflows/ci.yml`) runs in order: `format:check` → `lint` → `type-check` → `test` → `build`, failing fast on the cheap checks before paying for the expensive ones.
+CI (`.github/workflows/build-on-pr.yml`) runs in order: `format:check` → `lint` → `type-check` → `test` → `test:server` → `build`, failing fast on the cheap checks before paying for the expensive ones.
 
 ## Documentation
 
