@@ -1,12 +1,21 @@
-# ng-diagram AV Schematic Template
+# Talus Wiring Editor
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://opensource.org/licenses/MIT)
 
-_Live demo: [https://www.ngdiagram.dev/templates/av/](https://www.ngdiagram.dev/templates/av/)_
+Editor visual para documentar fiação física, placas, componentes, conectores e
+nets multi-drop. A aplicação usa Angular 21 e
+[ng-diagram](https://www.npmjs.com/package/ng-diagram), mantém um formato de
+projeto canônico e oferece importação/exportação WireViz.
 
-Interactive AV (audio/video) schematic diagram built with Angular 21 and [ng-diagram](https://www.npmjs.com/package/ng-diagram). Use this project as a starting point for AV system design — building your own schematic, signal-flow, or device-wiring diagram. Minimal dependencies: only Angular and ng-diagram, with no opinionated third-party UI libraries.
-
-> **Este fork (`talus-wiring-editor`)** está evoluindo este template para um editor de fiação física. O tracer bullet da issue #1 foi estendido pela issue #2 com nets multi-drop, junções/trilhos explícitos, projeto canônico v2 e round-trip WireViz com relatório de compatibilidade; a issue #3 acrescenta placas arbitrárias e footprints encaixáveis no mesmo canvas. Ver [`docs/wiring-tracer-bullet.md`](docs/wiring-tracer-bullet.md), [`docs/wireviz-round-trip.md`](docs/wireviz-round-trip.md), [`docs/physical-footprints.md`](docs/physical-footprints.md) e [`docs/license-matrix.md`](docs/license-matrix.md).
+O repositório nasceu como fork do template AV Schematic da Synergy Codes, mas
+o produto, o tracker e a implantação atuais pertencem ao Talus. O tracer
+bullet da issue #1 foi estendido pela issue #2 com nets multi-drop,
+junções/trilhos explícitos, projeto canônico v2 e round-trip WireViz; a issue
+#3 acrescenta placas arbitrárias e footprints encaixáveis no mesmo canvas.
+Consulte [`docs/wiring-tracer-bullet.md`](docs/wiring-tracer-bullet.md),
+[`docs/wireviz-round-trip.md`](docs/wireviz-round-trip.md),
+[`docs/physical-footprints.md`](docs/physical-footprints.md) e
+[`docs/license-matrix.md`](docs/license-matrix.md).
 
 Features:
 
@@ -50,6 +59,7 @@ Open [http://localhost:4200](http://localhost:4200).
 | `npm start` | Start dev server with hot reload |
 | `npm run build` | Production build to `dist/` |
 | `npm test` | Run unit tests via Vitest (`@angular/build:unit-test` builder) |
+| `npm run test:server` | Run the local server contract tests via `Vitest` |
 | `npm run format` | Format with Prettier |
 | `npm run format:check` | Check formatting (used by CI) |
 | `npm run lint` | Run ESLint; `--max-warnings=0` so any warning fails CI |
@@ -58,11 +68,20 @@ Open [http://localhost:4200](http://localhost:4200).
 
 CI (`.github/workflows/build-on-pr.yml`) runs in order: `format:check` → `lint` → `type-check` → `test` → `test:server` → `build`, failing fast on the cheap checks before paying for the expensive ones.
 
+## Implantação no Talus
+
+O fork não publica em Azure nem em domínio público do projeto upstream. A
+implantação privada usa uma release imutável no Talus, backend em loopback e
+HTTPS restrito à Tailnet por Tailscale Serve. O contrato, os caminhos e as
+proteções ficam em [`docs/local-service.md`](docs/local-service.md). Credenciais
+e configuração do host permanecem fora deste repositório.
+
 ## Documentation
 
 Deep-dive documentation lives in [`docs/`](docs/):
 
 - [`docs/architecture.md`](docs/architecture.md) — service hierarchy, key patterns, project structure
+- [`docs/dependency-triage.md`](docs/dependency-triage.md) — advisories observados, alcance e plano de atualização controlada
 - [`docs/edge-reshaping.md`](docs/edge-reshaping.md) — manual edge routing: gesture/command/logic layers and the ng-diagram porting target
 - [`docs/export.md`](docs/export.md) — PNG and DXF export pipelines
 - [`docs/physical-footprints.md`](docs/physical-footprints.md) — placas, footprints, encaixe, ocupação, persistência v2 e limites da autoria física
@@ -247,13 +266,15 @@ For comprehensive ng-diagram documentation, examples, and API reference, visit: 
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
-## Support
+## Suporte
 
-- **Issues**: [GitHub Issues](https://github.com/synergycodes/ng-diagram-av-schematic/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/synergycodes/ng-diagram-av-schematic/discussions)
-- **ng-diagram Discussions**: [GitHub Discussions](https://github.com/synergycodes/ng-diagram/discussions), [Discord](https://discord.gg/FDMjRuarFb)
-- **ng-diagram Documentation**: [ngdiagram.dev/docs](https://www.ngdiagram.dev/docs)
+- **Issues do fork:** [felipedruzian/talus-wiring-editor](https://github.com/felipedruzian/talus-wiring-editor/issues)
+- **Biblioteca ng-diagram:** [documentação](https://www.ngdiagram.dev/docs) e [discussões](https://github.com/synergycodes/ng-diagram/discussions)
 
----
+## Origem e licença
 
-Built by the [Synergy Codes](https://www.synergycodes.com/) team
+Este fork deriva do
+[ng-diagram AV Schematic Template](https://github.com/synergycodes/ng-diagram-av-schematic),
+da Synergy Codes. A matriz de origem, revisão e estratégia de reuso está em
+[`docs/license-matrix.md`](docs/license-matrix.md). O código permanece sob a
+licença MIT descrita em [`LICENSE`](LICENSE).

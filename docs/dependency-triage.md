@@ -1,20 +1,45 @@
 # Triagem de dependências
 
-Contexto: esta triagem foi feita sem `npm install`, `npm update`, `npm audit fix` ou deploy. A validação usou somente leitura do `package.json`, `package-lock.json`, `npm view` para metadados do registry e `npm audit --json` sobre o lockfile existente.
+Esta triagem foi observada em 2 de setembro de 2026, sem `npm install`,
+`npm update`, `npm audit fix` ou deploy. A validação usou somente leitura do
+`package.json`, `package-lock.json`, metadados do registry e `npm audit --json`
+sobre o lockfile existente. Os números devem ser reproduzidos antes de cada
+atualização porque o banco de advisories é dinâmico.
 
 ## Resultado
 
 - Todas as dependências diretas declaradas em `package.json` resolvem no registry npm.
-- Os peers principais estão coerentes para Angular 21: `@angular/compiler-cli@21.2.9` aceita TypeScript `>=5.9 <6.1`, `@angular/build@21.2.7` aceita TypeScript `>=5.9 <6.0` e `angular-eslint@21.4.0` aceita `eslint` 10.
-- O lockfile está funcionalmente defasado em patches: ele fixa Angular `21.2.10`, `@angular/build`/`@angular/cli` `21.2.8`, `eslint` `10.4.0` e `vitest` `4.1.5`, embora as ranges atuais já permitam patches mais novos.
+- Os peers principais estão coerentes para Angular 21: `@angular/compiler-cli@21.2.9` aceita TypeScript `>=5.9 <6.1`, `@angular/build@21.2.7` aceita TypeScript `>=5.9 <6.0` e `angular-eslint@21.4.0` aceita `ESLint` 10.
+- O lockfile fixa Angular `21.2.10`, `@angular/build` e `@angular/cli` `21.2.8`, `ESLint` `10.4.0` e `Vitest` `4.1.5`, embora as ranges atuais já permitam patches mais novos.
 - `npm audit --json` reportou 31 vulnerabilidades no lockfile atual: 1 crítica, 22 altas, 5 moderadas e 3 baixas.
+- As 31 entradas reportaram correção disponível dentro das ranges já declaradas, sem exigir bump semver-major.
 
-## Pontos de atenção
+## Alcance e correções observadas
 
-- As vulnerabilidades diretas de Angular afetam `@angular/common`, `@angular/core`, `@angular/forms`, `@angular/platform-browser` e `@angular/router` no intervalo `21.0.0-next.0 - 21.2.18`. As ranges atuais (`^21.2.9`) já permitem versões corrigidas (`21.2.19+`), mas `npm ci` continuará usando o lockfile antigo até ele ser atualizado.
-- A maior parte dos achados restantes vem de transitivos de tooling (`@angular/build`, `@angular/cli`, `vitest`/`jsdom` e cadeia npm/tar/sigstore). Corrigir isso com segurança exige regenerar o lockfile em uma mudança dedicada.
-- Não apliquei `overrides` manualmente porque isso também exige atualizar o lockfile para manter `npm ci` reproduzível, e uma edição manual ampla do lockfile seria mais arriscada que uma atualização controlada.
+- As vulnerabilidades diretas de runtime afetam `@angular/common`, `@angular/compiler`, `@angular/core`, `@angular/forms`, `@angular/platform-browser` e `@angular/router` até `21.2.18`; a correção começa em `21.2.19`. Esse código compõe o bundle entregue ao navegador.
+- `@angular/build` e `@angular/cli` também são dependências diretas, mas de desenvolvimento. O audit observado exige ao menos `@angular/build` `21.2.21` e `@angular/cli` `21.2.16`. Elas não entram no servidor Node implantado, porém alcançam build e CI.
+- Os demais achados vêm de transitivos de tooling, incluindo `vitest`/`jsdom` e a cadeia npm/tar/sigstore. Eles não são importados pelo servidor local, que usa somente módulos `node:` e arquivos do repositório, mas ainda afetam o ambiente de desenvolvimento e CI.
+- As ranges atuais permitem os patches corrigidos, porém `npm ci` continuará reproduzindo as versões vulneráveis enquanto o lockfile não for regenerado.
+- Não foram aplicados `overrides`: eles também exigiriam atualizar o lockfile, e uma edição manual ampla seria menos segura que uma atualização controlada.
 
-## Próximo passo recomendado
+## Atualizações separadas
 
-Abrir uma PR separada, somente de dependências, autorizando explicitamente `npm update` ou `npm audit fix --package-lock-only` em ambiente controlado. O alvo mínimo dessa PR deve ser atualizar os patches de Angular para `21.2.19+` e revisar os transitivos de build/teste que o audit ainda apontar depois da regeneração do lockfile.
+1. Atualizar em uma PR somente os pacotes Angular diretos e o lockfile. O piso observado é `21.2.19` para os seis pacotes de runtime, `21.2.21` para `@angular/build` e `21.2.16` para `@angular/cli`; preferir a mesma linha de patch compatível quando possível.
+2. Em outra PR, revisar apenas os transitivos de build/teste que permanecerem no novo `npm audit`, evitando `overrides` sem evidência.
+
+Cada PR deve executar a sequência completa de CI e registrar o resumo do audit
+antes/depois. A regeneração do lockfile deve ocorrer em ambiente controlado e
+com autorização explícita para o comando de atualização escolhido.
+
+## Limpeza manual no GitHub
+
+O workflow removido era o único consumidor versionado destes valores:
+
+- secret `CONTACT_FORM_TOKEN`;
+- variables `HUBSPOT_PORTAL_ID` e `HUBSPOT_FORM_ID`;
+- variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
+  `AZURE_STORAGE_ACCOUNT` e `AZURE_STORAGE_CONTAINER`.
+
+Revise **Settings → Secrets and variables → Actions** no repositório e remova
+somente os valores que não tiverem outro consumidor. Esta triagem não leu nem
+alterou as configurações externas do GitHub e não contém credenciais.
