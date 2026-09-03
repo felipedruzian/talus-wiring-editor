@@ -1,0 +1,52 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="-0.25 -0.85 2.5 1.7"
+  width="2.5"
+  height="1.7"
+  fill="none"
+  role="img"
+  aria-labelledby="cap100n-title cap100n-description"
+  preserveAspectRatio="xMidYMid meet"
+  data-artwork-id="capacitor-ceramic-100nf"
+  data-asset-revision="2026-09-03"
+  data-asset-license="MIT"
+  data-pitch-unit="1"
+  data-body-width-pitch="1.57"
+  data-body-height-pitch="1.57"
+  data-terminal-span-pitch="2"
+  data-polarized="false"
+>
+  <title id="cap100n-title">Capacitor cerâmico de 100 nF em escala de pitch</title>
+  <desc id="cap100n-description">
+    Ilustração original não polarizada, com corpo de 1,57 por 1,57 pitches e terminais separados por
+    2 pitches.
+  </desc>
+
+  <path d="M0 0H0.215M1.785 0H2" stroke="#aeb7bd" stroke-width="0.1" stroke-linecap="round" />
+  <rect
+    data-body-shape="true"
+    x="0.215"
+    y="-0.785"
+    width="1.57"
+    height="1.57"
+    rx="0.2"
+    fill="#d89832"
+    stroke="#71450d"
+    stroke-width="0.08"
+  />
+  <path d="M0.38 -0.55H1.62" stroke="#efbb60" stroke-width="0.08" />
+
+  <g data-pin-id="a" data-pin-x="0" data-pin-y="0">
+    <circle cx="0" cy="0" r="0.23" fill="#d7b24a" />
+    <circle cx="0" cy="0" r="0.11" fill="#363c40" />
+  </g>
+  <g data-pin-id="b" data-pin-x="2" data-pin-y="0">
+    <circle cx="2" cy="0" r="0.23" fill="#d7b24a" />
+    <circle cx="2" cy="0" r="0.11" fill="#363c40" />
+  </g>
+
+  <g fill="#2f210d" font-family="ui-sans-serif, sans-serif" text-anchor="middle">
+    <text x="1" y="-0.05" font-size="0.44" font-weight="700">104</text>
+    <text x="1" y="0.41" font-size="0.25">100nF</text>
+  </g>
+</svg>
