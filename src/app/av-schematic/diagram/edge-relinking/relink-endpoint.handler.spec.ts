@@ -11,6 +11,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NodeTemplateType, type BoardNodeData } from '../model/interfaces';
 import { RelinkEndpointHandler } from './relink-endpoint.handler';
 import { RelinkTargetHighlightService } from './relink-target-highlight.service';
+import { InMemoryModelAdapter } from '../model/testing/in-memory-model-adapter';
+import { UndoableDiagramModelAdapter } from '../model/undoable-model';
 
 describe('RelinkEndpointHandler', () => {
   const updateEdge = vi.fn<(edgeId: string, patch: Partial<Edge>) => void>();
@@ -419,5 +421,104 @@ describe('RelinkEndpointHandler', () => {
     });
     expect(beginHistoryGroup).toHaveBeenCalledOnce();
     expect(endHistoryGroup).toHaveBeenCalledOnce();
+  });
+
+  it('undoes and redoes a complete jumper relink as one operation', async () => {
+    const board: Node<BoardNodeData> = {
+      id: 'history-board-node',
+      type: NodeTemplateType.BoardNode,
+      position: { x: 0, y: 0 },
+      data: {
+        type: 'board',
+        boardId: 'history-board-domain',
+        label: 'Protoboard',
+        surface: 'breadboard',
+        rows: 3,
+        cols: 4,
+        pitch: 20,
+      },
+      measuredPorts: [
+        {
+          id: 'hole:0:0',
+          nodeId: 'history-board-node',
+          type: 'both',
+          side: 'left',
+          position: { x: 9, y: 9 },
+          size: { width: 14, height: 14 },
+        },
+        {
+          id: 'hole:1:2',
+          nodeId: 'history-board-node',
+          type: 'both',
+          side: 'left',
+          position: { x: 49, y: 29 },
+          size: { width: 14, height: 14 },
+        },
+        {
+          id: 'hole:2:3',
+          nodeId: 'history-board-node',
+          type: 'both',
+          side: 'left',
+          position: { x: 76, y: 49 },
+          size: { width: 14, height: 14 },
+        },
+      ],
+    };
+    const jumper: Edge = {
+      id: 'history-jumper',
+      source: board.id,
+      sourcePort: 'hole:0:0',
+      target: board.id,
+      targetPort: 'hole:1:2',
+      routing: 'polyline',
+      routingMode: 'manual',
+      points: [
+        { x: 16, y: 16 },
+        { x: 30, y: 75 },
+        { x: 51, y: 23 },
+        { x: 56, y: 36 },
+      ],
+      data: { type: 'wire', wireId: 'W1', jumperBoardId: board.data.boardId },
+    };
+    const history = new UndoableDiagramModelAdapter(new InMemoryModelAdapter([board], [jumper]));
+    const historyModelService = {
+      getEdgeById: (edgeId: string) =>
+        history.getEdges().find((candidate) => candidate.id === edgeId),
+      getModel: () => history,
+      nodes: () => history.getNodes(),
+      updateEdge: (edgeId: string, patch: Partial<Edge>) => {
+        history.updateEdges((edges) =>
+          edges.map((candidate) =>
+            candidate.id === edgeId ? { ...candidate, ...patch } : candidate,
+          ),
+        );
+        return Promise.resolve();
+      },
+    };
+    TestBed.overrideProvider(NgDiagramModelService, { useValue: historyModelService });
+    const handler = TestBed.inject(RelinkEndpointHandler);
+
+    handler.onEndpointStart(jumper.id, 'target', jumper.points ?? [], 17);
+    handler.onEndpointContinue(76, 56, 17);
+    await handler.onEndpointEnd(76, 56, 17);
+
+    const relinked = structuredClone(history.getEdges()[0]);
+    expect(relinked).toMatchObject({
+      target: board.id,
+      targetPort: 'hole:2:3',
+      points: [
+        { x: 16, y: 16 },
+        { x: 30, y: 75 },
+        { x: 51, y: 23 },
+        { x: 76, y: 56 },
+      ],
+      data: { jumperBoardId: board.data.boardId },
+    });
+
+    history.undo();
+    expect(history.getEdges()[0]).toEqual(jumper);
+
+    history.redo();
+    expect(history.getEdges()[0]).toEqual(relinked);
   });
 });

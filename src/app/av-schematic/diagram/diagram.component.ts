@@ -60,12 +60,8 @@ import { applyEdgeStretchOnSelectionMoved } from './edge-reshaping/middleware/ed
 import { EdgeReshapeOverlayComponent } from './edge-reshaping/edge-reshape-overlay.component';
 import { WireEdgeComponent } from './wire-edge.component';
 import { diagramModel } from './data';
-import { defaultVisualPlane, MAX_VISUAL_PLANE, visualPlaneOf } from './model/visual-planes';
-import {
-  boardJumperForConnection,
-  boardWorldPoints,
-  defaultBoardJumperLocalRoute,
-} from './model/board-jumper';
+import { defaultVisualPlane } from './model/visual-planes';
+import { resolveBoardJumperStructure } from './model/board-jumper';
 import { UndoableDiagramModelAdapter } from './model/undoable-model';
 import { BoardJumperCreationService } from './board-jumper-creation.service';
 import { planPastedBoardOwnership } from './model/pasted-board-jumpers';
@@ -123,6 +119,7 @@ export class DiagramComponent {
         targetPort: Port | null,
       ): boolean =>
         !this.isSamePort(source, sourcePort, target, targetPort) &&
+        !this.isBoardLocalHoleConnection(source, sourcePort, target, targetPort) &&
         this.physicalConnectionIsCompatible(source, sourcePort, target, targetPort),
       temporaryEdgeDataBuilder: (edge: Edge): Edge<WireEdgeData> => ({
         ...edge,
@@ -167,33 +164,16 @@ export class DiagramComponent {
 
   private buildFinalWire(edge: Edge): Edge<WireEdgeData> {
     const model = this.modelService.getModel();
-    const jumper = boardJumperForConnection(model.getNodes(), edge);
-    const visualPlane = jumper
-      ? Math.min(
-          MAX_VISUAL_PLANE,
-          Math.max(defaultVisualPlane('conductor'), visualPlaneOf(jumper.board) + 1),
-        )
-      : defaultVisualPlane('conductor');
-    const points = jumper
-      ? boardWorldPoints(
-          jumper.board,
-          defaultBoardJumperLocalRoute(jumper.board.data, jumper.sourceHole, jumper.targetHole),
-        )
-      : undefined;
     return {
       ...edge,
       type: EdgeTemplateType.WireEdge,
-      routing: jumper ? 'polyline' : undefined,
-      routingMode: jumper ? 'manual' : edge.routingMode,
-      points: points ?? edge.points,
+      routing: undefined,
       sourceArrowhead: undefined,
       targetArrowhead: undefined,
       data: {
         type: 'wire',
-        visualPlane,
+        visualPlane: defaultVisualPlane('conductor'),
         wireId: generateWireId(),
-        wireType: jumper ? 'jumper' : undefined,
-        jumperBoardId: jumper?.board.data.boardId,
         netName: initialNetNameFromCopper(
           undefined,
           physicalEdgeNet(model.getNodes(), edge, model.getEdges()),
@@ -276,6 +256,22 @@ export class DiagramComponent {
     targetPort: Port | null,
   ): boolean {
     return !!source && source.id === target?.id && !!sourcePort && sourcePort.id === targetPort?.id;
+  }
+
+  private isBoardLocalHoleConnection(
+    source: Node | null,
+    sourcePort: Port | null,
+    target: Node | null,
+    targetPort: Port | null,
+  ): boolean {
+    return (
+      resolveBoardJumperStructure(this.modelService.getModel().getNodes(), {
+        source: source?.id ?? '',
+        sourcePort: sourcePort?.id,
+        target: target?.id ?? '',
+        targetPort: targetPort?.id,
+      }) !== null
+    );
   }
 
   private physicalConnectionIsCompatible(

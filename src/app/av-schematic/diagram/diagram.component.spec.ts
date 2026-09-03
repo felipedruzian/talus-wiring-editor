@@ -6,6 +6,7 @@ import {
   type Edge,
   type NgDiagramConfig,
   type Node,
+  type Port,
   type ClipboardPastedEvent,
 } from 'ng-diagram';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,6 +19,7 @@ import { NodeVisibilityConfigService } from './node-visibility/node-visibility-c
 import { BoardPlacementService } from './placement/board-placement.service';
 import { NodeTemplateType, type BoardNodeData, type WireEdgeData } from './model/interfaces';
 import { BoardJumperCreationService } from './board-jumper-creation.service';
+import { MAX_VISUAL_PLANE } from './model/visual-planes';
 
 interface DiagramInteractionHarness {
   config: NgDiagramConfig;
@@ -152,7 +154,7 @@ describe('DiagramComponent interaction lifecycle', () => {
     expect(normalizeVisualOrder).toHaveBeenCalledOnce();
   });
 
-  it('creates a manual board-local jumper between two holes on one breadboard', () => {
+  it('rejects generic linking between two holes on one breadboard', () => {
     const board: Node<BoardNodeData> = {
       id: 'board-node-instance',
       type: NodeTemplateType.BoardNode,
@@ -166,13 +168,38 @@ describe('DiagramComponent interaction lifecycle', () => {
         cols: 12,
         pitch: 10,
         centerGap: 20,
+        visualPlane: MAX_VISUAL_PLANE,
       },
     };
     modelNodes = [board];
+    const validate = component.config.linking?.validateConnection as
+      | ((
+          source: Node | null,
+          sourcePort: Port | null,
+          target: Node | null,
+          targetPort: Port | null,
+        ) => boolean)
+      | undefined;
     const builder = component.config.linking?.finalEdgeDataBuilder as
       | ((edge: Edge) => Edge)
       | undefined;
+    if (!validate) throw new Error('connection validator not configured');
     if (!builder) throw new Error('final edge builder not configured');
+
+    const sourcePort = {
+      id: 'hole:1:2',
+      nodeId: board.id,
+      type: 'both',
+      side: 'left',
+    } as Port;
+    const targetPort = {
+      id: 'hole:7:6',
+      nodeId: board.id,
+      type: 'both',
+      side: 'left',
+    } as Port;
+
+    expect(validate(board, sourcePort, board, targetPort)).toBe(false);
 
     const built = builder({
       id: 'jumper-1',
@@ -183,20 +210,13 @@ describe('DiagramComponent interaction lifecycle', () => {
       data: {},
     }) as Edge<WireEdgeData>;
 
-    expect(built).toMatchObject({
-      routing: 'polyline',
-      routingMode: 'manual',
-      points: [
-        { x: 136, y: 226 },
-        { x: 176, y: 306 },
-      ],
-      data: {
-        type: 'wire',
-        jumperBoardId: board.data.boardId,
-        wireType: 'jumper',
-        visualPlane: 20,
-      },
-    });
+    expect(built.data).toMatchObject({ type: 'wire', visualPlane: 20 });
+    expect(built.data).not.toHaveProperty('jumperBoardId');
+    expect(built.data).not.toHaveProperty('wireType');
+    expect(built.routing).not.toBe('polyline');
+    expect(modelNodes).toEqual([board]);
+    expect((modelNodes[0].data as BoardNodeData).visualPlane).toBe(MAX_VISUAL_PLANE);
+    expect(normalizeVisualOrder).not.toHaveBeenCalled();
     expect(built.data.wireId).not.toBe('');
   });
 });
