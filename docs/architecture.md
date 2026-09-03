@@ -35,6 +35,13 @@ AvSchematicPageComponent (providers)
   └── DiagramComponent
 ```
 
+O movimento de nós ancora novamente os fios manuais sem um serviço dedicado:
+`DiagramComponent` trata as saídas `selectionMoved` e `nodeDragEnded` do
+`<ng-diagram>` e chama `applyEdgeStretchOnSelectionMoved`, em
+`edge-reshaping/middleware/edge-stretch-on-move.ts`. Consulte
+[`edge-reshaping.md`](edge-reshaping.md) para a separação entre edição de
+rota, reconexão e criação de fios pendentes.
+
 ## Key Patterns
 
 - **Atomic structural mutations** — multi-step structural ops (e.g., node update + orphaned-edge delete in one go) wrap `NgDiagramService.transaction(..., { waitForMeasurements: true })` so the model commits in one batch and layout settles before any follow-up reads. See `ElementMutationService.handleDeviceFieldChange`. Single-op deletions wrap `transaction` too to preserve the `waitForMeasurements` semantics for layout-dependent callers.
@@ -91,9 +98,11 @@ src/app/av-schematic/
 │   ├── edge-reshaping/                   # Rota manual: segmentos, dobras e reancoragem
 │   │   ├── directives/                   # UI / gesture detection (per-handle pointer state machine)
 │   │   ├── handlers/                     # Gesture → command translation (holds in-flight drag state)
-│   │   ├── commands/                     # reshapeEdge data + lifecycle signals + dispatcher
-│   │   ├── middleware/                   # Endpoint-sync (node-move reflow) + lifecycle event emitters
+│   │   ├── commands/                     # reshapeEdge command, types, and EdgeCommandDispatcher
+│   │   ├── middleware/                   # Node-move reflow of manual wires (edge-stretch-on-move)
 │   │   └── logic/                        # Pure orthogonal-path math (segment orientation, simplify, snap, etc.)
+│   ├── edge-relinking/                   # Reconexão de fios ou conversão da extremidade em ponta solta
+│   ├── dangling-edge-creation/           # Criação de fio manual de uma porta até uma posição solta
 │   ├── fixtures/                         # Placas A/protoboard/origem/E/G e montagem física de demonstração
 │   ├── node/                             # Templates DeviceNode, BoardNode, JunctionNode e FootprintNode
 │   ├── placement/                        # Reconciliação de drag, rotação e acompanhamento da placa
