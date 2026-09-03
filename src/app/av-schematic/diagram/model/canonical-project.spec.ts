@@ -225,12 +225,17 @@ describe('canonical project round-trip', () => {
       project.layout.boards.find((board) => board.id === 'protoboard-superior'),
     );
     expect(protoboard).toMatchObject({
-      label: 'Protoboard superior',
-      rows: 6,
-      cols: 18,
+      label: 'Protoboard superior (830 pontos)',
+      rows: 18,
+      cols: 63,
       pitch: 20,
-      centerGap: 12,
+      centerGap: 40,
     });
+    expect(protoboard.holes).toHaveLength(830);
+    expect(protoboard.rowLabels).toHaveLength(18);
+    expect(protoboard.rowLabels?.[4]).toBe('J');
+    expect(protoboard.traces).toHaveLength(63 * 2 + 4);
+    expect(protoboard.traces?.every((trace) => trace.internal === true)).toBe(true);
     expect(protoboard.notes).toContain('470 uF');
 
     const rebuilt = fromCanonicalProject(project);
@@ -245,12 +250,12 @@ describe('canonical project round-trip', () => {
     expect(endpoints).toHaveLength(2);
     expect(endpoints.every((node) => node.data.notes?.includes('não documentado'))).toBe(true);
     expect(nano.source).toBe('protoboard-superior');
-    expect(nano.sourcePort).toBe('hole:3:17');
+    expect(nano.sourcePort).toBe('hole:9:17');
     expect(nano.target).toBe('proto-endpoint-nano');
     expect(nano.targetPort).toBe(junctionTapPortId(0));
     expect(nano.data.wireType).toBe('signal');
     expect(tb6612.source).toBe('protoboard-superior');
-    expect(tb6612.sourcePort).toBe('hole:1:17');
+    expect(tb6612.sourcePort).toBe('hole:5:17');
     expect(tb6612.target).toBe('proto-endpoint-tb6612');
     expect(tb6612.targetPort).toBe(junctionTapPortId(0));
     expect(tb6612.data.wireType).toBe('signal');

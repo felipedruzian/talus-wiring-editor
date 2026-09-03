@@ -1,4 +1,9 @@
-<div class="board-node" [style.width.px]="size().width" [style.height.px]="size().height">
+<div
+  class="board-node"
+  [class.board-node--breadboard]="breadboard()"
+  [style.width.px]="size().width"
+  [style.height.px]="size().height"
+>
   <span class="board-node__label" [class.board-node__label--with-notes]="data().notes">
     {{ data().label }}
   </span>
@@ -12,16 +17,42 @@
     [attr.viewBox]="'0 0 ' + size().width + ' ' + size().height"
     aria-hidden="true"
   >
-    @if (centerGap(); as gap) {
+    @for (band of railBands(); track band.row) {
+      <rect
+        class="board-node__rail-band"
+        [class.board-node__rail-band--positive]="band.polarity === 'positive'"
+        [class.board-node__rail-band--negative]="band.polarity === 'negative'"
+        [attr.x]="band.x"
+        [attr.y]="band.y"
+        [attr.width]="band.width"
+        [attr.height]="band.height"
+        [attr.rx]="band.radius"
+      />
+    }
+    @if (channel(); as gap) {
       <rect
         class="board-node__center-gap"
         x="0"
         [attr.y]="gap.y"
-        [attr.width]="size().width"
+        [attr.width]="gap.width"
         [attr.height]="gap.height"
       />
     }
-    @for (trace of traces(); track trace.id) {
+    @for (marking of rowMarkings(); track marking.row) {
+      @if (marking.polarity; as polarity) {
+        <line
+          class="board-node__bus-guide"
+          [class.board-node__bus-guide--positive]="polarity === 'positive'"
+          [class.board-node__bus-guide--negative]="polarity === 'negative'"
+          [attr.x1]="stripeX1()"
+          [attr.y1]="marking.guideY"
+          [attr.x2]="stripeX2()"
+          [attr.y2]="marking.guideY"
+          [attr.stroke-width]="stripeWidth()"
+        />
+      }
+    }
+    @for (trace of exposedTraces(); track trace.id) {
       <g class="board-node__trace" [attr.stroke]="trace.color" [attr.fill]="trace.color">
         @for (bridge of trace.bridges; track $index) {
           <line
@@ -53,18 +84,57 @@
         }
       </g>
     }
+    @for (ruler of columnRulers(); track ruler.key) {
+      @for (tick of ruler.ticks; track tick.x) {
+        <text
+          class="board-node__column-tick"
+          [attr.x]="tick.x"
+          [attr.y]="ruler.y"
+          [attr.font-size]="markingFontSize()"
+        >
+          {{ tick.text }}
+        </text>
+      }
+    }
+    @for (marking of rowMarkings(); track marking.row) {
+      <text
+        class="board-node__row-mark"
+        [class.board-node__row-mark--positive]="marking.polarity === 'positive'"
+        [class.board-node__row-mark--negative]="marking.polarity === 'negative'"
+        [attr.x]="rowMarkLeftX()"
+        [attr.y]="marking.y"
+        [attr.font-size]="markingFontSize()"
+        text-anchor="end"
+      >
+        {{ marking.label }}
+      </text>
+      <text
+        class="board-node__row-mark"
+        [class.board-node__row-mark--positive]="marking.polarity === 'positive'"
+        [class.board-node__row-mark--negative]="marking.polarity === 'negative'"
+        [attr.x]="rowMarkRightX()"
+        [attr.y]="marking.y"
+        [attr.font-size]="markingFontSize()"
+        text-anchor="start"
+      >
+        {{ marking.label }}
+      </text>
+    }
     @for (hole of holes(); track hole.key) {
       <circle
         class="board-node__hole"
+        [class.board-node__hole--positive]="hole.polarity === 'positive'"
+        [class.board-node__hole--negative]="hole.polarity === 'negative'"
         [class.board-node__hole--conflicted]="hole.conflicted"
         [attr.cx]="hole.x"
         [attr.cy]="hole.y"
         [attr.r]="holeRadius()"
+        [attr.stroke-width]="hole.strokeWidth"
       />
     }
   </svg>
 
-  @for (trace of traces(); track trace.id) {
+  @for (trace of exposedTraces(); track trace.id) {
     <span
       class="board-node__trace-label"
       [style.left.px]="trace.labelX"
@@ -86,14 +156,11 @@
       [style.width.px]="holePortSize()"
       [style.height.px]="holePortSize()"
     >
-      <span
-        class="board-node__port-hit"
-        [title]="'L' + (hole.row + 1) + '-C' + (hole.col + 1)"
-      ></span>
+      <span class="board-node__port-hit" [title]="hole.address"></span>
     </ng-diagram-port>
   }
 
-  @for (trace of traces(); track trace.id) {
+  @for (trace of exposedTraces(); track trace.id) {
     <ng-diagram-port
       class="board-node__port board-node__port--trace"
       [id]="trace.portId"

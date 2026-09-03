@@ -173,14 +173,53 @@ export interface BoardTrace {
   label: string;
   /** Electrical net this trace carries, e.g. `"GND_SYS"`. Free of a net when bare copper. */
   net?: string;
+  /**
+   * Grouping that lives inside the board body instead of on its face.
+   *
+   * A solderless breadboard has no exposed copper at all: its column groups
+   * and buses are spring clips under the plastic. They are still one
+   * electrical point, so they are still traces -- but they carry no visible
+   * run to label and no landing pad of their own, so the renderer draws them
+   * faintly and mints no `trace:<id>` port for them. Every connection to an
+   * internal group goes through one of its holes, which is what the hardware
+   * physically allows.
+   */
+  internal?: boolean;
   segments: BoardTraceSegment[];
+}
+
+/**
+ * How a board's body is physically built, and therefore how it is drawn.
+ *
+ * `perfboard` is a bare drilled board: opaque brown substrate, exposed copper
+ * on its face, nothing printed. `breadboard` is a solderless plastic block:
+ * light body, a recessed central channel, coloured power-rail bands and
+ * silk-screened row/column markings, with every conductor hidden as a spring
+ * clip inside the body.
+ *
+ * This is a *visual* variant only - it changes no address, no port and no
+ * electrical fact. It is persisted (a reopened project must look the way it
+ * was saved, without having to guess "830 holes therefore breadboard") and it
+ * is closed: a value outside this union is rejected by both validators rather
+ * than silently falling back, so a typo can never quietly repaint a board.
+ */
+export type BoardSurface = 'perfboard' | 'breadboard';
+
+/** Every accepted `BoardSurface`, in the order the validators report them. */
+export const BOARD_SURFACES: readonly BoardSurface[] = ['perfboard', 'breadboard'];
+
+/** The surface a board without an explicit one is drawn with. */
+export const DEFAULT_BOARD_SURFACE: BoardSurface = 'perfboard';
+
+export function isBoardSurface(value: unknown): value is BoardSurface {
+  return typeof value === 'string' && (BOARD_SURFACES as readonly string[]).includes(value);
 }
 
 /**
  * A physical board with an addressable rows x cols hole grid.
  *
  * Nothing here presumes a particular size or a particular kind of board: the
- * 6 x 11 placa A, the 6 x 18 upper protoboard, the uncut 6 x 28 origin
+ * 6 x 11 placa A, the 830-point solderless breadboard, the uncut 6 x 28 origin
  * perfboard and the small 6 x 3 / 6 x 4 pecas E/G are all the same type with
  * different numbers. Rendered as its
  * own node so it shares the single ng-diagram canvas/coordinate plane with
@@ -190,6 +229,12 @@ export interface BoardNodeData {
   type: 'board';
   boardId: string;
   label: string;
+  /**
+   * How the board body is drawn. Absent means `perfboard`, which is what every
+   * project saved before this field existed is - so an old save reopens
+   * looking exactly as it did.
+   */
+  surface?: BoardSurface;
   /** Human-facing assembly notes kept with the board across project saves. */
   notes?: string;
   rows: number;
@@ -198,6 +243,17 @@ export interface BoardNodeData {
   pitch: number;
   /** Extra vertical clearance between the two row halves, for a protoboard channel. */
   centerGap?: number;
+  /**
+   * Human-facing name of each row, top to bottom, when the hardware prints
+   * one -- `"J"`, `"top+"` and so on for a solderless breadboard.
+   *
+   * Exactly `rows` entries when present; an empty string is a row the board
+   * does not name (a blank spacer row, or a plain perfboard row that keeps the
+   * default `L<n>` address). Addresses stay `{row, col}` either way: this is
+   * the label layer only, so a reopened project shows `J10` without having to
+   * recognize the board as a breadboard.
+   */
+  rowLabels?: string[];
   /**
    * Explicit holes present on the board. Absence means the complete rectangular
    * `rows x cols` grid, preserving the compact representation used by earlier

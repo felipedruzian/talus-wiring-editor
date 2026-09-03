@@ -4,6 +4,7 @@ import {
   findOutOfBoundsHoleClaims,
   type BoardHoleClaim,
 } from './board-geometry';
+import { boardHoleLabel } from './board-ports';
 import { findTraceDefects, findTraceOverlaps } from './board-trace';
 import { deviceHoleClaims } from './footprint-geometry';
 import { resolveFootprint } from './footprint';
@@ -112,7 +113,7 @@ export function inspectPhysicalLayout(
         severity: 'error',
         code: `trace-${defect.reason}`,
         path: `${path}.traces.${defect.traceId}.segments.${defect.segmentIndex}`,
-        message: `A trilha "${defect.traceId}" tem cobre inválido em L${defect.hole.row + 1}-C${defect.hole.col + 1} (${defect.reason}).`,
+        message: `A trilha "${defect.traceId}" tem cobre inválido em ${boardHoleLabel(defect.hole, board.data.rowLabels)} (${defect.reason}).`,
       });
     }
     for (const overlap of findTraceOverlaps(board.data)) {
@@ -120,7 +121,7 @@ export function inspectPhysicalLayout(
         severity: 'error',
         code: 'trace-overlap',
         path: `${path}.traces`,
-        message: `As trilhas ${overlap.traceIds.join(', ')} se sobrepõem em L${overlap.hole.row + 1}-C${overlap.hole.col + 1}.`,
+        message: `As trilhas ${overlap.traceIds.join(', ')} se sobrepõem em ${boardHoleLabel(overlap.hole, board.data.rowLabels)}.`,
       });
     }
   }
@@ -133,7 +134,7 @@ export function inspectPhysicalLayout(
       severity: 'error',
       code: 'placement-out-of-bounds',
       path: `layout.components.${claim.ownerId}`,
-      message: `O componente "${claim.ownerId}" ocupa L${claim.hole.row + 1}-C${claim.hole.col + 1}, que não existe na placa "${claim.boardId}".`,
+      message: `O componente "${claim.ownerId}" ocupa ${boardHoleLabel(claim.hole, boardsById.get(claim.boardId)?.rowLabels)}, que não existe na placa "${claim.boardId}".`,
     });
   }
   for (const collision of findHoleCollisions(claims)) {
@@ -143,7 +144,7 @@ export function inspectPhysicalLayout(
       severity: 'error',
       code: 'placement-collision',
       path: `layout.boards.${first.boardId}`,
-      message: `O furo L${first.hole.row + 1}-C${first.hole.col + 1} está ocupado por ${collision.map((claim) => claim.ownerId).join(', ')}.`,
+      message: `O furo ${boardHoleLabel(first.hole, boardsById.get(first.boardId)?.rowLabels)} está ocupado por ${collision.map((claim) => claim.ownerId).join(', ')}.`,
     });
   }
 
@@ -202,7 +203,9 @@ export function inspectPhysicalLayout(
       const key = `${endpoint.boardId}/${copperId}`;
       const entry = authoredNamesByCopper.get(key) ?? {
         path: `layout.boards.${endpoint.boardId}.${copperId}`,
-        label: endpoint.traceLabel ?? `L${endpoint.hole.row + 1}-C${endpoint.hole.col + 1}`,
+        label:
+          endpoint.traceLabel ??
+          boardHoleLabel(endpoint.hole, boardsById.get(endpoint.boardId)?.rowLabels),
         names: new Set<string>(),
         conductorIds: new Set<string>(),
       };

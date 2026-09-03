@@ -81,6 +81,8 @@ src/app/av-schematic/
 │   │   ├── board-selection.ts            # Escolha determinística entre placas sobrepostas
 │   │   ├── board-trace.ts                # Expansão e associação elétrica das trilhas
 │   │   ├── board-ports.ts                # IDs persistentes de endpoints de furos e trilhas
+│   │   ├── board-surface.ts              # Variante visual persistida (perfboard/breadboard): plastico, canal, faixas e marcacoes por pitch
+│   │   ├── breadboard.ts                 # Geometria da protoboard de 830 pontos (63 colunas, A-J, canal, 4 barramentos)
 │   │   ├── footprint.ts                  # Catálogo original de footprints vetoriais em unidades de furo
 │   │   ├── footprint-geometry.ts         # Rotação, snap, ocupação e associação pino-furo
 │   │   ├── physical-connectivity.ts      # Resolução pino -> furo -> trilha e rótulo de cobre
@@ -103,7 +105,7 @@ src/app/av-schematic/
 │   │   └── logic/                        # Pure orthogonal-path math (segment orientation, simplify, snap, etc.)
 │   ├── edge-relinking/                   # Reconexão de fios ou conversão da extremidade em ponta solta
 │   ├── dangling-edge-creation/           # Criação de fio manual de uma porta até uma posição solta
-│   ├── fixtures/                         # Placas A/protoboard/origem/E/G e montagem física de demonstração
+│   ├── fixtures/                         # Placa A, protoboard de 830 pontos, placa de origem, peças E/G e montagem física
 │   ├── node/                             # Templates DeviceNode, BoardNode, JunctionNode e FootprintNode
 │   ├── placement/                        # Reconciliação de drag, rotação e acompanhamento da placa
 │   └── node-visibility/                  # Viewport-aware overlay registration

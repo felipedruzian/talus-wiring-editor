@@ -22,66 +22,65 @@
       [attr.viewBox]="viewBox()"
       aria-hidden="true"
     >
-      <g [attr.transform]="illustrationTransform() || null">
-        @for (shape of footprint.shapes; track $index) {
-          @switch (shape.kind) {
-            @case ('rect') {
-              <rect
-                [attr.x]="shape.x"
-                [attr.y]="shape.y"
-                [attr.width]="shape.width"
-                [attr.height]="shape.height"
-                [attr.rx]="shape.rx ?? 0"
-                [attr.fill]="fill(shape)"
-                [attr.stroke]="stroke(shape)"
-                vector-effect="non-scaling-stroke"
-              />
-            }
-            @case ('circle') {
-              <circle
-                [attr.cx]="shape.cx"
-                [attr.cy]="shape.cy"
-                [attr.r]="shape.r"
-                [attr.fill]="fill(shape)"
-                [attr.stroke]="stroke(shape)"
-                vector-effect="non-scaling-stroke"
-              />
-            }
-            @case ('line') {
-              <line
-                [attr.x1]="shape.x1"
-                [attr.y1]="shape.y1"
-                [attr.x2]="shape.x2"
-                [attr.y2]="shape.y2"
-                [attr.stroke]="stroke(shape)"
-                [attr.stroke-width]="shape.width ?? 0.08"
-                stroke-linecap="round"
-              />
-            }
-            @case ('text') {
-              <text
-                [attr.x]="shape.x"
-                [attr.y]="shape.y"
-                [attr.font-size]="textSize(shape)"
-                [attr.text-anchor]="shape.anchor ?? 'start'"
-                [attr.fill]="fill(shape)"
-              >
-                {{ shape.text }}
-              </text>
-            }
+      @for (shape of shapes(); track $index) {
+        @switch (shape.kind) {
+          @case ('rect') {
+            <rect
+              [attr.x]="shape.x"
+              [attr.y]="shape.y"
+              [attr.width]="shape.width"
+              [attr.height]="shape.height"
+              [attr.rx]="shape.rx"
+              [attr.fill]="shape.fill"
+              [attr.stroke]="shape.stroke"
+              vector-effect="non-scaling-stroke"
+            />
+          }
+          @case ('circle') {
+            <circle
+              [attr.cx]="shape.cx"
+              [attr.cy]="shape.cy"
+              [attr.r]="shape.r"
+              [attr.fill]="shape.fill"
+              [attr.stroke]="shape.stroke"
+              vector-effect="non-scaling-stroke"
+            />
+          }
+          @case ('line') {
+            <line
+              [attr.x1]="shape.x1"
+              [attr.y1]="shape.y1"
+              [attr.x2]="shape.x2"
+              [attr.y2]="shape.y2"
+              [attr.stroke]="shape.stroke"
+              [attr.stroke-width]="shape.width"
+              stroke-linecap="round"
+            />
+          }
+          @case ('text') {
+            <text
+              [attr.x]="shape.x"
+              [attr.y]="shape.y"
+              [attr.font-size]="shape.size"
+              [attr.text-anchor]="shape.anchor"
+              [attr.fill]="shape.fill"
+              [attr.transform]="shape.transform"
+            >
+              {{ shape.text }}
+            </text>
           }
         }
+      }
 
-        @for (pin of footprint.pins; track pin.id) {
-          <circle
-            class="footprint-node__pin-pad"
-            [class.footprint-node__pin-pad--primary]="pin.primary"
-            [attr.cx]="pin.cell.col"
-            [attr.cy]="pin.cell.row"
-            r="0.19"
-          />
-        }
-      </g>
+      @for (pad of pads(); track pad.id) {
+        <circle
+          class="footprint-node__pin-pad"
+          [class.footprint-node__pin-pad--primary]="pad.primary"
+          [attr.cx]="pad.cx"
+          [attr.cy]="pad.cy"
+          r="0.19"
+        />
+      }
     </svg>
 
     @for (pin of pins(); track pin.id) {

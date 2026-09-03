@@ -116,6 +116,10 @@ export function nearestAvailableHole(
   const rounded = nearestHole(board, localPoint);
   if (board.holes === undefined) return rounded;
   if (board.holes.length === 0) return null;
+  // The rounded address is the nearest grid point; when the board actually has
+  // that hole it is also the nearest listed one, so a dense sparse board (an
+  // 830-point breadboard is 830 entries) never pays for the scan below.
+  if (isBoardHoleAvailable(board, rounded)) return rounded;
   return board.holes.reduce((closest, candidate) => {
     const closestPoint = holeLocalPoint(board, closest);
     const candidatePoint = holeLocalPoint(board, candidate);

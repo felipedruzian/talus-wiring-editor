@@ -1156,6 +1156,7 @@ function validateV2Layout(
         portId: layout.boardPort,
         holes,
         netLabel: trace?.net,
+        internal: trace?.internal === true,
       });
     }
     tapsByJunction.set(layout.junctionId, layout.taps);
@@ -1192,7 +1193,52 @@ function validateV2Layout(
       );
     }
   }
+  validateV2InternalCopperTaps(project, boardPortsByJunction);
   validateV2PhysicalBindingCoverage(project);
+}
+
+/**
+ * Copper sealed inside a board body has no pad to land on: the board renderer
+ * mints a `trace:<id>` port only for exposed copper, so a conductor that lands
+ * on an internal group - a breadboard column clip or one of its buses - must
+ * say which of the group's holes it lands on. Without the tap, reopening the
+ * project would rebuild the edge pointing at a port that is never rendered.
+ *
+ * Physical bindings already pin the exact tap; this covers every ordinary
+ * conductor, including one whose layout entry is missing entirely.
+ */
+function validateV2InternalCopperTaps(project, boardPortsByJunction) {
+  const layoutsByConductor = new Map(
+    project.layout.conductors.map((layout) => [layout.conductorId, layout]),
+  );
+  for (const net of project.electrical.nets) {
+    for (const conductor of net.conductors) {
+      const layout = layoutsByConductor.get(conductor.id);
+      const label = `project.layout.conductors "${conductor.id}"`;
+      requireV2InternalCopperTap(
+        conductor.from,
+        layout?.fromTap,
+        boardPortsByJunction,
+        `${label}.fromTap`,
+      );
+      requireV2InternalCopperTap(
+        conductor.to,
+        layout?.toTap,
+        boardPortsByJunction,
+        `${label}.toTap`,
+      );
+    }
+  }
+}
+
+function requireV2InternalCopperTap(endpoint, tap, boardPortsByJunction, label) {
+  if (endpoint.kind !== 'junction') return;
+  if (!boardPortsByJunction.get(endpoint.junctionId)?.internal) return;
+  if (tap !== undefined) return;
+  throw new CanonicalProjectValidationError(
+    `${label}: copper inside the board body has no landing pad, so this end must name the ` +
+      `hole it lands on with a tap index`,
+  );
 }
 
 function validateV2CopperNetLabels(project, boardPortsByJunction) {
@@ -1218,6 +1264,12 @@ function validateV2Board(board) {
   const label = `project.layout.boards "${board.id}"`;
   if (board.holeDiameter !== undefined && board.holeDiameter > board.pitch) {
     throw new CanonicalProjectValidationError(`${label}.holeDiameter: cannot exceed board pitch`);
+  }
+  validateBoardSurface(board, label);
+  if (board.rowLabels !== undefined && board.rowLabels.length !== board.rows) {
+    throw new CanonicalProjectValidationError(
+      `${label}.rowLabels: ${board.rowLabels.length} entries for ${board.rows} rows`,
+    );
   }
   if (board.holes === undefined && board.rows * board.cols > OPERATIONAL_LIMITS.maxBoardHoles) {
     throw new CanonicalProjectValidationError(
@@ -1663,6 +1715,10 @@ function parseBoard(raw, label) {
     id: expectNonEmptyString(obj['id'], `${label}.id`),
     label: expectString(obj['label'], `${label}.label`),
     notes: expectOptionalString(obj['notes'], `${label}.notes`),
+    surface:
+      obj['surface'] === undefined
+        ? undefined
+        : parseBoardSurface(obj['surface'], `${label}.surface`),
     rows: expectBoundedPositiveInteger(
       obj['rows'],
       `${label}.rows`,
@@ -1690,6 +1746,12 @@ function parseBoard(raw, label) {
             OPERATIONAL_LIMITS.maxBoardPitch,
             'central gap',
           ),
+    rowLabels:
+      obj['rowLabels'] === undefined
+        ? undefined
+        : expectArray(obj['rowLabels'], `${label}.rowLabels`).map((rowLabel, index) =>
+            expectString(rowLabel, `${label}.rowLabels[${index}]`),
+          ),
     holes:
       obj['holes'] === undefined
         ? undefined
@@ -1715,12 +1777,56 @@ function parseBoard(raw, label) {
   };
 }
 
+/**
+ * A closed set, deliberately: an unknown surface is rejected rather than
+ * quietly falling back to `perfboard`. Kept literally in step with
+ * `BOARD_SURFACES` in diagram/model/interfaces.ts - the two validators are
+ * parallel implementations of one format, so a value one accepts the other
+ * must accept too.
+ */
+const BOARD_SURFACES = ['perfboard', 'breadboard'];
+
+function parseBoardSurface(raw, label) {
+  if (typeof raw !== 'string' || !BOARD_SURFACES.includes(raw)) {
+    throw new CanonicalProjectValidationError(
+      `${label}: expected one of ${BOARD_SURFACES.join(', ')}`,
+    );
+  }
+  return raw;
+}
+
+/**
+ * What a board must actually carry to be drawn as a solderless breadboard: the
+ * renderer reads its plastic, its moulded channel and its printed rail bands
+ * off `centerGap` and `rowLabels`, so a board that claims the surface without
+ * them would reopen as a blank light rectangle.
+ */
+function validateBoardSurface(board, label) {
+  if (board.surface !== 'breadboard') return;
+  if (board.rowLabels === undefined) {
+    throw new CanonicalProjectValidationError(
+      `${label}.surface: a breadboard must print its rows via rowLabels`,
+    );
+  }
+  if (board.centerGap === undefined) {
+    throw new CanonicalProjectValidationError(
+      `${label}.surface: a breadboard must declare its central channel via centerGap`,
+    );
+  }
+  if (!board.rowLabels.some((rowLabel) => rowLabel.endsWith('+') || rowLabel.endsWith('-'))) {
+    throw new CanonicalProjectValidationError(
+      `${label}.surface: a breadboard must name at least one +/- power rail`,
+    );
+  }
+}
+
 function parseBoardTrace(raw, label) {
   const obj = expectRecord(raw, label);
   return {
     id: expectNonEmptyString(obj['id'], `${label}.id`),
     label: expectString(obj['label'], `${label}.label`),
     net: expectOptionalString(obj['net'], `${label}.net`),
+    internal: expectOptionalBoolean(obj['internal'], `${label}.internal`),
     segments: expectArray(obj['segments'], `${label}.segments`).map((segment, index) =>
       parseBoardTraceSegment(segment, `${label}.segments[${index}]`),
     ),
