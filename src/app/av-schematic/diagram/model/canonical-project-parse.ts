@@ -737,6 +737,7 @@ function validateLayout(
       layout.position = placementNodePosition(
         { board, position: board.position },
         layout.placement,
+        layout.footprint,
       );
       const footprintHoles = new Map(
         footprintPinHoles(layout.footprint, layout.placement).map((pin) => [pin.pinId, pin.hole]),

@@ -197,6 +197,54 @@ describe('WireVizExchangeService', () => {
 });
 
 describe('buildImportedProject junction taps', () => {
+  it('keeps only artwork still referenced after replacing WireViz components', () => {
+    const previous = emptyProject();
+    const hash = 'a'.repeat(64);
+    previous.electrical.components = [
+      {
+        id: 'pictured',
+        deviceId: 'PIC',
+        manufacturer: 'Talus',
+        model: 'Imagem',
+        pins: [{ id: 'p', label: 'P', direction: 'input' }],
+      },
+    ];
+    previous.layout.components = [
+      {
+        componentId: 'pictured',
+        position: { x: 10, y: 20 },
+        visualPlane: 10,
+        footprintId: 'pictured-footprint',
+        footprint: {
+          id: 'pictured-footprint',
+          label: 'Imagem',
+          rows: 1,
+          cols: 1,
+          pins: [{ id: 'p', label: 'P', cell: { row: 0, col: 0 } }],
+          shapes: [],
+          artwork: { assetHash: hash, x: 0, y: 0, width: 1, height: 1 },
+        },
+        footprintRotation: 0,
+        footprintPitch: 17,
+      },
+    ];
+    previous.resources.artworkAssets[hash] = {
+      mimeType: 'image/png',
+      width: 1,
+      height: 1,
+      byteLength: 1,
+      dataUrl: 'data:image/png;base64,AA==',
+    };
+
+    expect(buildImportedProject(previous.electrical, previous).resources).toEqual(
+      previous.resources,
+    );
+    expect(
+      buildImportedProject({ components: [], junctions: [], cables: [], nets: [] }, previous)
+        .resources,
+    ).toEqual({ artworkAssets: {} });
+  });
+
   it.each([
     ['below', OPERATIONAL_LIMITS.maxJunctionTaps - 1, true],
     ['at', OPERATIONAL_LIMITS.maxJunctionTaps, true],

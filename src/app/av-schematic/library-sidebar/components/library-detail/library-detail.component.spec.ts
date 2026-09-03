@@ -76,7 +76,7 @@ describe('LibraryDetailComponent dialog', () => {
     expect(document.activeElement).toBe(last);
   });
 
-  it('keeps the current generic and physical ports synchronized across mode changes', () => {
+  it('keeps the current generic and physical ports synchronized across mode changes', async () => {
     const device: LibraryDevice = {
       libraryId: 'lib-port-sync',
       template: {
@@ -88,7 +88,7 @@ describe('LibraryDetailComponent dialog', () => {
       },
     };
     service.devices.set([device]);
-    service.beginEdit(device.libraryId);
+    await service.beginEdit(device.libraryId);
     const fixture = TestBed.createComponent(LibraryDetailComponent);
     fixture.componentRef.setInput('libraryId', device.libraryId);
     fixture.detectChanges();

@@ -40,6 +40,6 @@ export class LibraryListItemComponent {
   });
 
   protected onOpenDetail(): void {
-    this.libraryService.beginEdit(this.device().libraryId);
+    void this.libraryService.beginEdit(this.device().libraryId);
   }
 }

@@ -1552,7 +1552,11 @@ function fromCanonicalComponent(
     type: physical ? NodeTemplateType.FootprintNode : NodeTemplateType.DeviceNode,
     position:
       physical && board && placement
-        ? placementNodePosition({ board: board.data, position: board.position }, placement)
+        ? placementNodePosition(
+            { board: board.data, position: board.position },
+            placement,
+            footprint,
+          )
         : (layout?.position ?? DEFAULT_POSITION),
     zOrder: data.visualPlane,
     data: physical && placement ? syncPortHolesToPlacement(data) : data,

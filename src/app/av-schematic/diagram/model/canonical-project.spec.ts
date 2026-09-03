@@ -12,6 +12,8 @@ import {
 import { parseCanonicalProject } from './canonical-project-parse';
 import { canonicalValidationCorpus } from './canonical-project-corpus.mjs';
 import { electricallyEquivalent } from './electrical-equivalence';
+import { type Footprint } from './footprint';
+import { placementNodePosition } from './footprint-geometry';
 import { isBoardNode, isDeviceNode, isJunctionNode } from './guards';
 import {
   EdgeTemplateType,
@@ -194,6 +196,96 @@ describe('canonical project round-trip', () => {
     const unreferenced = clone(saved);
     delete must(must(unreferenced.layout.components[0]).footprint).artwork;
     expect(() => parseCanonicalProject(unreferenced)).toThrow('unreferenced artwork');
+  });
+
+  it('keeps illustrated seated pins aligned after canonical normalization and reconstruction', () => {
+    const hash = '431ced6916a2a21a156e38701afe55bbd7f88969fbbfc56d7fe099d47f265460';
+    const base64 =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+    const board: Node<BoardNodeData> = {
+      id: 'board-with-artwork',
+      type: NodeTemplateType.BoardNode,
+      position: { x: 10, y: 20 },
+      data: {
+        type: 'board',
+        boardId: 'board-with-artwork',
+        label: 'Board com canal',
+        rows: 4,
+        cols: 4,
+        pitch: 17,
+        centerGap: 12,
+      },
+    };
+    const footprint: Footprint = {
+      id: 'pictured-seated-footprint',
+      label: 'Com imagem deslocada',
+      rows: 2,
+      cols: 1,
+      pins: [
+        { id: 'top', label: 'TOP', cell: { row: 0, col: 0 }, primary: true },
+        { id: 'bottom', label: 'BOTTOM', cell: { row: 1, col: 0 } },
+      ],
+      shapes: [],
+      artwork: {
+        assetHash: hash,
+        x: -2,
+        y: -2,
+        width: 4,
+        height: 4,
+        preserveAspectRatio: true,
+      },
+    };
+    const placement = {
+      boardId: board.data.boardId,
+      anchor: { row: 1, col: 1 },
+      rotation: 0 as const,
+    };
+    const position = placementNodePosition(
+      { board: board.data, position: board.position },
+      placement,
+      footprint,
+    );
+    const component: Node<DeviceNodeData> = {
+      id: 'pictured-seated',
+      type: NodeTemplateType.FootprintNode,
+      position,
+      data: {
+        type: 'device',
+        deviceId: 'PIC-SEATED',
+        manufacturer: 'Talus',
+        model: 'Imagem encaixada',
+        boardId: board.data.boardId,
+        footprintId: footprint.id,
+        footprint,
+        placement,
+        ports: [
+          { id: 'top', label: 'TOP', direction: 'input' },
+          { id: 'bottom', label: 'BOTTOM', direction: 'output' },
+        ],
+      },
+    };
+    const asset = {
+      hash,
+      mimeType: 'image/png' as const,
+      width: 1,
+      height: 1,
+      byteLength: 68,
+      dataUrl: `data:image/png;base64,${base64}`,
+    };
+
+    const parsed = parseCanonicalProject(
+      clone(toCanonicalProject([board, component], [], [], [asset])),
+    );
+    expect(parsed.layout.components[0]?.position).toEqual(position);
+
+    const restored = fromCanonicalProject(parsed).nodes.find(
+      (node): node is Node<DeviceNodeData> => node.id === component.id && isDeviceNode(node),
+    );
+    expect(restored?.position).toEqual(position);
+    expect(restored?.data.ports.map((port) => [port.id, port.hole])).toEqual([
+      ['top', { row: 1, col: 1 }],
+      ['bottom', { row: 2, col: 1 }],
+    ]);
   });
 
   it('persists only board-local jumper bends and derives endpoints from holes', () => {

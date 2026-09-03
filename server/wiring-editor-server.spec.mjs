@@ -666,6 +666,36 @@ describe('wiring-editor-server', () => {
       ).toMatchObject({ status: 400 });
     });
 
+    it('normalizes a seated illustrated component with the complete drawn extent', async () => {
+      const project = parseCanonicalProjectOnServer(basePhysicalProject());
+      project.layout.components[0].position = { x: 999, y: -999 };
+      project.layout.components[0].footprint.artwork = {
+        assetHash: PNG_1X1_HASH,
+        x: -2,
+        y: -2,
+        width: 4,
+        height: 4,
+        preserveAspectRatio: true,
+      };
+      project.resources.artworkAssets[PNG_1X1_HASH] = PNG_1X1_RESOURCE;
+
+      const putRes = await fetch(`${server.baseUrl}/api/projects/artwork-seated`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(putRes.status).toBe(200);
+
+      const saved = await (await fetch(`${server.baseUrl}/api/projects/artwork-seated`)).json();
+      expect(saved.layout.components[0]).toMatchObject({
+        position: { x: 9, y: 36 },
+        pinHoles: [
+          { pinId: 'a', hole: { row: 2, col: 1 } },
+          { pinId: 'b', hole: { row: 2, col: 2 } },
+        ],
+      });
+    });
+
     it('preserves and applies centerGap and board notes', async () => {
       const project = basePhysicalProject();
       project.layout.boards[0].notes = 'Bulk incorporado';

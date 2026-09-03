@@ -33,6 +33,8 @@ export class LibraryService {
   private centralState: 'pending' | 'ready' | 'unavailable' | 'error' = 'pending';
   private centralEtag: string | null = null;
   private readonly centralHydration: Promise<void>;
+  private editIntent = 0;
+  private editingBaseEtag: string | null | undefined;
 
   constructor() {
     this.artworkStore.replace(this.initialCatalog.assets);
@@ -60,15 +62,27 @@ export class LibraryService {
   }
 
   beginCreate(): void {
+    this.editIntent += 1;
     this.captureReturnFocus();
     this.editingDeviceId.set(`lib-custom-${createLibraryId()}`);
     this.editingMode.set('create');
+    this.editingBaseEtag = undefined;
   }
 
-  beginEdit(libraryId: string): void {
+  async beginEdit(libraryId: string): Promise<void> {
+    const intent = ++this.editIntent;
     this.captureReturnFocus();
+    await this.centralHydration;
+    if (intent !== this.editIntent) return;
+    if (!this.devices().some((device) => device.libraryId === libraryId)) {
+      this.storageError.set(
+        'Este componente não existe mais na biblioteca compartilhada. Reabra a biblioteca e escolha outro item.',
+      );
+      return;
+    }
     this.editingDeviceId.set(libraryId);
     this.editingMode.set('edit');
+    this.editingBaseEtag = this.centralEtag;
   }
 
   async commitDraft(
@@ -91,6 +105,18 @@ export class LibraryService {
         );
       })();
     } else if (mode === 'edit') {
+      if (this.centralState === 'ready' && this.editingBaseEtag !== this.centralEtag) {
+        this.storageError.set(
+          'A biblioteca mudou desde que esta edição começou. Reabra o componente antes de salvar.',
+        );
+        return false;
+      }
+      if (!this.devices().some((device) => device.libraryId === libraryId)) {
+        this.storageError.set(
+          'Este componente não existe mais na biblioteca compartilhada. Nada foi salvo.',
+        );
+        return false;
+      }
       nextDevices = this.devices().map((d) =>
         d.libraryId === libraryId ? { ...d, template: structuredClone(template) } : d,
       );
@@ -117,9 +143,11 @@ export class LibraryService {
   }
 
   closeDetail(): void {
+    this.editIntent += 1;
     const returnFocus = this.returnFocus;
     this.editingDeviceId.set(null);
     this.editingMode.set(null);
+    this.editingBaseEtag = undefined;
     this.returnFocus = null;
     if (returnFocus?.isConnected) {
       setTimeout(() => {

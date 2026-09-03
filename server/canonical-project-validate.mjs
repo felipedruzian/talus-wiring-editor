@@ -1171,7 +1171,7 @@ function validateV2Layout(
         );
       }
       layout.boardId = layout.placement.boardId;
-      layout.position = placementNodePosition(board, layout.placement);
+      layout.position = placementNodePosition(board, layout.placement, layout.footprint);
       const footprintHoles = new Map(
         footprintPinHoles(layout.footprint, layout.placement).map((pin) => [pin.pinId, pin.hole]),
       );
@@ -1770,13 +1770,147 @@ function footprintOccupiedHoles(footprint, placement) {
   return [...byKey.values()];
 }
 
-function placementNodePosition(board, placement) {
-  const pad = FOOTPRINT_PADDING_CELLS * board.pitch;
+function placementNodePosition(board, placement, footprint) {
   const anchor = holeLocalPoint(board, placement.anchor);
+  const channel = footprintChannel(board, footprint, placement);
+  const extent = footprintDrawnExtent(footprint, placement.rotation, channel);
   return {
-    x: board.position.x + anchor.x - pad,
-    y: board.position.y + anchor.y - pad,
+    x: board.position.x + anchor.x + extent.left * board.pitch,
+    y: board.position.y + anchor.y + extent.top * board.pitch,
   };
+}
+
+function rotatedFootprintBox(footprint, rotation) {
+  return rotation === 90 || rotation === 270
+    ? { rows: footprint.cols, cols: footprint.rows }
+    : { rows: footprint.rows, cols: footprint.cols };
+}
+
+function rotateFootprintPoint(x, y, footprint, rotation) {
+  switch (rotation) {
+    case 0:
+      return { x, y };
+    case 90:
+      return { x: footprint.rows - 1 - y, y: x };
+    case 180:
+      return { x: footprint.cols - 1 - x, y: footprint.rows - 1 - y };
+    case 270:
+      return { x: y, y: footprint.cols - 1 - x };
+    default:
+      throw new CanonicalProjectValidationError(`invalid board rotation ${rotation}`);
+  }
+}
+
+function footprintChannel(board, footprint, placement) {
+  const gap = board.centerGap ?? 0;
+  if (gap <= 0 || board.rows < 2 || board.pitch <= 0) return null;
+  const split = Math.ceil(board.rows / 2);
+  const box = rotatedFootprintBox(footprint, placement.rotation);
+  const firstRow = placement.anchor.row;
+  const lastRow = firstRow + box.rows - 1;
+  if (firstRow >= split || lastRow < split) return null;
+  return { cutY: split - firstRow - 0.5, gapCells: gap / board.pitch };
+}
+
+function applyFootprintChannel(y, channel) {
+  return channel && y > channel.cutY ? y + channel.gapCells : y;
+}
+
+function footprintDrawPoint(x, y, footprint, rotation, channel) {
+  const rotated = rotateFootprintPoint(x, y, footprint, rotation);
+  return { x: rotated.x, y: applyFootprintChannel(rotated.y, channel) };
+}
+
+function footprintArtworkPoints(footprint, artwork, rotation, channel) {
+  const center = rotateFootprintPoint(
+    artwork.x + artwork.width / 2,
+    artwork.y + artwork.height / 2,
+    footprint,
+    rotation,
+  );
+  const shift = channel && center.y > channel.cutY ? channel.gapCells : 0;
+  const at = (x, y) => {
+    const point = rotateFootprintPoint(x, y, footprint, rotation);
+    return { x: point.x, y: point.y + shift };
+  };
+  return [
+    at(artwork.x, artwork.y),
+    at(artwork.x + artwork.width, artwork.y),
+    at(artwork.x, artwork.y + artwork.height),
+    at(artwork.x + artwork.width, artwork.y + artwork.height),
+  ];
+}
+
+function footprintDrawnExtent(footprint, rotation, channel) {
+  const box = rotatedFootprintBox(footprint, rotation);
+  const extent = {
+    top: -FOOTPRINT_PADDING_CELLS,
+    bottom: applyFootprintChannel(box.rows - 1 + FOOTPRINT_PADDING_CELLS, channel),
+    left: -FOOTPRINT_PADDING_CELLS,
+    right: box.cols - 1 + FOOTPRINT_PADDING_CELLS,
+  };
+  const includePoints = (points, margin = 0) => {
+    extent.top = Math.min(extent.top, ...points.map((point) => point.y - margin));
+    extent.bottom = Math.max(extent.bottom, ...points.map((point) => point.y + margin));
+    extent.left = Math.min(extent.left, ...points.map((point) => point.x - margin));
+    extent.right = Math.max(extent.right, ...points.map((point) => point.x + margin));
+  };
+  for (const shape of footprint.shapes ?? []) {
+    if (shape.kind === 'rect') {
+      includePoints([
+        footprintDrawPoint(shape.x, shape.y, footprint, rotation, channel),
+        footprintDrawPoint(shape.x + shape.width, shape.y, footprint, rotation, channel),
+        footprintDrawPoint(
+          shape.x + shape.width,
+          shape.y + shape.height,
+          footprint,
+          rotation,
+          channel,
+        ),
+        footprintDrawPoint(shape.x, shape.y + shape.height, footprint, rotation, channel),
+      ]);
+    } else if (shape.kind === 'circle') {
+      includePoints(
+        [footprintDrawPoint(shape.cx, shape.cy, footprint, rotation, channel)],
+        shape.r,
+      );
+    } else if (shape.kind === 'line') {
+      includePoints(
+        [
+          footprintDrawPoint(shape.x1, shape.y1, footprint, rotation, channel),
+          footprintDrawPoint(shape.x2, shape.y2, footprint, rotation, channel),
+        ],
+        (shape.width ?? 0.08) / 2,
+      );
+    } else {
+      const size = shape.size ?? 0.42;
+      const width = Math.max(size * 0.5, shape.text.length * size * 0.6);
+      const left =
+        shape.anchor === 'end'
+          ? shape.x - width
+          : shape.anchor === 'middle'
+            ? shape.x - width / 2
+            : shape.x;
+      const rotatedAnchor = rotateFootprintPoint(shape.x, shape.y, footprint, rotation);
+      const mappedAnchor = footprintDrawPoint(shape.x, shape.y, footprint, rotation, channel);
+      const shiftY = mappedAnchor.y - rotatedAnchor.y;
+      includePoints(
+        [
+          { x: left, y: shape.y - size / 2 },
+          { x: left + width, y: shape.y - size / 2 },
+          { x: left + width, y: shape.y + size / 2 },
+          { x: left, y: shape.y + size / 2 },
+        ].map((corner) => {
+          const point = rotateFootprintPoint(corner.x, corner.y, footprint, rotation);
+          return { x: point.x, y: point.y + shiftY };
+        }),
+      );
+    }
+  }
+  if (footprint.artwork) {
+    includePoints(footprintArtworkPoints(footprint, footprint.artwork, rotation, channel));
+  }
+  return extent;
 }
 
 function holeLocalPoint(board, hole) {

@@ -104,7 +104,7 @@ describe('LibraryService', () => {
     expect(JSON.parse(serialized)).toMatchObject({ version: LIBRARY_STORAGE_VERSION });
     expect(createLibraryService().devices().at(-1)?.template.model).toBe('Componente de teste');
 
-    service.beginEdit(libraryId);
+    await service.beginEdit(libraryId);
     await service.commitDraft(libraryId, { ...custom, model: 'Componente editado' });
     expect(createLibraryService().devices().at(-1)?.template.model).toBe('Componente editado');
 
@@ -397,6 +397,59 @@ describe('LibraryService', () => {
     });
   });
 
+  it('waits for central hydration before opening an edit with the remote template', async () => {
+    const storage = new MemoryStorage();
+    const localDevice = {
+      libraryId: 'lib-shared',
+      template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Cache antigo' },
+    };
+    const remoteDevice = {
+      libraryId: 'lib-shared',
+      template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Versão remota' },
+    };
+    expect(persistLibraryCatalog(storage, { devices: [localDevice], assets: [] }).ok).toBe(true);
+    const remote = deferred<Response>();
+    const fetchMock = vi.fn<typeof fetch>().mockReturnValue(remote.promise);
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('fetch', fetchMock);
+    const service = createLibraryService();
+
+    const opening = service.beginEdit(localDevice.libraryId);
+    expect(service.editingDeviceId()).toBeNull();
+
+    remote.resolve(
+      sharedCatalogResponse({ version: 2, devices: [remoteDevice], assets: {} }, true),
+    );
+    await opening;
+
+    expect(service.editingDeviceId()).toBe(remoteDevice.libraryId);
+    expect(service.editingDevice()?.template.model).toBe('Versão remota');
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('does not open or save a local item deleted from the hydrated central catalog', async () => {
+    const storage = new MemoryStorage();
+    const deleted = {
+      libraryId: 'lib-custom-deleted',
+      template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Excluído' },
+    };
+    expect(persistLibraryCatalog(storage, { devices: [deleted], assets: [] }).ok).toBe(true);
+    const remote = deferred<Response>();
+    const fetchMock = vi.fn<typeof fetch>().mockReturnValue(remote.promise);
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('fetch', fetchMock);
+    const service = createLibraryService();
+
+    const opening = service.beginEdit(deleted.libraryId);
+    remote.resolve(sharedCatalogResponse({ version: 2, devices: [], assets: {} }, true));
+    await opening;
+
+    expect(service.editingDeviceId()).toBeNull();
+    expect(service.storageError()).toMatch(/não existe mais/);
+    expect(await service.commitDraft(deleted.libraryId, deleted.template)).toBe(false);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it('bootstraps an absent central catalog from the local v1 migration', async () => {
     const storage = new MemoryStorage();
     const legacy = {
@@ -522,4 +575,12 @@ function sharedCatalogResponse(value: unknown, initialized: boolean): Response {
       'X-Wiring-Library-Initialized': initialized ? '1' : '0',
     },
   });
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
