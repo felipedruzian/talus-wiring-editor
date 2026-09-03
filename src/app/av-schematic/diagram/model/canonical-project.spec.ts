@@ -711,7 +711,7 @@ describe('canonical project round-trip', () => {
         : false,
     );
 
-    expect(figures).toHaveLength(8);
+    expect(figures).toHaveLength(9);
     for (const [index, figure] of figures.entries()) {
       const node: Node<DeviceNodeData> = {
         id: `figure-${index}`,

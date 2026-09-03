@@ -68,6 +68,7 @@ describe('shared library API client', () => {
       'lib-resistor-1k',
       'lib-resistor-1k8',
       'lib-capacitor-electrolytic-470uf',
+      'lib-capacitor-electrolytic-470uf-16v',
       'lib-capacitor-ceramic-100nf',
     ]);
     expect(result.catalog.devices[0]?.template).toMatchObject({
