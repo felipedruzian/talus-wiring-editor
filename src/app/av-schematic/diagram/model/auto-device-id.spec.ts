@@ -43,6 +43,12 @@ describe('generateDeviceId', () => {
     expect(generateDeviceId('made-up', [])).toBe('DEV-1');
   });
 
+  it('uses the prefix configured for a custom stable category ID', () => {
+    expect(
+      generateDeviceId('category-custom', [], [{ id: 'category-custom', prefix: 'SENS' }]),
+    ).toBe('SENS-1');
+  });
+
   it('skips non-device nodes when scanning existing ids', () => {
     const stranger = {
       id: 'x',

@@ -14,7 +14,7 @@
 
 import { createHash } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
-import { lstat, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -28,6 +28,7 @@ import { parseCanonicalProject as parseCanonicalProjectOnServer } from './canoni
 import { createWiringEditorServer } from './wiring-editor-server.mjs';
 
 const HOST = '127.0.0.1';
+const FALLBACK_CATEGORY = { id: 'uncategorized', name: 'Não categorizado', prefix: 'DEV' };
 
 describe('canonical physical validation corpus', () => {
   for (const testCase of canonicalValidationCorpus) {
@@ -347,7 +348,9 @@ describe('wiring-editor-server', () => {
       const body = await response.text();
 
       expect(response.status).toBe(200);
-      expect(body).toBe('{"version":2,"devices":[],"assets":{}}');
+      expect(body).toBe(
+        '{"version":3,"seedRevision":3,"categories":[{"id":"uncategorized","name":"Não categorizado","prefix":"DEV"}],"devices":[],"assets":{}}',
+      );
       expect(response.headers.get('etag')).toBe(strongEtag(body));
       expect(response.headers.get('cache-control')).toBe('no-store');
       expect(response.headers.get('x-content-type-options')).toBe('nosniff');
@@ -358,8 +361,9 @@ describe('wiring-editor-server', () => {
       const initial = await fetch(`${server.baseUrl}/api/library`);
       const etag = initial.headers.get('etag');
       const catalog = {
-        version: 2,
+        version: 3,
         seedRevision: 3,
+        categories: [FALLBACK_CATEGORY],
         devices: [
           {
             libraryId: 'lib-custom-test',
@@ -368,6 +372,7 @@ describe('wiring-editor-server', () => {
               deviceId: '',
               manufacturer: 'Talus',
               model: 'Teste',
+              categoryId: 'uncategorized',
               ports: [],
             },
           },
@@ -398,11 +403,50 @@ describe('wiring-editor-server', () => {
       );
     });
 
+    it('serves an existing v2 catalog as a deterministic v3 snapshot', async () => {
+      const legacy = {
+        version: 2,
+        devices: [
+          {
+            libraryId: 'lib-legacy-motor',
+            template: {
+              type: 'device',
+              deviceId: '',
+              manufacturer: 'Talus',
+              model: 'Motor',
+              category: ' MOTOR-DRIVER ',
+              ports: [],
+            },
+          },
+        ],
+        assets: {},
+      };
+      await writeFile(join(libraryDir, 'catalog.json'), JSON.stringify(legacy), 'utf8');
+
+      const first = await fetch(`${server.baseUrl}/api/library`);
+      const second = await fetch(`${server.baseUrl}/api/library`);
+      const body = await first.text();
+      const catalog = JSON.parse(body);
+
+      expect(catalog.version).toBe(3);
+      expect(catalog.devices[0].template.category).toBeUndefined();
+      expect(catalog.devices[0].template.categoryId).toBe('motor-driver');
+      expect(catalog.categories).toContainEqual({
+        id: 'motor-driver',
+        name: 'Drivers de motor',
+        prefix: 'DRV',
+      });
+      expect(first.headers.get('etag')).toBe(strongEtag(body));
+      expect(second.headers.get('etag')).toBe(first.headers.get('etag'));
+    });
+
     it('serializes competing writes and rejects the stale writer without overwriting', async () => {
       const first = await fetch(`${server.baseUrl}/api/library`);
       const etag = first.headers.get('etag');
       const catalogs = ['A', 'B'].map((model) => ({
-        version: 2,
+        version: 3,
+        seedRevision: 3,
+        categories: [FALLBACK_CATEGORY],
         devices: [
           {
             libraryId: `lib-${model.toLowerCase()}`,
@@ -411,6 +455,7 @@ describe('wiring-editor-server', () => {
               deviceId: '',
               manufacturer: 'Talus',
               model,
+              categoryId: 'uncategorized',
               ports: [],
             },
           },
@@ -433,76 +478,73 @@ describe('wiring-editor-server', () => {
       expect(catalogs).toContainEqual(stored);
     });
 
-    it('accepts only coherent adjustable axial footprints in the shared library', async () => {
+    it('rejects invalid categories and future seed revisions', async () => {
       const initial = await fetch(`${server.baseUrl}/api/library`);
       const etag = initial.headers.get('etag');
-      const catalog = {
-        version: 2,
+      const valid = {
+        version: 3,
         seedRevision: 3,
+        categories: [FALLBACK_CATEGORY, { id: 'audio', name: 'Áudio geral', prefix: 'AUD' }],
         devices: [
           {
-            libraryId: 'lib-resistor-1k',
+            libraryId: 'lib-audio',
             template: {
               type: 'device',
               deviceId: '',
               manufacturer: 'Talus',
-              model: 'Resistor 1 kOhm',
-              ports: [
-                { id: 'a', label: '1', direction: 'input' },
-                { id: 'b', label: '2', direction: 'output' },
-              ],
-              footprintId: 'resistor-1k',
-              footprint: {
-                id: 'resistor-1k',
-                label: '1 kOhm',
-                rows: 1,
-                cols: 5,
-                axialSpan: 4,
-                pins: [
-                  { id: 'a', label: '1', cell: { row: 0, col: 0 }, primary: true },
-                  { id: 'b', label: '2', cell: { row: 0, col: 4 } },
-                ],
-                shapes: [],
-              },
+              model: 'Áudio',
+              categoryId: 'audio',
+              ports: [],
             },
           },
         ],
         assets: {},
       };
-
-      const accepted = await fetch(`${server.baseUrl}/api/library`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'If-Match': etag },
-        body: JSON.stringify(catalog),
-      });
-      expect(accepted.status).toBe(200);
-      expect(await (await fetch(`${server.baseUrl}/api/library`)).json()).toEqual(catalog);
-
-      const invalid = structuredClone(catalog);
-      invalid.devices[0].template.footprint.cols = 6;
-      const rejected = await fetch(`${server.baseUrl}/api/library`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'If-Match': accepted.headers.get('etag'),
+      const invalidCatalogs = [
+        {
+          ...valid,
+          categories: [
+            ...valid.categories,
+            { id: 'audio-duplicate', name: 'audio geral', prefix: 'DUP' },
+          ],
         },
-        body: JSON.stringify(invalid),
-      });
-      expect(rejected.status).toBe(400);
-      expect(await (await fetch(`${server.baseUrl}/api/library`)).json()).toEqual(catalog);
-
-      const futureRevision = structuredClone(catalog);
-      futureRevision.seedRevision = 4;
-      const futureRejected = await fetch(`${server.baseUrl}/api/library`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'If-Match': accepted.headers.get('etag'),
+        {
+          ...valid,
+          categories: [{ ...FALLBACK_CATEGORY, name: 'Outros' }, valid.categories[1]],
         },
-        body: JSON.stringify(futureRevision),
-      });
-      expect(futureRejected.status).toBe(400);
-      expect(await (await fetch(`${server.baseUrl}/api/library`)).json()).toEqual(catalog);
+        {
+          ...valid,
+          seedRevision: 4,
+        },
+        {
+          ...valid,
+          devices: [
+            {
+              ...valid.devices[0],
+              template: { ...valid.devices[0].template, categoryId: 'missing' },
+            },
+          ],
+        },
+        {
+          ...valid,
+          devices: [
+            {
+              ...valid.devices[0],
+              template: { ...valid.devices[0].template, category: 'audio' },
+            },
+          ],
+        },
+      ];
+
+      for (const catalog of invalidCatalogs) {
+        const response = await fetch(`${server.baseUrl}/api/library`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'If-Match': etag },
+          body: JSON.stringify(catalog),
+        });
+        expect(response.status).toBe(400);
+      }
+      expect((await fetch(`${server.baseUrl}/api/library`)).headers.get('etag')).toBe(etag);
     });
 
     it('rejects forged artwork, SVG assets and dangling artwork references', async () => {
@@ -510,7 +552,8 @@ describe('wiring-editor-server', () => {
       const etag = initial.headers.get('etag');
       const hash = '0'.repeat(64);
       const base = {
-        version: 2,
+        version: 3,
+        categories: [FALLBACK_CATEGORY],
         devices: [
           {
             libraryId: 'lib-image',
@@ -519,6 +562,7 @@ describe('wiring-editor-server', () => {
               deviceId: '',
               manufacturer: 'Talus',
               model: 'Imagem',
+              categoryId: 'uncategorized',
               ports: [{ id: 'p1', label: 'P1', direction: 'input' }],
               footprintId: 'image',
               footprint: {

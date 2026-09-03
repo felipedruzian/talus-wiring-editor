@@ -11,6 +11,7 @@ import {
 } from 'ng-diagram';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DiagramExportService } from '../export/diagram-export.service';
+import { LibraryService } from '../library-sidebar/library.service';
 import { ElementMutationService } from '../properties-sidebar/element-mutation.service';
 import { PropertiesSidebarService } from '../properties-sidebar/properties-sidebar.service';
 import { DiagramComponent } from './diagram.component';
@@ -64,6 +65,7 @@ describe('DiagramComponent interaction lifecycle', () => {
           provide: BoardJumperCreationService,
           useValue: { activeBoardId: signal(null), cancel: vi.fn() },
         },
+        { provide: LibraryService, useValue: { categories: () => [] } },
       ],
     });
     TestBed.overrideComponent(DiagramComponent, {

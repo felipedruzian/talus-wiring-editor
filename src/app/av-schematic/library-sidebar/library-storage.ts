@@ -16,32 +16,46 @@ import {
   MAX_ARTWORK_OUTPUT_DIMENSION,
   MAX_ARTWORK_OUTPUT_PIXELS,
 } from './artwork-import';
+import {
+  categoriesValidationError,
+  isCanonicalLibraryCategory,
+  MAX_LIBRARY_CATEGORIES,
+  migrateLegacyDeviceCategories,
+  normalizeCategoryName,
+  SEED_LIBRARY_CATEGORIES,
+  UNCATEGORIZED_CATEGORY,
+  UNCATEGORIZED_CATEGORY_ID,
+  type LibraryCategory,
+} from './library-category';
 import { SEED_LIBRARY, type LibraryDevice } from './seed-library';
 
-export const LIBRARY_STORAGE_KEY = 'talus-wiring-editor.library.v2';
+export const LIBRARY_STORAGE_KEY = 'talus-wiring-editor.library.v3';
+export const LEGACY_LIBRARY_V2_STORAGE_KEY = 'talus-wiring-editor.library.v2';
 export const LEGACY_LIBRARY_STORAGE_KEY = 'talus-wiring-editor.library.v1';
-export const LIBRARY_STORAGE_VERSION = 2;
+export const LIBRARY_STORAGE_VERSION = 3;
 export const LIBRARY_SEED_REVISION = 3;
 export const MAX_LIBRARY_ASSETS = 128;
 export const MAX_LIBRARY_DEVICES = 4096;
 export const MAX_LIBRARY_STORAGE_BYTES = 16 * 1024 * 1024;
 
 export interface LibraryCatalog {
+  categories: LibraryCategory[];
   devices: LibraryDevice[];
   assets: RasterArtworkAsset[];
   loadError?: string;
 }
 
-export interface PersistedLibraryV2 {
+export interface PersistedLibraryV3 {
   version: typeof LIBRARY_STORAGE_VERSION;
   seedRevision: typeof LIBRARY_SEED_REVISION;
+  categories: LibraryCategory[];
   devices: LibraryDevice[];
   assets: Record<string, Omit<RasterArtworkAsset, 'hash'>>;
 }
 
 export type LibraryPersistenceResult = { ok: true } | { ok: false; message: string };
 export type PreparedLibraryCatalog =
-  | { ok: true; payload: PersistedLibraryV2; serialized: string }
+  | { ok: true; payload: PersistedLibraryV3; serialized: string }
   | { ok: false; message: string };
 export interface SharedLibraryCatalogParseResult {
   catalog: LibraryCatalog;
@@ -66,12 +80,7 @@ export function loadLibraryCatalog(storage: Storage | null): LibraryCatalogLoadS
   try {
     const current = storage.getItem(LIBRARY_STORAGE_KEY);
     if (current) {
-      let raw: unknown;
-      try {
-        raw = JSON.parse(current) as unknown;
-      } catch {
-        return invalidSeedLoadState();
-      }
+      const raw = JSON.parse(current) as unknown;
       const recovered = recoverPersistedLibrary(raw);
       if (!recovered) return invalidSeedLoadState();
       return {
@@ -81,21 +90,18 @@ export function loadLibraryCatalog(storage: Storage | null): LibraryCatalogLoadS
       };
     }
 
-    const legacy = storage.getItem(LEGACY_LIBRARY_STORAGE_KEY);
-    if (!legacy) return cleanSeedLoadState();
-    let raw: unknown;
-    try {
-      raw = JSON.parse(legacy) as unknown;
-    } catch {
-      return invalidSeedLoadState();
+    const legacyV2 = storage.getItem(LEGACY_LIBRARY_V2_STORAGE_KEY);
+    if (legacyV2) {
+      const recovered = recoverPersistedLibraryV2(JSON.parse(legacyV2) as unknown);
+      if (!recovered) return invalidSeedLoadState();
+      return { catalog: recovered.catalog, needsUpgrade: true, needsRepair: recovered.wasRepaired };
     }
-    const recovered = recoverLegacyLibrary(raw);
+
+    const legacyV1 = storage.getItem(LEGACY_LIBRARY_STORAGE_KEY);
+    if (!legacyV1) return cleanSeedLoadState();
+    const recovered = recoverLegacyLibrary(JSON.parse(legacyV1) as unknown);
     if (!recovered) return invalidSeedLoadState();
-    return {
-      catalog: recovered.catalog,
-      needsUpgrade: true,
-      needsRepair: recovered.wasRepaired,
-    };
+    return { catalog: recovered.catalog, needsUpgrade: true, needsRepair: recovered.wasRepaired };
   } catch {
     return invalidSeedLoadState();
   }
@@ -108,7 +114,7 @@ export function loadLibraryDevices(storage: Storage | null): LibraryDevice[] {
 
 export function persistLibraryCatalog(
   storage: Storage | null,
-  catalog: LibraryCatalog,
+  catalog: Omit<LibraryCatalog, 'categories'> & { categories?: LibraryCategory[] },
 ): LibraryPersistenceResult {
   if (!storage) {
     return {
@@ -116,7 +122,10 @@ export function persistLibraryCatalog(
       message: 'O armazenamento local não está disponível; as alterações durarão apenas nesta aba.',
     };
   }
-  const prepared = prepareLibraryCatalog(catalog);
+  const prepared = prepareLibraryCatalog({
+    ...catalog,
+    categories: catalog.categories ?? structuredClone([...SEED_LIBRARY_CATEGORIES]),
+  });
   if (!prepared.ok) return prepared;
   try {
     storage.setItem(LIBRARY_STORAGE_KEY, prepared.serialized);
@@ -142,15 +151,21 @@ export function prepareLibraryCatalog(catalog: LibraryCatalog): PreparedLibraryC
       message: `O catálogo aceita no máximo ${MAX_LIBRARY_DEVICES} componentes.`,
     };
   }
+  const categoryError = categoriesValidationError(catalog.categories);
+  if (categoryError) return { ok: false, message: categoryError };
+  const categoryIds = new Set(catalog.categories.map(({ id }) => id));
   const deviceIds = new Set<string>();
-  if (
-    catalog.devices.some((device) => {
-      if (!isLibraryDevice(device) || deviceIds.has(device.libraryId)) return true;
-      deviceIds.add(device.libraryId);
-      return false;
-    })
-  ) {
-    return { ok: false, message: 'O catálogo contém componentes inválidos ou duplicados.' };
+  for (const device of catalog.devices) {
+    if (!isLibraryDevice(device) || deviceIds.has(device.libraryId)) {
+      return { ok: false, message: 'O catálogo contém um componente inválido ou duplicado.' };
+    }
+    if (!categoryIds.has(device.template.categoryId)) {
+      return { ok: false, message: 'O catálogo contém um componente sem categoria válida.' };
+    }
+    if (device.template.category !== undefined) {
+      return { ok: false, message: 'O catálogo contém uma categoria legada não migrada.' };
+    }
+    deviceIds.add(device.libraryId);
   }
   const assetsByHash = new Map<string, RasterArtworkAsset>();
   for (const asset of catalog.assets) {
@@ -177,10 +192,11 @@ export function prepareLibraryCatalog(catalog: LibraryCatalog): PreparedLibraryC
   }
   const assets = Object.fromEntries(
     [...assetsByHash].map(([hash, { hash: _hash, ...asset }]) => [hash, asset]),
-  ) as PersistedLibraryV2['assets'];
-  const payload: PersistedLibraryV2 = {
+  ) as PersistedLibraryV3['assets'];
+  const payload: PersistedLibraryV3 = {
     version: LIBRARY_STORAGE_VERSION,
     seedRevision: LIBRARY_SEED_REVISION,
+    categories: structuredClone(catalog.categories),
     devices: structuredClone(catalog.devices),
     assets,
   };
@@ -208,19 +224,27 @@ export function persistLibraryDevices(
   devices: LibraryDevice[],
 ): LibraryPersistenceResult {
   const existing = loadLibraryCatalog(storage).catalog;
-  return persistLibraryCatalog(storage, { devices, assets: existing.assets });
+  return persistLibraryCatalog(storage, {
+    categories: existing.categories,
+    devices,
+    assets: existing.assets,
+  });
 }
 
 function recoverPersistedLibrary(
   value: unknown,
 ): { catalog: LibraryCatalog; wasRepaired: boolean; wasMigrated: boolean } | null {
   if (!isRecord(value) || value['version'] !== LIBRARY_STORAGE_VERSION) return null;
-  if (!Array.isArray(value['devices']) || !isRecord(value['assets'])) return null;
+  if (
+    !Array.isArray(value['categories']) ||
+    !Array.isArray(value['devices']) ||
+    !isRecord(value['assets'])
+  ) {
+    return null;
+  }
 
-  const assets: RasterArtworkAsset[] = [];
-  let wasRepaired = false;
-  const rawAssets = Object.entries(value['assets']);
-  if (rawAssets.length > MAX_LIBRARY_ASSETS) {
+  const recoveredAssets = recoverAssets(value['assets']);
+  if (!recoveredAssets.ok) {
     return {
       catalog: {
         ...seedCatalog(),
@@ -230,28 +254,40 @@ function recoverPersistedLibrary(
       wasMigrated: false,
     };
   }
-  for (const [hash, rawAsset] of rawAssets) {
-    const asset = recoverAsset(hash, rawAsset);
-    if (asset) assets.push(asset);
-    else wasRepaired = true;
-  }
-  const availableHashes = new Set(assets.map((asset) => asset.hash));
-  const recoveredDevices = recoverDevices(value['devices'], availableHashes);
+  const recoveredCategories = recoverCategories(value['categories']);
+  const availableHashes = new Set(recoveredAssets.assets.map((asset) => asset.hash));
+  const recoveredDevices = recoverDevices(
+    value['devices'],
+    availableHashes,
+    recoveredCategories.categories,
+  );
+  let wasRepaired = recoveredAssets.wasRepaired || recoveredCategories.wasRepaired;
   wasRepaired ||= recoveredDevices.wasRepaired;
   const seedRevision = recoverSeedRevision(value['seedRevision'], recoveredDevices.devices);
   wasRepaired ||= seedRevision.wasRepaired;
+  // A current revision is user-owned: a deleted seed category must not come
+  // back merely because the catalog is opened. Only an older seed revision
+  // receives the categories needed by seeds added in that revision.
+  const categories =
+    seedRevision.revision < LIBRARY_SEED_REVISION
+      ? ensurePassiveSeedCategories(recoveredCategories.categories)
+      : recoveredCategories.categories;
   const devices =
     seedRevision.revision < LIBRARY_SEED_REVISION
-      ? appendMissingPassiveSeeds(recoveredDevices.devices, seedRevision.revision)
+      ? appendMissingPassiveSeeds(recoveredDevices.devices, seedRevision.revision, categories)
       : recoveredDevices.devices;
-  const wasMigrated = recoveredDevices.wasMigrated || seedRevision.revision < LIBRARY_SEED_REVISION;
+  const wasMigrated =
+    recoveredDevices.wasMigrated ||
+    seedRevision.revision < LIBRARY_SEED_REVISION ||
+    categories.length !== recoveredCategories.categories.length;
   return {
     catalog: {
-      devices,
       // Loading must not garbage-collect valid assets. An unreferenced upload may
       // still be a user's pending library resource, and deterministic seed
       // migrations must preserve the complete validated catalog verbatim.
-      assets: assets.map((asset) => structuredClone(asset)),
+      assets: recoveredAssets.assets.map((asset) => structuredClone(asset)),
+      categories,
+      devices,
     },
     wasRepaired,
     wasMigrated,
@@ -312,47 +348,72 @@ function recoverSeedRevision(
 function appendMissingPassiveSeeds(
   devices: readonly LibraryDevice[],
   fromRevision: number,
+  categories: readonly LibraryCategory[],
 ): LibraryDevice[] {
   const ids = new Set(devices.map((device) => device.libraryId));
+  const categoryIds = new Set(categories.map((category) => category.id));
   const additions = SEED_LIBRARY.filter(
     (device) =>
       PASSIVE_LIBRARY_IDS.has(device.libraryId) &&
       (PASSIVE_SEED_REVISION_BY_ID.get(device.libraryId) ?? LIBRARY_SEED_REVISION) > fromRevision &&
-      !ids.has(device.libraryId),
+      !ids.has(device.libraryId) && categoryIds.has(device.template.categoryId),
   );
   return [...devices, ...structuredClone(additions)];
+}
+
+function recoverPersistedLibraryV2(
+  value: unknown,
+): { catalog: LibraryCatalog; wasRepaired: boolean } | null {
+  if (!isRecord(value) || value['version'] !== 2) return null;
+  if (!Array.isArray(value['devices']) || !isRecord(value['assets'])) return null;
+  const recoveredAssets = recoverAssets(value['assets']);
+  if (!recoveredAssets.ok) return null;
+  const availableHashes = new Set(recoveredAssets.assets.map((asset) => asset.hash));
+  const recovered = recoverLegacyDevices(value['devices'], availableHashes);
+  const migrated = migrateLegacyDeviceCategories(recovered.devices);
+  const categories = ensurePassiveSeedCategories(migrated.categories);
+  // v2 had no authoritative seed revision. Treat its absence as revision zero
+  // so upgrading it cannot claim revision 3 before the incremental seeds exist.
+  const seedRevision = recoverSeedRevision(value['seedRevision'] ?? 0, migrated.devices);
+  return {
+    catalog: {
+      categories,
+      devices: appendMissingPassiveSeeds(migrated.devices, seedRevision.revision, categories),
+      assets: recoveredAssets.assets.map((asset) => structuredClone(asset)),
+    },
+    wasRepaired: recovered.wasRepaired || recoveredAssets.wasRepaired || seedRevision.wasRepaired,
+  };
 }
 
 function recoverLegacyLibrary(
   value: unknown,
 ): { catalog: LibraryCatalog; wasRepaired: boolean } | null {
   if (!isRecord(value) || value['version'] !== 1 || !Array.isArray(value['devices'])) return null;
-  const recovered = recoverDevices(value['devices'], new Set());
+  const recovered = recoverLegacyDevices(value['devices'], new Set());
+  const migrated = migrateLegacyDeviceCategories(recovered.devices);
+  const categories = ensurePassiveSeedCategories(migrated.categories);
   return {
-    catalog: { devices: recovered.devices, assets: [] },
+    catalog: {
+      categories,
+      devices: appendMissingPassiveSeeds(migrated.devices, 0, categories),
+      assets: [],
+    },
     wasRepaired: recovered.wasRepaired,
   };
 }
 
 function cleanSeedLoadState(): LibraryCatalogLoadState {
-  return {
-    catalog: seedCatalog(),
-    needsUpgrade: false,
-    needsRepair: false,
-  };
+  return { catalog: seedCatalog(), needsUpgrade: false, needsRepair: false };
 }
 
 function invalidSeedLoadState(): LibraryCatalogLoadState {
-  return {
-    catalog: seedCatalog(),
-    needsUpgrade: false,
-    needsRepair: true,
-  };
+  return { catalog: seedCatalog(), needsUpgrade: false, needsRepair: true };
 }
 
 function recoverDevices(
   candidates: readonly unknown[],
   availableHashes: ReadonlySet<string>,
+  categories: readonly LibraryCategory[],
 ): { devices: LibraryDevice[]; wasRepaired: boolean; wasMigrated: boolean } {
   if (candidates.length === 0) {
     return { devices: [], wasRepaired: false, wasMigrated: false };
@@ -372,6 +433,14 @@ function recoverDevices(
       device.template = upgradedTemplate;
       wasMigrated = true;
     }
+    if (!categories.some(({ id }) => id === device.template.categoryId)) {
+      device.template.categoryId = UNCATEGORIZED_CATEGORY_ID;
+      wasRepaired = true;
+    }
+    if (device.template.category !== undefined) {
+      delete device.template.category;
+      wasRepaired = true;
+    }
     const footprint = device.template.footprint;
     const artwork = footprint?.artwork;
     if (footprint && artwork && !availableHashes.has(artwork.assetHash)) {
@@ -385,7 +454,20 @@ function recoverDevices(
     seenIds.add(device.libraryId);
   }
   if (devices.length === 0) {
-    return { devices: cloneSeedLibrary(), wasRepaired: true, wasMigrated };
+    const categoryIds = new Set(categories.map(({ id }) => id));
+    return {
+      devices: cloneSeedLibrary().map((device) => ({
+        ...device,
+        template: {
+          ...device.template,
+          categoryId: categoryIds.has(device.template.categoryId)
+            ? device.template.categoryId
+            : UNCATEGORIZED_CATEGORY_ID,
+        },
+      })),
+      wasRepaired: true,
+      wasMigrated,
+    };
   }
   return { devices, wasRepaired, wasMigrated };
 }
@@ -426,6 +508,125 @@ function upgradeBundledPhysicalTemplate(device: LibraryDevice): DeviceNodeData |
   };
 }
 
+function recoverLegacyDevices(
+  candidates: readonly unknown[],
+  availableHashes: ReadonlySet<string>,
+): { devices: { libraryId: string; template: DeviceNodeData }[]; wasRepaired: boolean } {
+  if (candidates.length === 0) return { devices: [], wasRepaired: false };
+  const devices: { libraryId: string; template: DeviceNodeData }[] = [];
+  const seenIds = new Set<string>();
+  let wasRepaired = false;
+  for (const candidate of candidates) {
+    if (!isLegacyLibraryDevice(candidate) || seenIds.has(candidate.libraryId)) {
+      wasRepaired = true;
+      continue;
+    }
+    const device = structuredClone(candidate);
+    const footprint = device.template.footprint;
+    const artwork = footprint?.artwork;
+    if (footprint && artwork && !availableHashes.has(artwork.assetHash)) {
+      device.template = { ...device.template, footprint: { ...footprint, artwork: undefined } };
+      wasRepaired = true;
+    }
+    devices.push(device);
+    seenIds.add(device.libraryId);
+  }
+  if (devices.length === 0) {
+    return {
+      devices: structuredClone(SEED_LIBRARY).map((device) => ({
+        ...device,
+        template: { ...device.template, category: device.template.categoryId },
+      })),
+      wasRepaired: true,
+    };
+  }
+  return { devices, wasRepaired };
+}
+
+function recoverAssets(
+  value: Record<string, unknown>,
+): { ok: true; assets: RasterArtworkAsset[]; wasRepaired: boolean } | { ok: false } {
+  const rawAssets = Object.entries(value);
+  if (rawAssets.length > MAX_LIBRARY_ASSETS) return { ok: false };
+  const assets: RasterArtworkAsset[] = [];
+  let wasRepaired = false;
+  for (const [hash, rawAsset] of rawAssets) {
+    const asset = recoverAsset(hash, rawAsset);
+    if (asset) assets.push(asset);
+    else wasRepaired = true;
+  }
+  return { ok: true, assets, wasRepaired };
+}
+
+function recoverCategories(candidates: readonly unknown[]): {
+  categories: LibraryCategory[];
+  wasRepaired: boolean;
+} {
+  if (candidates.length > MAX_LIBRARY_CATEGORIES) {
+    return {
+      categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
+      wasRepaired: true,
+    };
+  }
+  const categories: LibraryCategory[] = [];
+  const seenIds = new Set<string>();
+  const seenNames = new Set<string>();
+  let wasRepaired = false;
+  for (const candidate of candidates) {
+    if (!isCanonicalLibraryCategory(candidate)) {
+      wasRepaired = true;
+      continue;
+    }
+    const normalizedName = normalizeCategoryName(candidate.name);
+    if (candidate.id === UNCATEGORIZED_CATEGORY_ID) {
+      if (
+        candidate.name !== UNCATEGORIZED_CATEGORY.name ||
+        candidate.prefix !== UNCATEGORIZED_CATEGORY.prefix ||
+        seenIds.has(candidate.id) ||
+        seenNames.has(normalizedName)
+      ) {
+        wasRepaired = true;
+        continue;
+      }
+    } else if (normalizedName === normalizeCategoryName(UNCATEGORIZED_CATEGORY.name)) {
+      wasRepaired = true;
+      continue;
+    }
+    if (seenIds.has(candidate.id) || seenNames.has(normalizedName)) {
+      wasRepaired = true;
+      continue;
+    }
+    const category = structuredClone(candidate);
+    categories.push(category);
+    seenIds.add(category.id);
+    seenNames.add(normalizedName);
+  }
+  const fallbackIndex = categories.findIndex(({ id }) => id === UNCATEGORIZED_CATEGORY_ID);
+  if (fallbackIndex < 0) {
+    categories.unshift(structuredClone(UNCATEGORIZED_CATEGORY));
+    wasRepaired = true;
+  } else if (
+    categories[fallbackIndex]?.name !== UNCATEGORIZED_CATEGORY.name ||
+    categories[fallbackIndex]?.prefix !== UNCATEGORIZED_CATEGORY.prefix
+  ) {
+    categories[fallbackIndex] = structuredClone(UNCATEGORIZED_CATEGORY);
+    wasRepaired = true;
+  }
+  return { categories, wasRepaired };
+}
+
+function ensurePassiveSeedCategories(categories: readonly LibraryCategory[]): LibraryCategory[] {
+  const ids = new Set(categories.map((category) => category.id));
+  const names = new Set(categories.map((category) => normalizeCategoryName(category.name)));
+  const additions = SEED_LIBRARY_CATEGORIES.filter(
+    (category) =>
+      ['buzzer', 'resistor', 'capacitor'].includes(category.id) &&
+      !ids.has(category.id) &&
+      !names.has(normalizeCategoryName(category.name)),
+  );
+  return additions.length ? [...categories, ...structuredClone(additions)] : [...categories];
+}
+
 function recoverAsset(hash: string, value: unknown): RasterArtworkAsset | null {
   if (!/^[a-f0-9]{64}$/.test(hash) || !isRecord(value)) return null;
   const mimeType = value['mimeType'];
@@ -456,6 +657,20 @@ function recoverAsset(hash: string, value: unknown): RasterArtworkAsset | null {
 }
 
 function isLibraryDevice(value: unknown): value is LibraryDevice {
+  if (!isRecord(value)) return false;
+  const template = value['template'];
+  return (
+    typeof value['libraryId'] === 'string' &&
+    value['libraryId'].length > 0 &&
+    isDeviceTemplate(template) &&
+    typeof template.categoryId === 'string' &&
+    template.categoryId.length > 0
+  );
+}
+
+function isLegacyLibraryDevice(
+  value: unknown,
+): value is { libraryId: string; template: DeviceNodeData } {
   return (
     isRecord(value) &&
     typeof value['libraryId'] === 'string' &&
@@ -482,6 +697,7 @@ function isDeviceTemplate(value: unknown): value is DeviceNodeData {
     return false;
   }
   return (
+    optionalString(value['categoryId']) &&
     optionalString(value['category']) &&
     optionalString(value['location']) &&
     optionalString(value['notes']) &&
@@ -732,4 +948,8 @@ function cellKey(cell: FootprintCell): string {
 }
 
 const cloneSeedLibrary = (): LibraryDevice[] => structuredClone(SEED_LIBRARY);
-const seedCatalog = (): LibraryCatalog => ({ devices: cloneSeedLibrary(), assets: [] });
+const seedCatalog = (): LibraryCatalog => ({
+  categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
+  devices: cloneSeedLibrary(),
+  assets: [],
+});

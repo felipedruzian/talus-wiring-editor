@@ -4,9 +4,10 @@
 
 import { createHash } from 'node:crypto';
 
-export const LIBRARY_CATALOG_VERSION = 2;
+export const LIBRARY_CATALOG_VERSION = 3;
 export const LIBRARY_SEED_REVISION = 3;
 export const MAX_LIBRARY_DEVICES = 4096;
+export const MAX_LIBRARY_CATEGORIES = 512;
 export const MAX_LIBRARY_ASSETS = 128;
 export const MAX_LIBRARY_ASSET_BYTES = 256 * 1024;
 export const MAX_LIBRARY_DECODED_BYTES = 16 * 1024 * 1024;
@@ -28,6 +29,30 @@ const FOOTPRINT_PAINTS = new Set([
   'polarity',
 ]);
 const PHYSICAL_POINT_EPSILON = 1e-6;
+const CATEGORY_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/;
+const CATEGORY_PREFIX_PATTERN = /^[A-Z][A-Z0-9]{0,11}$/;
+const UNCATEGORIZED_CATEGORY = {
+  id: 'uncategorized',
+  name: 'Não categorizado',
+  prefix: 'DEV',
+};
+const LEGACY_CATEGORIES = [
+  ['microphone', 'Microfones', 'MIC'],
+  ['wireless-mic', 'Microfones sem fio', 'WMIC'],
+  ['media-player', 'Reprodutores de mídia', 'MEDIA'],
+  ['mixer', 'Mesas de som', 'MIXER'],
+  ['amplifier', 'Amplificadores', 'AMP'],
+  ['loudspeaker', 'Alto-falantes', 'SPK'],
+  ['display', 'Telas', 'DISPLAY'],
+  ['camera', 'Câmeras', 'CAM'],
+  ['switcher', 'Comutadores', 'SW'],
+  ['microcontroller', 'Microcontroladores', 'MCU'],
+  ['single-board-computer', 'Computadores de placa única', 'SBC'],
+  ['imu', 'Unidades de medição inercial', 'IMU'],
+  ['motor-driver', 'Drivers de motor', 'DRV'],
+  ['voltage-regulator', 'Reguladores de tensão', 'REG'],
+  ['hall-sensor', 'Sensores Hall', 'HALL'],
+].map(([id, name, prefix]) => ({ id, name, prefix }));
 
 export class LibraryCatalogValidationError extends Error {
   constructor(message) {
@@ -51,6 +76,12 @@ export function parseLibraryCatalog(raw) {
     }
   }
 
+  const categories = expectArray(root.categories, 'library.categories');
+  if (categories.length > MAX_LIBRARY_CATEGORIES) {
+    fail(`library.categories: accepts at most ${MAX_LIBRARY_CATEGORIES} entries`);
+  }
+  const categoryIds = validateCategories(categories);
+
   const devices = expectArray(root.devices, 'library.devices');
   if (devices.length > MAX_LIBRARY_DEVICES) {
     fail(`library.devices: accepts at most ${MAX_LIBRARY_DEVICES} entries`);
@@ -64,7 +95,13 @@ export function parseLibraryCatalog(raw) {
   const seenDeviceIds = new Set();
   const referencedAssets = new Set();
   devices.forEach((device, index) => {
-    validateLibraryDevice(device, `library.devices[${index}]`, seenDeviceIds, referencedAssets);
+    validateLibraryDevice(
+      device,
+      `library.devices[${index}]`,
+      seenDeviceIds,
+      referencedAssets,
+      categoryIds,
+    );
   });
 
   let decodedBytes = 0;
@@ -87,12 +124,93 @@ export function parseLibraryCatalog(raw) {
   return {
     version: LIBRARY_CATALOG_VERSION,
     ...(seedRevision === undefined ? {} : { seedRevision }),
+    categories: structuredClone(categories),
     devices: structuredClone(devices),
     assets: validatedAssets,
   };
 }
 
-function validateLibraryDevice(value, label, seenIds, referencedAssets) {
+/** Upgrade an on-disk v2 catalog without trusting or mutating the input. */
+export function migrateLibraryCatalogV2(raw) {
+  rejectDangerousKeys(raw, 'library');
+  const root = expectRecord(raw, 'library');
+  if (root.version !== 2) fail('library.version: expected 2 for migration');
+  const sourceDevices = expectArray(root.devices, 'library.devices');
+  const assets = expectRecord(root.assets, 'library.assets');
+  const categories = structuredClone([UNCATEGORIZED_CATEGORY, ...LEGACY_CATEGORIES]);
+  const byLegacyId = new Map(
+    categories.map((category) => [normalizeCategoryName(category.id), category]),
+  );
+  const byName = new Map(
+    categories.map((category) => [normalizeCategoryName(category.name), category]),
+  );
+  const devices = sourceDevices.map((value, index) => {
+    const label = `library.devices[${index}]`;
+    const device = expectRecord(value, label);
+    const template = expectRecord(device.template, `${label}.template`);
+    const legacyValue = template.category;
+    if (legacyValue !== undefined && typeof legacyValue !== 'string') {
+      fail(`${label}.template.category: invalid string`);
+    }
+    const name = collapseWhitespace(legacyValue ?? '');
+    const normalizedName = normalizeCategoryName(name);
+    let category = normalizedName
+      ? (byLegacyId.get(normalizedName) ?? byName.get(normalizedName))
+      : UNCATEGORIZED_CATEGORY;
+    if (!category) {
+      category = {
+        id: deterministicLegacyCategoryId(normalizedName),
+        name,
+        prefix: 'DEV',
+      };
+      categories.push(category);
+      byName.set(normalizedName, category);
+    }
+    const { category: _legacyCategory, categoryId: _legacyCategoryId, ...rest } = template;
+    return { ...device, template: { ...rest, categoryId: category.id } };
+  });
+  return parseLibraryCatalog({
+    version: LIBRARY_CATALOG_VERSION,
+    ...(root.seedRevision === undefined ? {} : { seedRevision: root.seedRevision }),
+    categories,
+    devices,
+    assets,
+  });
+}
+
+function validateCategories(values) {
+  const seenIds = new Set();
+  const seenNames = new Set();
+  for (const [index, value] of values.entries()) {
+    const label = `library.categories[${index}]`;
+    const category = expectRecord(value, label);
+    const id = expectString(category.id, `${label}.id`, 128, false);
+    if (!CATEGORY_ID_PATTERN.test(id)) fail(`${label}.id: invalid category ID`);
+    if (seenIds.has(id)) fail(`${label}.id: duplicate ${JSON.stringify(id)}`);
+    const name = expectString(category.name, `${label}.name`, 65_536, false);
+    if (name !== collapseWhitespace(name)) fail(`${label}.name: whitespace is not canonical`);
+    const normalizedName = normalizeCategoryName(name);
+    if (!normalizedName) fail(`${label}.name: must not be empty`);
+    if (seenNames.has(normalizedName)) {
+      fail(`${label}.name: duplicate normalized name ${JSON.stringify(name)}`);
+    }
+    const prefix = expectString(category.prefix, `${label}.prefix`, 12, false);
+    if (!CATEGORY_PREFIX_PATTERN.test(prefix)) fail(`${label}.prefix: invalid device ID prefix`);
+    seenIds.add(id);
+    seenNames.add(normalizedName);
+  }
+  const fallback = values.find((category) => category?.id === UNCATEGORIZED_CATEGORY.id);
+  if (
+    !fallback ||
+    fallback.name !== UNCATEGORIZED_CATEGORY.name ||
+    fallback.prefix !== UNCATEGORIZED_CATEGORY.prefix
+  ) {
+    fail('library.categories: fixed uncategorized category is missing or altered');
+  }
+  return seenIds;
+}
+
+function validateLibraryDevice(value, label, seenIds, referencedAssets, categoryIds) {
   const device = expectRecord(value, label);
   const libraryId = expectString(device.libraryId, `${label}.libraryId`, 256, false);
   if (seenIds.has(libraryId)) fail(`${label}.libraryId: duplicate ${JSON.stringify(libraryId)}`);
@@ -103,7 +221,14 @@ function validateLibraryDevice(value, label, seenIds, referencedAssets) {
   for (const key of ['deviceId', 'manufacturer', 'model']) {
     expectString(template[key], `${label}.template.${key}`, 16_384, true);
   }
-  for (const key of ['category', 'location', 'notes', 'boardId']) {
+  if (template.category !== undefined) {
+    fail(`${label}.template.category: legacy field is not accepted in catalog v3`);
+  }
+  const categoryId = expectString(template.categoryId, `${label}.template.categoryId`, 128, false);
+  if (!categoryIds.has(categoryId)) {
+    fail(`${label}.template.categoryId: category ${JSON.stringify(categoryId)} does not exist`);
+  }
+  for (const key of ['location', 'notes', 'boardId']) {
     optionalString(template[key], `${label}.template.${key}`, 65_536);
   }
   if (template.visualPlane !== undefined) {
@@ -457,6 +582,33 @@ function optionalNonNegativeFinite(value, label) {
   }
 }
 
+function collapseWhitespace(value) {
+  return value.trim().replace(/\s+/gu, ' ');
+}
+
+function normalizeCategoryName(value) {
+  return collapseWhitespace(value)
+    .normalize('NFD')
+    .replace(/\p{M}+/gu, '')
+    .toLocaleLowerCase('pt-BR');
+}
+
+function deterministicLegacyCategoryId(normalizedName) {
+  const slug = normalizedName
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 72);
+  return `legacy-${slug || 'category'}-${fnv1a(normalizedName)}`;
+}
+
+function fnv1a(value) {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index++) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+}
 function expectSafeInteger(value, label) {
   if (typeof value !== 'number' || !Number.isSafeInteger(value)) fail(`${label}: expected integer`);
   return value;

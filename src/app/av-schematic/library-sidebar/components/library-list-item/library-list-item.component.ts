@@ -48,8 +48,7 @@ export class LibraryListItemComponent {
   });
 
   protected readonly categoryLabel = computed(() => {
-    const c = this.device().template.category?.trim();
-    return c ? deviceCategoryLabel(c) : '';
+    return this.libraryService.category(this.device().template.categoryId).name;
   });
 
   protected onOpenDetail(): void {

@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { sha256HexSync } from './artwork-import';
 import { loadSharedLibrary, saveSharedLibrary } from './library-api';
-import { LIBRARY_SEED_REVISION, type PersistedLibraryV2 } from './library-storage';
+import { LIBRARY_SEED_REVISION, type PersistedLibraryV3 } from './library-storage';
 import { createBlankTemplate } from './seed-library';
 
-const catalog: PersistedLibraryV2 = {
-  version: 2,
+const catalog: PersistedLibraryV3 = {
+  version: 3,
   seedRevision: LIBRARY_SEED_REVISION,
+  categories: [{ id: 'uncategorized', name: 'Não categorizado', prefix: 'DEV' }],
   devices: [],
   assets: {},
 };

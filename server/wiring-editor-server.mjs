@@ -38,7 +38,11 @@ import {
   CanonicalProjectValidationError,
   parseCanonicalProject,
 } from './canonical-project-validate.mjs';
-import { LibraryCatalogValidationError, parseLibraryCatalog } from './library-catalog-validate.mjs';
+import {
+  LibraryCatalogValidationError,
+  migrateLibraryCatalogV2,
+  parseLibraryCatalog,
+} from './library-catalog-validate.mjs';
 
 const REPO_ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 
@@ -86,7 +90,13 @@ const PROJECT_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/;
 const MAX_BODY_BYTES = 8 * 1024 * 1024; // Includes up to 4 MiB of Base64-encoded project artwork.
 const MAX_LIBRARY_BODY_BYTES = 24 * 1024 * 1024;
 const MUTATING_METHODS = new Set(['PUT', 'POST', 'PATCH', 'DELETE']);
-const EMPTY_LIBRARY_BODY = JSON.stringify({ version: 2, devices: [], assets: {} });
+const EMPTY_LIBRARY_BODY = JSON.stringify({
+  version: 3,
+  seedRevision: 3,
+  categories: [{ id: 'uncategorized', name: 'Não categorizado', prefix: 'DEV' }],
+  devices: [],
+  assets: {},
+});
 let libraryMutationTail = Promise.resolve();
 
 const CONTENT_TYPES = {
@@ -406,7 +416,12 @@ async function readLibraryState(cfg) {
   }
 
   try {
-    parseLibraryCatalog(JSON.parse(body));
+    const parsed = JSON.parse(body);
+    if (parsed?.version === 2) {
+      body = JSON.stringify(migrateLibraryCatalogV2(parsed));
+    } else {
+      parseLibraryCatalog(parsed);
+    }
   } catch (err) {
     console.error('[wiring-editor-server] invalid persisted library catalog:', err);
     throw new HttpError(500, 'invalid_library_state', 'A biblioteca central está corrompida.');

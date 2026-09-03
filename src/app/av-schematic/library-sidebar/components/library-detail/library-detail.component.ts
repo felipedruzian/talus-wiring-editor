@@ -38,7 +38,7 @@ import {
   providers: [
     LibraryDraftService,
     DeviceFormService,
-    { provide: DEVICE_FORM_HIDDEN_FIELDS, useValue: ['deviceId', 'location'] },
+    { provide: DEVICE_FORM_HIDDEN_FIELDS, useValue: ['deviceId', 'location', 'category'] },
     {
       provide: ON_DEVICE_FIELD_CHANGE,
       useFactory: () => {
@@ -60,6 +60,7 @@ export class LibraryDetailComponent implements AfterViewInit {
   protected readonly mode = this.libraryService.editingMode;
   protected readonly storageError = this.libraryService.storageError;
   protected readonly isPersisting = this.libraryService.isPersisting;
+  protected readonly categories = this.libraryService.categories;
   protected readonly draft = this.draftService.draft;
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
   private readonly closeButton = viewChild<ElementRef<HTMLButtonElement>>('closeButton');
@@ -119,6 +120,11 @@ export class LibraryDetailComponent implements AfterViewInit {
       this.draftService.draft(),
       this.draftService.pendingAssets(),
     );
+  }
+
+  protected onCategoryChange(event: Event): void {
+    const categoryId = (event.target as HTMLSelectElement).value;
+    this.draftService.update((draft) => ({ ...draft, categoryId }));
   }
 
   protected onBack(): void {

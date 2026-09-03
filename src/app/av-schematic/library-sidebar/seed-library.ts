@@ -12,10 +12,13 @@ import {
   TB6612FNG_FOOTPRINT,
   type Footprint,
 } from '../diagram/model/footprint';
+import { UNCATEGORIZED_CATEGORY_ID } from './library-category';
+
+export type LibraryDeviceTemplate = DeviceNodeData & { categoryId: string };
 
 export interface LibraryDevice {
   libraryId: string;
-  template: DeviceNodeData;
+  template: LibraryDeviceTemplate;
 }
 
 const port = (
@@ -39,12 +42,12 @@ const physicalDefinition = (footprint: Footprint) => ({
   footprintPitch: 20,
 });
 
-export const createBlankTemplate = (): DeviceNodeData => ({
+export const createBlankTemplate = (): LibraryDeviceTemplate => ({
   type: 'device',
   deviceId: '',
   manufacturer: '',
   model: '',
-  category: '',
+  categoryId: UNCATEGORIZED_CATEGORY_ID,
   location: '',
   ports: [],
 });
@@ -61,7 +64,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
       deviceId: '',
       manufacturer: 'Arduino',
       model: 'Nano',
-      category: 'microcontroller',
+      categoryId: 'microcontroller',
       location: '',
       ...physicalDefinition(ARDUINO_NANO_FOOTPRINT),
       ports: [
@@ -105,7 +108,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
       deviceId: '',
       manufacturer: 'Raspberry Pi',
       model: '4 Model B',
-      category: 'single-board-computer',
+      categoryId: 'single-board-computer',
       location: '',
       ports: [
         port('p1-3v3', 'P1 / 3V3', 'input', 'Power'),
@@ -126,7 +129,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
       deviceId: '',
       manufacturer: 'InvenSense / Generic',
       model: 'MPU6050 / GY-521',
-      category: 'imu',
+      categoryId: 'imu',
       location: '',
       notes: 'Dimensões e pinagem provisórias; confirme a variante física antes da montagem.',
       ...physicalDefinition(GY_521_MPU6050_FOOTPRINT),
@@ -149,7 +152,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
       deviceId: '',
       manufacturer: 'Toshiba / Generic',
       model: 'TB6612FNG',
-      category: 'motor-driver',
+      categoryId: 'motor-driver',
       location: '',
       notes: 'Dimensões e pinagem provisórias; confirme a variante física antes da montagem.',
       ...physicalDefinition(TB6612FNG_FOOTPRINT),
@@ -180,7 +183,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
       deviceId: '',
       manufacturer: 'Generic',
       model: 'Buzzer ativo 12 mm',
-      category: 'buzzer',
+      categoryId: 'buzzer',
       location: '',
       notes: 'Componente polarizado; preserve os terminais + e - durante a montagem.',
       ...physicalDefinition(BUZZER_ACTIVE_12MM_FOOTPRINT),
@@ -194,7 +197,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
       deviceId: '',
       manufacturer: 'Generic',
       model: 'Resistor axial 1 kOhm',
-      category: 'resistor',
+      categoryId: 'resistor',
       location: '',
       notes: 'Vão ajustável entre 4 e 10 passos de pitch; corpo e bandas permanecem rígidos.',
       ...physicalDefinition(RESISTOR_1K_FOOTPRINT),
@@ -208,7 +211,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
       deviceId: '',
       manufacturer: 'Generic',
       model: 'Resistor axial 1,8 kOhm',
-      category: 'resistor',
+      categoryId: 'resistor',
       location: '',
       notes: 'Vão ajustável entre 4 e 10 passos de pitch; corpo e bandas permanecem rígidos.',
       ...physicalDefinition(RESISTOR_1K8_FOOTPRINT),
@@ -222,7 +225,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
       deviceId: '',
       manufacturer: 'Generic',
       model: 'Capacitor eletrolítico 470 uF / 25 V',
-      category: 'capacitor',
+      categoryId: 'capacitor',
       location: '',
       notes: 'Passo fixo de 2 pitches; componente polarizado.',
       ...physicalDefinition(CAP_470U_25V_FOOTPRINT),
@@ -236,7 +239,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
       deviceId: '',
       manufacturer: 'Generic',
       model: 'Capacitor eletrolítico 470 uF / 16 V',
-      category: 'capacitor',
+      categoryId: 'capacitor',
       location: '',
       notes: 'Passo fixo de 2 pitches; componente polarizado.',
       ...physicalDefinition(CAP_470U_16V_FOOTPRINT),
@@ -250,7 +253,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
       deviceId: '',
       manufacturer: 'Generic',
       model: 'Capacitor cerâmico 100 nF',
-      category: 'capacitor',
+      categoryId: 'capacitor',
       location: '',
       notes: 'Passo fixo de 2 pitches; componente não polarizado.',
       ...physicalDefinition(CAP_100N_FOOTPRINT),
@@ -264,7 +267,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
       deviceId: '',
       manufacturer: 'Texas Instruments / Generic',
       model: 'LM2596S adjustable buck',
-      category: 'voltage-regulator',
+      categoryId: 'voltage-regulator',
       location: '',
       ports: [
         port('in-plus', 'IN+', 'input', 'Power'),
@@ -281,7 +284,7 @@ export const SEED_LIBRARY: LibraryDevice[] = [
       deviceId: '',
       manufacturer: 'Generic',
       model: 'A3144 / LM393 (4 vias — provisório)',
-      category: 'hall-sensor',
+      categoryId: 'hall-sensor',
       location: '',
       notes: 'Variante provisória de quatro vias; confirmar a serigrafia antes da montagem.',
       ports: [
