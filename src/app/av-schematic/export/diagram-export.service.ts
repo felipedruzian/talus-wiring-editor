@@ -1,4 +1,4 @@
-import { ElementRef, Injectable, computed, inject, signal } from '@angular/core';
+import { ElementRef, Injectable, InjectionToken, computed, inject, signal } from '@angular/core';
 import { toCanvas } from 'html-to-image';
 import { NgDiagramModelService } from 'ng-diagram';
 import { buildAvDxfConfig } from './dxf-av-schematic/av-dxf-config';
@@ -10,6 +10,11 @@ const EXPORT_PADDING = 50;
 const PNG_PIXEL_RATIO = 2;
 const SVG_PIXEL_RATIO = 1;
 const DIAGRAM_CANVAS_SELECTOR = 'ng-diagram-canvas';
+
+export const DIAGRAM_CANVAS_RENDERER = new InjectionToken<typeof toCanvas>(
+  'DIAGRAM_CANVAS_RENDERER',
+  { factory: () => toCanvas },
+);
 
 /**
  * Coordinates exporting the diagram to PNG and DXF.
@@ -28,6 +33,7 @@ const DIAGRAM_CANVAS_SELECTOR = 'ng-diagram-canvas';
 @Injectable()
 export class DiagramExportService {
   private readonly modelService = inject(NgDiagramModelService);
+  private readonly renderCanvas = inject(DIAGRAM_CANVAS_RENDERER);
   private readonly diagramElement = signal<ElementRef<HTMLElement> | null>(null);
 
   readonly canExport = computed(
@@ -51,7 +57,7 @@ export class DiagramExportService {
 
     const backgroundColor = this.resolveBackgroundColor(canvasEl);
 
-    const canvas = await toCanvas(canvasEl, {
+    const canvas = await this.renderCanvas(canvasEl, {
       backgroundColor,
       width: region.width,
       height: region.height,
@@ -72,7 +78,7 @@ export class DiagramExportService {
     if (!region) return;
     assertRasterExportSize(region, SVG_PIXEL_RATIO);
 
-    const canvas = await toCanvas(canvasEl, {
+    const canvas = await this.renderCanvas(canvasEl, {
       backgroundColor: this.resolveBackgroundColor(canvasEl),
       width: region.width,
       height: region.height,

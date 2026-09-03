@@ -6,12 +6,10 @@ import {
   ARDUINO_NANO_ARTWORK,
   RESISTOR_AXIAL_1K_ARTWORK,
 } from '../diagram/artwork/trusted-component-artwork';
-import { DiagramExportService } from './diagram-export.service';
+import { DIAGRAM_CANVAS_RENDERER, DiagramExportService } from './diagram-export.service';
 import { MAX_SVG_EXPORT_DIMENSION } from './raster-svg';
 
-const { toCanvas } = vi.hoisted(() => ({ toCanvas: vi.fn() }));
-
-vi.mock('html-to-image', () => ({ toCanvas }));
+const toCanvas = vi.fn();
 
 describe('DiagramExportService SVG preflight', () => {
   let service: DiagramExportService;
@@ -29,6 +27,7 @@ describe('DiagramExportService SVG preflight', () => {
     TestBed.configureTestingModule({
       providers: [
         DiagramExportService,
+        { provide: DIAGRAM_CANVAS_RENDERER, useValue: toCanvas },
         {
           provide: NgDiagramModelService,
           useValue: {
