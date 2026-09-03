@@ -1,0 +1,298 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="-1.5 -0.5 17 7"
+  width="17"
+  height="7"
+  fill="none"
+  role="img"
+  aria-labelledby="nano-title nano-description"
+  preserveAspectRatio="xMidYMid meet"
+  data-artwork-id="arduino-nano-classic"
+  data-asset-revision="2026-09-03"
+  data-asset-license="MIT"
+  data-pitch-unit="1"
+>
+  <title id="nano-title">Arduino Nano Classic em escala de pitch</title>
+  <desc id="nano-description">
+    Ilustração original sem logotipo, com placa de 17 por 7 unidades e dois headers de 15 pinos
+    separados por 6 unidades.
+  </desc>
+
+  <rect x="-1.45" y="-0.45" width="16.9" height="6.9" rx="0.32" fill="#1769aa" />
+  <rect
+    x="-1.45"
+    y="-0.45"
+    width="16.9"
+    height="6.9"
+    rx="0.32"
+    stroke="#0b3155"
+    stroke-width="0.12"
+  />
+  <path d="M-1.18 1.3H15.18M-1.18 4.7H15.18" stroke="#68b9e8" stroke-width="0.06" />
+
+  <rect x="-0.38" y="-0.34" width="14.76" height="0.68" rx="0.1" fill="#17232d" />
+  <rect x="-0.38" y="5.66" width="14.76" height="0.68" rx="0.1" fill="#17232d" />
+
+  <g aria-label="Header superior">
+    <g data-pin-id="d13" data-pin-x="0" data-pin-y="0">
+      <rect x="-0.3" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="0" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="3v3" data-pin-x="1" data-pin-y="0">
+      <rect x="0.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="1" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="aref" data-pin-x="2" data-pin-y="0">
+      <rect x="1.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="2" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="a0" data-pin-x="3" data-pin-y="0">
+      <rect x="2.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="3" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="a1" data-pin-x="4" data-pin-y="0">
+      <rect x="3.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="4" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="a2" data-pin-x="5" data-pin-y="0">
+      <rect x="4.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="5" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="a3" data-pin-x="6" data-pin-y="0">
+      <rect x="5.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="6" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="a4" data-pin-x="7" data-pin-y="0">
+      <rect x="6.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="7" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="a5" data-pin-x="8" data-pin-y="0">
+      <rect x="7.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="8" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="a6" data-pin-x="9" data-pin-y="0">
+      <rect x="8.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="9" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="a7" data-pin-x="10" data-pin-y="0">
+      <rect x="9.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="10" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="5v" data-pin-x="11" data-pin-y="0">
+      <rect x="10.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="11" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="rst" data-pin-x="12" data-pin-y="0">
+      <rect x="11.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="12" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="gnd" data-pin-x="13" data-pin-y="0">
+      <rect x="12.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="13" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="vin" data-pin-x="14" data-pin-y="0">
+      <rect x="13.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="14" cy="0" r="0.16" fill="#17232d" />
+    </g>
+  </g>
+
+  <g aria-label="Header inferior">
+    <g data-pin-id="d12" data-pin-x="0" data-pin-y="6">
+      <rect x="-0.3" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="0" cy="6" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="d11" data-pin-x="1" data-pin-y="6">
+      <rect x="0.7" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="1" cy="6" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="d10" data-pin-x="2" data-pin-y="6">
+      <rect x="1.7" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="2" cy="6" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="d9" data-pin-x="3" data-pin-y="6">
+      <rect x="2.7" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="3" cy="6" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="d8" data-pin-x="4" data-pin-y="6">
+      <rect x="3.7" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="4" cy="6" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="d7" data-pin-x="5" data-pin-y="6">
+      <rect x="4.7" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="5" cy="6" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="d6" data-pin-x="6" data-pin-y="6">
+      <rect x="5.7" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="6" cy="6" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="d5" data-pin-x="7" data-pin-y="6">
+      <rect x="6.7" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="7" cy="6" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="d4" data-pin-x="8" data-pin-y="6">
+      <rect x="7.7" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="8" cy="6" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="d3" data-pin-x="9" data-pin-y="6">
+      <rect x="8.7" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="9" cy="6" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="d2" data-pin-x="10" data-pin-y="6">
+      <rect x="9.7" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="10" cy="6" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="gnd-2" data-pin-x="11" data-pin-y="6">
+      <rect x="10.7" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="11" cy="6" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="rst-2" data-pin-x="12" data-pin-y="6">
+      <rect x="11.7" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="12" cy="6" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="d0" data-pin-x="13" data-pin-y="6">
+      <rect x="12.7" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="13" cy="6" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="d1" data-pin-x="14" data-pin-y="6" data-primary="true">
+      <rect
+        x="13.66"
+        y="5.66"
+        width="0.68"
+        height="0.68"
+        rx="0.04"
+        fill="#d7b24a"
+        stroke="#ffffff"
+        stroke-width="0.09"
+      />
+      <circle cx="14" cy="6" r="0.16" fill="#17232d" />
+    </g>
+  </g>
+
+  <g fill="#e8f6ff" font-family="ui-monospace, monospace" font-size="0.24" text-anchor="middle">
+    <text x="0" y="0.78">D13</text>
+    <text x="1" y="0.78">3V3</text>
+    <text x="2" y="0.78">REF</text>
+    <text x="3" y="0.78">A0</text>
+    <text x="4" y="0.78">A1</text>
+    <text x="5" y="0.78">A2</text>
+    <text x="6" y="0.78">A3</text>
+    <text x="7" y="0.78">A4</text>
+    <text x="8" y="0.78">A5</text>
+    <text x="9" y="0.78">A6</text>
+    <text x="10" y="0.78">A7</text>
+    <text x="11" y="0.78">5V</text>
+    <text x="12" y="0.78">RST</text>
+    <text x="13" y="0.78">GND</text>
+    <text x="14" y="0.78">VIN</text>
+    <text x="0" y="5.38">D12</text>
+    <text x="1" y="5.38">D11</text>
+    <text x="2" y="5.38">D10</text>
+    <text x="3" y="5.38">D9</text>
+    <text x="4" y="5.38">D8</text>
+    <text x="5" y="5.38">D7</text>
+    <text x="6" y="5.38">D6</text>
+    <text x="7" y="5.38">D5</text>
+    <text x="8" y="5.38">D4</text>
+    <text x="9" y="5.38">D3</text>
+    <text x="10" y="5.38">D2</text>
+    <text x="11" y="5.38">GND</text>
+    <text x="12" y="5.38">RST</text>
+    <text x="13" y="5.38">D0</text>
+    <text x="14" y="5.38">D1</text>
+  </g>
+
+  <g aria-label="Componentes da placa">
+    <rect
+      x="-1.35"
+      y="1.7"
+      width="2.2"
+      height="2.6"
+      rx="0.2"
+      fill="#cbd2d8"
+      stroke="#5e6972"
+      stroke-width="0.1"
+    />
+    <rect x="-1.42" y="2.2" width="0.5" height="1.6" rx="0.08" fill="#89939a" />
+    <rect x="-1.28" y="2.48" width="0.48" height="1.04" rx="0.05" fill="#222d35" />
+
+    <rect
+      x="5.2"
+      y="1.72"
+      width="3.6"
+      height="2.56"
+      rx="0.12"
+      fill="#26333d"
+      stroke="#9fb4c2"
+      stroke-width="0.07"
+    />
+    <circle cx="5.55" cy="2.05" r="0.11" fill="#d5dce1" />
+    <g stroke="#d5dce1" stroke-width="0.07">
+      <path
+        d="M5.45 1.54V1.72M6.05 1.54V1.72M6.65 1.54V1.72M7.25 1.54V1.72M7.85 1.54V1.72M8.45 1.54V1.72"
+      />
+      <path
+        d="M5.45 4.28V4.46M6.05 4.28V4.46M6.65 4.28V4.46M7.25 4.28V4.46M7.85 4.28V4.46M8.45 4.28V4.46"
+      />
+    </g>
+
+    <rect
+      x="2.1"
+      y="2.22"
+      width="1.55"
+      height="1.56"
+      rx="0.1"
+      fill="#2d3943"
+      stroke="#9fb4c2"
+      stroke-width="0.07"
+    />
+    <circle cx="2.38" cy="2.5" r="0.1" fill="#d5dce1" />
+    <rect
+      x="3.95"
+      y="2.55"
+      width="0.85"
+      height="0.9"
+      rx="0.1"
+      fill="#d7b24a"
+      stroke="#8a6b1d"
+      stroke-width="0.07"
+    />
+    <rect
+      x="9.55"
+      y="2.35"
+      width="1.3"
+      height="1.3"
+      rx="0.12"
+      fill="#293740"
+      stroke="#9fb4c2"
+      stroke-width="0.07"
+    />
+    <rect
+      x="11.35"
+      y="2.15"
+      width="1.15"
+      height="0.72"
+      rx="0.12"
+      fill="#d7dadd"
+      stroke="#6a737a"
+      stroke-width="0.07"
+    />
+    <rect
+      x="11.35"
+      y="3.15"
+      width="1.15"
+      height="0.72"
+      rx="0.12"
+      fill="#222d35"
+      stroke="#9fb4c2"
+      stroke-width="0.07"
+    />
+    <circle cx="13.45" cy="3" r="0.42" fill="#d7dadd" stroke="#6a737a" stroke-width="0.08" />
+    <circle cx="13.45" cy="3" r="0.16" fill="#b64032" />
+  </g>
+
+  <g fill="#e8f6ff" font-family="ui-sans-serif, sans-serif" text-anchor="middle">
+    <text x="7" y="3.2" font-size="0.54" font-weight="700">NANO CLASSIC</text>
+    <text x="7" y="3.7" font-size="0.28">17 x 7 PITCH</text>
+  </g>
+  <path d="M14.62 5.48L15.16 5.48L15.16 6.02Z" fill="#ffffff" aria-label="Marcador do pino 1" />
+</svg>

@@ -1,0 +1,192 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="-0.5 -0.5 8 7"
+  width="8"
+  height="7"
+  fill="none"
+  role="img"
+  aria-labelledby="tb6612-title tb6612-description"
+  preserveAspectRatio="xMidYMid meet"
+  data-artwork-id="tb6612fng-talus"
+  data-asset-revision="2026-09-03"
+  data-asset-license="MIT"
+  data-pitch-unit="1"
+  data-provisional="true"
+>
+  <title id="tb6612-title">Módulo TB6612FNG Talus em escala de pitch</title>
+  <desc id="tb6612-description">
+    Ilustração original de uma variante genérica vermelha, com placa provisória de 8 por 7 unidades
+    e dois headers de 8 pinos separados por 6 unidades.
+  </desc>
+
+  <rect x="-0.45" y="-0.45" width="7.9" height="6.9" rx="0.28" fill="#b93636" />
+  <rect
+    x="-0.45"
+    y="-0.45"
+    width="7.9"
+    height="6.9"
+    rx="0.28"
+    stroke="#5f171b"
+    stroke-width="0.12"
+  />
+  <path d="M-0.18 1.15H7.18M-0.18 4.85H7.18" stroke="#e47970" stroke-width="0.06" />
+
+  <rect x="-0.35" y="-0.34" width="7.7" height="0.68" rx="0.1" fill="#17232d" />
+  <rect x="-0.35" y="5.66" width="7.7" height="0.68" rx="0.1" fill="#17232d" />
+
+  <g aria-label="Header de potência e motores">
+    <g data-pin-id="vm" data-pin-x="0" data-pin-y="0" data-primary="true">
+      <rect
+        x="-0.34"
+        y="-0.34"
+        width="0.68"
+        height="0.68"
+        rx="0.04"
+        fill="#d7b24a"
+        stroke="#ffffff"
+        stroke-width="0.09"
+      />
+      <circle cx="0" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="vcc" data-pin-x="1" data-pin-y="0">
+      <rect x="0.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="1" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="gnd" data-pin-x="2" data-pin-y="0">
+      <rect x="1.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="2" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="ao1" data-pin-x="3" data-pin-y="0">
+      <rect x="2.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="3" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="ao2" data-pin-x="4" data-pin-y="0">
+      <rect x="3.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="4" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="bo2" data-pin-x="5" data-pin-y="0">
+      <rect x="4.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="5" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="bo1" data-pin-x="6" data-pin-y="0">
+      <rect x="5.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="6" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="gnd-2" data-pin-x="7" data-pin-y="0">
+      <rect x="6.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="7" cy="0" r="0.16" fill="#17232d" />
+    </g>
+  </g>
+
+  <g aria-label="Header de controle">
+    <g data-pin-id="pwma" data-pin-x="0" data-pin-y="6">
+      <rect x="-0.3" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="0" cy="6" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="ain2" data-pin-x="1" data-pin-y="6">
+      <rect x="0.7" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="1" cy="6" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="ain1" data-pin-x="2" data-pin-y="6">
+      <rect x="1.7" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="2" cy="6" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="stby" data-pin-x="3" data-pin-y="6">
+      <rect x="2.7" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="3" cy="6" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="bin1" data-pin-x="4" data-pin-y="6">
+      <rect x="3.7" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="4" cy="6" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="bin2" data-pin-x="5" data-pin-y="6">
+      <rect x="4.7" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="5" cy="6" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="pwmb" data-pin-x="6" data-pin-y="6">
+      <rect x="5.7" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="6" cy="6" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="gnd-3" data-pin-x="7" data-pin-y="6">
+      <rect x="6.7" y="5.7" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="7" cy="6" r="0.16" fill="#17232d" />
+    </g>
+  </g>
+
+  <g fill="#fff0ed" font-family="ui-monospace, monospace" font-size="0.24" text-anchor="middle">
+    <text x="0" y="0.8">VM</text>
+    <text x="1" y="0.8">VCC</text>
+    <text x="2" y="0.8">GND</text>
+    <text x="3" y="0.8">AO1</text>
+    <text x="4" y="0.8">AO2</text>
+    <text x="5" y="0.8">BO2</text>
+    <text x="6" y="0.8">BO1</text>
+    <text x="7" y="0.8">GND</text>
+    <text x="0" y="5.38">PWMA</text>
+    <text x="1" y="5.38">AIN2</text>
+    <text x="2" y="5.38">AIN1</text>
+    <text x="3" y="5.38">STBY</text>
+    <text x="4" y="5.38">BIN1</text>
+    <text x="5" y="5.38">BIN2</text>
+    <text x="6" y="5.38">PWMB</text>
+    <text x="7" y="5.38">GND</text>
+  </g>
+
+  <rect
+    x="2.15"
+    y="1.65"
+    width="2.7"
+    height="2.7"
+    rx="0.14"
+    fill="#26333d"
+    stroke="#ffd7cf"
+    stroke-width="0.08"
+  />
+  <circle cx="2.48" cy="1.98" r="0.11" fill="#d5dce1" />
+  <g stroke="#d5dce1" stroke-width="0.06">
+    <path d="M2.38 1.45V1.65M2.98 1.45V1.65M3.58 1.45V1.65M4.18 1.45V1.65M4.78 1.45V1.65" />
+    <path d="M2.38 4.35V4.55M2.98 4.35V4.55M3.58 4.35V4.55M4.18 4.35V4.55M4.78 4.35V4.55" />
+    <path d="M1.95 1.88H2.15M1.95 2.48H2.15M1.95 3.08H2.15M1.95 3.68H2.15M1.95 4.18H2.15" />
+    <path d="M4.85 1.88H5.05M4.85 2.48H5.05M4.85 3.08H5.05M4.85 3.68H5.05M4.85 4.18H5.05" />
+  </g>
+  <rect
+    x="0.48"
+    y="1.65"
+    width="0.9"
+    height="0.65"
+    rx="0.08"
+    fill="#d7dadd"
+    stroke="#6a737a"
+    stroke-width="0.07"
+  />
+  <rect
+    x="0.48"
+    y="2.62"
+    width="0.9"
+    height="0.65"
+    rx="0.08"
+    fill="#d7b24a"
+    stroke="#8a6b1d"
+    stroke-width="0.07"
+  />
+  <rect
+    x="0.48"
+    y="3.59"
+    width="0.9"
+    height="0.65"
+    rx="0.08"
+    fill="#293740"
+    stroke="#9fb4c2"
+    stroke-width="0.07"
+  />
+  <circle cx="6.1" cy="2.05" r="0.46" fill="#d7dadd" stroke="#6a737a" stroke-width="0.08" />
+  <path d="M6.1 1.72V2.38M5.77 2.05H6.43" stroke="#5f171b" stroke-width="0.1" />
+  <circle cx="6.1" cy="3.62" r="0.46" fill="#d7dadd" stroke="#6a737a" stroke-width="0.08" />
+  <path d="M5.77 3.62H6.43" stroke="#5f171b" stroke-width="0.1" />
+
+  <g fill="#fff0ed" font-family="ui-sans-serif, sans-serif" text-anchor="middle">
+    <text x="3.5" y="2.85" font-size="0.38">TB6612FNG</text>
+    <text x="3.5" y="3.42" font-size="0.62" font-weight="700">DUAL MOTOR</text>
+    <text x="3.5" y="3.88" font-size="0.27">TALUS 8 x 7</text>
+  </g>
+</svg>
