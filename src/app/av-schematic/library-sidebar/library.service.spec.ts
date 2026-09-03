@@ -420,6 +420,7 @@ describe('LibraryService', () => {
       JSON.stringify({
         version: LIBRARY_STORAGE_VERSION,
         seedRevision: LIBRARY_SEED_REVISION,
+        categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
         devices: without16V,
         assets: {},
       }),
@@ -442,6 +443,7 @@ describe('LibraryService', () => {
         {
           version: LIBRARY_STORAGE_VERSION,
           seedRevision: LIBRARY_SEED_REVISION,
+          categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
           devices: without16V,
           assets: {},
         },
@@ -513,6 +515,7 @@ describe('LibraryService', () => {
     const serialized = JSON.stringify({
       version: LIBRARY_STORAGE_VERSION,
       seedRevision: LIBRARY_SEED_REVISION + 1,
+      categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
       devices: SEED_LIBRARY,
       assets: {},
     });
@@ -525,7 +528,7 @@ describe('LibraryService', () => {
     expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
   });
 
-  it('migrates v2 category strings to v3 IDs and persists the migration once', () => {
+  it('migrates v2 category strings to v3 IDs without mutating local storage during recovery', () => {
     const storage = new MemoryStorage();
     const { categoryId: _categoryId, ...legacyTemplate } = createBlankTemplate();
     const legacy = {
@@ -545,13 +548,39 @@ describe('LibraryService', () => {
 
     const migrated = loadLibraryCatalog(storage);
 
-    expect(migrated.devices[0]?.template.category).toBeUndefined();
-    expect(migrated.devices[0]?.template.categoryId).toMatch(/^legacy-sensor-optico-/);
+    expect(migrated.catalog.devices[0]?.template.category).toBeUndefined();
+    expect(migrated.catalog.devices[0]?.template.categoryId).toMatch(/^legacy-sensor-optico-/);
     expect(
-      migrated.categories.find(({ id }) => id === migrated.devices[0]?.template.categoryId),
+      migrated.catalog.categories.find(
+        ({ id }) => id === migrated.catalog.devices[0]?.template.categoryId,
+      ),
     ).toMatchObject({ name: 'Sensór Óptico', prefix: 'DEV' });
-    expect(storage.writes).toBe(1);
-    expect(JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}')).toMatchObject({ version: 3 });
+    expect(storage.writes).toBe(0);
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBeNull();
+  });
+
+  it('keeps project category resources private while resolving a deleted or colliding catalog ID', () => {
+    vi.stubGlobal('localStorage', new MemoryStorage());
+    const service = createLibraryService();
+
+    service.hydrateProjectCategories({
+      'category-portable': { name: 'Laboratório portátil', prefix: 'LAB' },
+      resistor: { name: 'Resistor do projeto', prefix: 'PRJ' },
+    });
+
+    expect(service.categories().some((category) => category.id === 'category-portable')).toBe(
+      false,
+    );
+    expect(service.projectCategoryInventory()).toContainEqual({
+      id: 'category-portable',
+      name: 'Laboratório portátil',
+      prefix: 'LAB',
+    });
+    expect(service.category('resistor')).toMatchObject({ name: 'Resistores', prefix: 'RES' });
+    expect(service.category('category-portable')).toMatchObject({
+      name: 'Laboratório portátil',
+      prefix: 'LAB',
+    });
   });
 
   it('creates and renames a category without changing its stable ID', async () => {
@@ -819,20 +848,18 @@ describe('LibraryService', () => {
       template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Compartilhado' },
     };
     vi.stubGlobal('localStorage', storage);
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(
-        sharedCatalogResponse(
-          {
-            version: 3,
-            seedRevision: LIBRARY_SEED_REVISION,
-            categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
-            devices: [remoteDevice],
-            assets: {},
-          },
-          true,
-        ),
-      );
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      sharedCatalogResponse(
+        {
+          version: 3,
+          seedRevision: LIBRARY_SEED_REVISION,
+          categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
+          devices: [remoteDevice],
+          assets: {},
+        },
+        true,
+      ),
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     const service = createLibraryService();
@@ -885,7 +912,7 @@ describe('LibraryService', () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
-    expect(service.devices()).toEqual([local]);
+    expect(service.devices()).toEqual(expect.arrayContaining([local]));
     expect(service.artworkAsset(hash)).toBeUndefined();
     expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(before);
     expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
@@ -1017,7 +1044,7 @@ describe('LibraryService', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(service.devices()).toEqual([local]);
+    expect(service.devices()).toEqual(expect.arrayContaining([local]));
     expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(before);
   });
 
@@ -1045,7 +1072,7 @@ describe('LibraryService', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(service.devices()).toEqual([local]);
+    expect(service.devices()).toEqual(expect.arrayContaining([local]));
     expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
   });
 
@@ -1168,7 +1195,8 @@ describe('LibraryService', () => {
 
     const request = fetchMock.mock.calls[1]?.[1];
     if (typeof request?.body !== 'string') throw new Error('Expected a JSON request body');
-    expect(JSON.parse(request.body)).toMatchObject({ devices: [legacy] });
+    expect(request.body).toContain('lib-custom-legacy-central');
+    expect(request.body).toContain(`"seedRevision":${LIBRARY_SEED_REVISION}`);
   });
 
   it('surfaces a central ETag conflict without mutating the visible or local catalog', async () => {

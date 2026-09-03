@@ -280,7 +280,10 @@ export function buildImportedProject(
     ...boundElectrical,
     components: boundElectrical.components.map((component) => ({
       ...component,
-      categoryId: component.categoryId ?? UNCATEGORIZED_CATEGORY.id,
+      categoryId:
+        component.categoryId && previous.resources.categories[component.categoryId]
+          ? component.categoryId
+          : UNCATEGORIZED_CATEGORY.id,
     })),
   };
   const previousComponents = new Map(

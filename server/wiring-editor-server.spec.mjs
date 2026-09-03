@@ -446,6 +446,49 @@ describe('wiring-editor-server', () => {
       expect(second.headers.get('etag')).toBe(first.headers.get('etag'));
     });
 
+    it('migrates all passive v2 categories to their seeded IDs without legacy aliases', async () => {
+      const passiveCategories = [
+        ['lib-buzzer-active-12mm', 'buzzer'],
+        ['lib-resistor-1k', 'resistor'],
+        ['lib-resistor-1k8', 'resistor'],
+        ['lib-capacitor-electrolytic-470uf', 'capacitor'],
+        ['lib-capacitor-electrolytic-470uf-16v', 'capacitor'],
+        ['lib-capacitor-ceramic-100nf', 'capacitor'],
+      ];
+      await writeFile(
+        join(libraryDir, 'catalog.json'),
+        JSON.stringify({
+          version: 2,
+          devices: passiveCategories.map(([libraryId, category]) => ({
+            libraryId,
+            template: {
+              type: 'device',
+              deviceId: '',
+              manufacturer: 'Talus',
+              model: libraryId,
+              category,
+              ports: [],
+            },
+          })),
+          assets: {},
+        }),
+        'utf8',
+      );
+
+      const catalog = await (await fetch(`${server.baseUrl}/api/library`)).json();
+
+      expect(catalog.devices.map((device) => device.template.categoryId)).toEqual(
+        passiveCategories.map(([, category]) => category),
+      );
+      expect(catalog.categories).toEqual(
+        expect.arrayContaining([
+          { id: 'buzzer', name: 'Buzzers', prefix: 'BUZ' },
+          { id: 'resistor', name: 'Resistores', prefix: 'RES' },
+          { id: 'capacitor', name: 'Capacitores', prefix: 'CAP' },
+        ]),
+      );
+    });
+
     it('serializes competing writes and rejects the stale writer without overwriting', async () => {
       const first = await fetch(`${server.baseUrl}/api/library`);
       const etag = first.headers.get('etag');

@@ -52,6 +52,9 @@ const LEGACY_CATEGORIES = [
   ['motor-driver', 'Drivers de motor', 'DRV'],
   ['voltage-regulator', 'Reguladores de tensão', 'REG'],
   ['hall-sensor', 'Sensores Hall', 'HALL'],
+  ['buzzer', 'Buzzers', 'BUZ'],
+  ['resistor', 'Resistores', 'RES'],
+  ['capacitor', 'Capacitores', 'CAP'],
 ].map(([id, name, prefix]) => ({ id, name, prefix }));
 
 export class LibraryCatalogValidationError extends Error {

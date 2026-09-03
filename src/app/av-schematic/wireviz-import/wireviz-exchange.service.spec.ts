@@ -197,6 +197,47 @@ describe('WireVizExchangeService', () => {
 });
 
 describe('buildImportedProject junction taps', () => {
+  it('preserves portable category resources and normalizes missing IDs to uncategorized', () => {
+    const previous = emptyProject();
+    previous.resources.categories = {
+      'category-portable': { name: 'Laboratório portátil', prefix: 'LAB' },
+    };
+    const imported: CanonicalElectrical = {
+      components: [
+        {
+          id: 'portable',
+          deviceId: 'LAB1',
+          manufacturer: 'Talus',
+          model: 'Portátil',
+          categoryId: 'category-portable',
+          pins: [],
+        },
+        {
+          id: 'missing',
+          deviceId: 'DEV1',
+          manufacturer: 'Talus',
+          model: 'Sem catálogo',
+          categoryId: 'category-ausente',
+          pins: [],
+        },
+      ],
+      junctions: [],
+      cables: [],
+      nets: [],
+    };
+
+    const rebuilt = buildImportedProject(imported, previous);
+
+    expect(rebuilt.electrical.components.map((component) => component.categoryId)).toEqual([
+      'category-portable',
+      'uncategorized',
+    ]);
+    expect(rebuilt.resources.categories).toEqual({
+      'category-portable': { name: 'Laboratório portátil', prefix: 'LAB' },
+      uncategorized: { name: 'Não categorizado', prefix: 'DEV' },
+    });
+  });
+
   it('keeps only artwork still referenced after replacing WireViz components', () => {
     const previous = emptyProject();
     const hash = 'a'.repeat(64);

@@ -28,6 +28,7 @@ class PalettePreviewStubComponent {}
 const libraryStub = {
   searchQuery: signal(''),
   beginEdit: vi.fn(),
+  category: () => ({ id: 'uncategorized', name: 'Não categorizado', prefix: 'DEV' }),
 };
 
 afterEach(() => {

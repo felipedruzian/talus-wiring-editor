@@ -213,6 +213,10 @@ export function prepareLibraryCatalog(catalog: LibraryCatalog): PreparedLibraryC
 
 /** Reject invalid-data repairs while surfacing deterministic seed migrations explicitly. */
 export function parseSharedLibraryCatalog(value: unknown): SharedLibraryCatalogParseResult | null {
+  const legacy = recoverPersistedLibraryV2(value);
+  if (legacy && !legacy.wasRepaired && !legacy.catalog.loadError) {
+    return { catalog: legacy.catalog, needsUpgrade: true };
+  }
   const recovered = recoverPersistedLibrary(value);
   if (!recovered || recovered.wasRepaired || recovered.catalog.loadError) return null;
   return { catalog: recovered.catalog, needsUpgrade: recovered.wasMigrated };
@@ -235,11 +239,14 @@ function recoverPersistedLibrary(
   value: unknown,
 ): { catalog: LibraryCatalog; wasRepaired: boolean; wasMigrated: boolean } | null {
   if (!isRecord(value) || value['version'] !== LIBRARY_STORAGE_VERSION) return null;
-  if (
-    !Array.isArray(value['categories']) ||
-    !Array.isArray(value['devices']) ||
-    !isRecord(value['assets'])
-  ) {
+  // The short-lived physical-library revision used v3 before categories were
+  // added. It is a schema migration, not corruption: retain its devices and
+  // assets, derive stable categories, then publish the fully seeded v3 form.
+  if (!Array.isArray(value['categories'])) {
+    const migrated = recoverPersistedLibraryV2({ ...value, version: 2 });
+    return migrated ? { ...migrated, wasMigrated: true } : null;
+  }
+  if (!Array.isArray(value['devices']) || !isRecord(value['assets'])) {
     return null;
   }
 
@@ -356,7 +363,8 @@ function appendMissingPassiveSeeds(
     (device) =>
       PASSIVE_LIBRARY_IDS.has(device.libraryId) &&
       (PASSIVE_SEED_REVISION_BY_ID.get(device.libraryId) ?? LIBRARY_SEED_REVISION) > fromRevision &&
-      !ids.has(device.libraryId) && categoryIds.has(device.template.categoryId),
+      !ids.has(device.libraryId) &&
+      categoryIds.has(device.template.categoryId),
   );
   return [...devices, ...structuredClone(additions)];
 }
@@ -372,16 +380,21 @@ function recoverPersistedLibraryV2(
   const recovered = recoverLegacyDevices(value['devices'], availableHashes);
   const migrated = migrateLegacyDeviceCategories(recovered.devices);
   const categories = ensurePassiveSeedCategories(migrated.categories);
+  const canonical = recoverDevices(migrated.devices, availableHashes, categories);
   // v2 had no authoritative seed revision. Treat its absence as revision zero
   // so upgrading it cannot claim revision 3 before the incremental seeds exist.
-  const seedRevision = recoverSeedRevision(value['seedRevision'] ?? 0, migrated.devices);
+  const seedRevision = recoverSeedRevision(value['seedRevision'] ?? 0, canonical.devices);
   return {
     catalog: {
       categories,
-      devices: appendMissingPassiveSeeds(migrated.devices, seedRevision.revision, categories),
+      devices: appendMissingPassiveSeeds(canonical.devices, seedRevision.revision, categories),
       assets: recoveredAssets.assets.map((asset) => structuredClone(asset)),
     },
-    wasRepaired: recovered.wasRepaired || recoveredAssets.wasRepaired || seedRevision.wasRepaired,
+    wasRepaired:
+      recovered.wasRepaired ||
+      recoveredAssets.wasRepaired ||
+      canonical.wasRepaired ||
+      seedRevision.wasRepaired,
   };
 }
 
@@ -430,7 +443,10 @@ function recoverDevices(
     const device = structuredClone(candidate);
     const upgradedTemplate = upgradeBundledPhysicalTemplate(device);
     if (upgradedTemplate) {
-      device.template = upgradedTemplate;
+      device.template = {
+        ...upgradedTemplate,
+        categoryId: upgradedTemplate.categoryId ?? device.template.categoryId,
+      };
       wasMigrated = true;
     }
     if (!categories.some(({ id }) => id === device.template.categoryId)) {

@@ -41,9 +41,12 @@ export class LibraryService {
   // CRUD or a central PUT.
   private readonly projectCategories = signal<readonly LibraryCategory[]>([]);
   readonly resolvedCategories = computed(() => {
-    const project = this.projectCategories();
-    const projectIds = new Set(project.map((category) => category.id));
-    return [...project, ...this.catalog().categories.filter((category) => !projectIds.has(category.id))];
+    const catalog = this.catalog().categories;
+    const catalogIds = new Set(catalog.map((category) => category.id));
+    return [
+      ...catalog,
+      ...this.projectCategories().filter((category) => !catalogIds.has(category.id)),
+    ];
   });
   readonly devices = computed(() => this.catalog().devices);
   readonly isExpanded = signal(false);
@@ -81,11 +84,6 @@ export class LibraryService {
   /** Supplies project serialization without exposing private resources to catalog CRUD. */
   projectCategoryInventory(): readonly LibraryCategory[] {
     return this.resolvedCategories();
-  }
-
-  /** Hydrates category resources carried by a project without mutating the central catalog. */
-  hydrateProjectCategories(categories: readonly LibraryCategory[]): void {
-    this.projectCategories.set(structuredClone(categories));
   }
 
   expand(): void {

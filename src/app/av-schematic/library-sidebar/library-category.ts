@@ -22,14 +22,16 @@ export const UNCATEGORIZED_CATEGORY: LibraryCategory = Object.freeze({
 
 export const SEED_LIBRARY_CATEGORIES: readonly LibraryCategory[] = Object.freeze([
   UNCATEGORIZED_CATEGORY,
-  { id: 'buzzer', name: 'Buzinas', prefix: 'BUZ' },
+  { id: 'buzzer', name: 'Buzzers', prefix: 'BUZ' },
   { id: 'resistor', name: 'Resistores', prefix: 'RES' },
   { id: 'capacitor', name: 'Capacitores', prefix: 'CAP' },
-  ...DEVICE_CATEGORIES.map((id) => ({
-    id,
-    name: DEVICE_CATEGORY_LABELS[id] ?? id,
-    prefix: DEVICE_CATEGORY_PREFIXES[id] ?? FALLBACK_DEVICE_PREFIX,
-  })),
+  ...DEVICE_CATEGORIES.filter((id) => !['buzzer', 'resistor', 'capacitor'].includes(id)).map(
+    (id) => ({
+      id,
+      name: DEVICE_CATEGORY_LABELS[id] ?? id,
+      prefix: DEVICE_CATEGORY_PREFIXES[id] ?? FALLBACK_DEVICE_PREFIX,
+    }),
+  ),
 ]);
 
 export const MAX_LIBRARY_CATEGORIES = 512;
@@ -158,7 +160,9 @@ export function migrateLegacyDeviceCategories<T extends { template: DeviceNodeDa
 
   const migrated = devices.map((candidate) => {
     const device = structuredClone(candidate);
-    const legacyName = collapseCategoryWhitespace(device.template.category ?? '');
+    const legacyName = collapseCategoryWhitespace(
+      device.template.category ?? device.template.categoryId ?? '',
+    );
     const normalized = normalizeCategoryName(legacyName);
     let category = normalized
       ? (byLegacyId.get(normalized) ?? byNormalizedName.get(normalized))
