@@ -58,8 +58,8 @@ export class LibraryListComponent {
     this.libraryService.beginCreate();
   }
 
-  protected onRestoreDefaults(): void {
-    this.libraryService.restoreDefaults();
+  protected async onRestoreDefaults(): Promise<void> {
+    await this.libraryService.restoreDefaults();
   }
 
   protected dismissStorageError(): void {

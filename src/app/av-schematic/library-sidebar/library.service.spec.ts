@@ -80,7 +80,7 @@ describe('LibraryService', () => {
     expect(service.filteredDevices()).toEqual(SEED_LIBRARY);
   });
 
-  it('persists manual create, edit and remove operations in a versioned schema', () => {
+  it('persists manual create, edit and remove operations in a versioned schema', async () => {
     const storage = new MemoryStorage();
     vi.stubGlobal('localStorage', storage);
     const service = createLibraryService();
@@ -97,7 +97,7 @@ describe('LibraryService', () => {
     service.beginCreate();
     const libraryId = service.editingDeviceId();
     if (!libraryId) throw new Error('Expected a generated library id');
-    service.commitDraft(libraryId, custom);
+    await service.commitDraft(libraryId, custom);
 
     const serialized = storage.getItem(LIBRARY_STORAGE_KEY);
     if (!serialized) throw new Error('Expected a persisted library payload');
@@ -105,10 +105,10 @@ describe('LibraryService', () => {
     expect(createLibraryService().devices().at(-1)?.template.model).toBe('Componente de teste');
 
     service.beginEdit(libraryId);
-    service.commitDraft(libraryId, { ...custom, model: 'Componente editado' });
+    await service.commitDraft(libraryId, { ...custom, model: 'Componente editado' });
     expect(createLibraryService().devices().at(-1)?.template.model).toBe('Componente editado');
 
-    service.removeDevice(libraryId);
+    await service.removeDevice(libraryId);
     expect(
       createLibraryService()
         .devices()
@@ -179,7 +179,7 @@ describe('LibraryService', () => {
     expect(loadLibraryDevices(storage)).toEqual([]);
   });
 
-  it('restores current seeds while preserving custom components', () => {
+  it('restores current seeds while preserving custom components', async () => {
     const storage = new MemoryStorage();
     const custom = {
       libraryId: 'lib-custom-kept',
@@ -212,7 +212,7 @@ describe('LibraryService', () => {
     vi.stubGlobal('localStorage', storage);
     const service = createLibraryService();
 
-    service.restoreDefaults();
+    await service.restoreDefaults();
 
     expect(service.devices()).toEqual([...SEED_LIBRARY, custom]);
     expect(service.devices().some((device) => device.libraryId === legacy.libraryId)).toBe(false);
@@ -236,7 +236,7 @@ describe('LibraryService', () => {
     });
   });
 
-  it('deduplicates artwork by hash and restores a physical custom component', () => {
+  it('deduplicates artwork by hash and restores a physical custom component', async () => {
     const storage = new MemoryStorage();
     vi.stubGlobal('localStorage', storage);
     const service = createLibraryService();
@@ -265,7 +265,9 @@ describe('LibraryService', () => {
     service.beginCreate();
     const libraryId = service.editingDeviceId();
     if (!libraryId) throw new Error('Expected library id');
-    expect(service.commitDraft(libraryId, template, [asset, structuredClone(asset)])).toBe(true);
+    expect(await service.commitDraft(libraryId, template, [asset, structuredClone(asset)])).toBe(
+      true,
+    );
 
     const restored = createLibraryService();
     expect(restored.devices().at(-1)?.template).toEqual(template);
@@ -308,7 +310,7 @@ describe('LibraryService', () => {
     expect(repaired.assets).toEqual({});
   });
 
-  it('rejects a 129th referenced asset without mutating memory or storage', () => {
+  it('rejects a 129th referenced asset without mutating memory or storage', async () => {
     const storage = new MemoryStorage();
     const assets = Array.from({ length: MAX_LIBRARY_ASSETS }, (_, index) => artworkAsset(index));
     const devices = assets.map((asset, index) =>
@@ -324,7 +326,7 @@ describe('LibraryService', () => {
     const libraryId = service.editingDeviceId();
     if (!libraryId) throw new Error('Expected library id');
 
-    expect(service.commitDraft(libraryId, next.template, [nextAsset])).toBe(false);
+    expect(await service.commitDraft(libraryId, next.template, [nextAsset])).toBe(false);
     expect(service.devices()).toHaveLength(MAX_LIBRARY_ASSETS);
     expect(service.storageError()).toMatch(/no máximo 128 imagens/);
     expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(before);
@@ -347,7 +349,7 @@ describe('LibraryService', () => {
     expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
   });
 
-  it('reports localStorage quota failures instead of silently claiming persistence', () => {
+  it('reports localStorage quota failures instead of silently claiming persistence', async () => {
     const storage = new MemoryStorage();
     storage.setItem = () => {
       throw new DOMException('quota', 'QuotaExceededError');
@@ -359,7 +361,7 @@ describe('LibraryService', () => {
     if (!libraryId) throw new Error('Expected library id');
 
     expect(
-      service.commitDraft(libraryId, {
+      await service.commitDraft(libraryId, {
         ...createBlankTemplate(),
         manufacturer: 'Talus',
         model: 'Sem espaço',
@@ -367,6 +369,97 @@ describe('LibraryService', () => {
     ).toBe(false);
     expect(service.storageError()).toMatch(/sem espaço/);
     expect(service.editingDeviceId()).toBe(libraryId);
+  });
+
+  it('hydrates the shared catalog when the central service is available', async () => {
+    const storage = new MemoryStorage();
+    const remoteDevice = {
+      libraryId: 'lib-shared',
+      template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Compartilhado' },
+    };
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          sharedCatalogResponse({ version: 2, devices: [remoteDevice], assets: {} }, true),
+        ),
+    );
+
+    const service = createLibraryService();
+    await vi.waitFor(() => {
+      expect(service.devices()).toEqual([remoteDevice]);
+    });
+
+    expect(JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}')).toMatchObject({
+      devices: [remoteDevice],
+    });
+  });
+
+  it('bootstraps an absent central catalog from the local v1 migration', async () => {
+    const storage = new MemoryStorage();
+    const legacy = {
+      libraryId: 'lib-custom-legacy-central',
+      template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Legado central' },
+    };
+    storage.setItem(LEGACY_LIBRARY_STORAGE_KEY, JSON.stringify({ version: 1, devices: [legacy] }));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(sharedCatalogResponse({ version: 2, devices: [], assets: {} }, false))
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 200,
+          headers: { ETag: `"${'a'.repeat(64)}"` },
+        }),
+      );
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('fetch', fetchMock);
+
+    createLibraryService();
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    const request = fetchMock.mock.calls[1]?.[1];
+    if (typeof request?.body !== 'string') throw new Error('Expected a JSON request body');
+    expect(JSON.parse(request.body)).toMatchObject({ devices: [legacy] });
+  });
+
+  it('surfaces a central ETag conflict without mutating the visible or local catalog', async () => {
+    const storage = new MemoryStorage();
+    const remoteDevice = {
+      libraryId: 'lib-shared',
+      template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Compartilhado' },
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        sharedCatalogResponse({ version: 2, devices: [remoteDevice], assets: {} }, true),
+      )
+      .mockResolvedValueOnce(new Response('{}', { status: 412 }));
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('fetch', fetchMock);
+    const service = createLibraryService();
+    await vi.waitFor(() => {
+      expect(service.devices()).toEqual([remoteDevice]);
+    });
+    const before = storage.getItem(LIBRARY_STORAGE_KEY);
+
+    service.beginCreate();
+    const libraryId = service.editingDeviceId();
+    if (!libraryId) throw new Error('Expected library id');
+    const saved = await service.commitDraft(libraryId, {
+      ...createBlankTemplate(),
+      manufacturer: 'Talus',
+      model: 'Concorrente',
+    });
+
+    expect(saved).toBe(false);
+    expect(service.devices()).toEqual([remoteDevice]);
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(before);
+    expect(service.storageError()).toMatch(/outro navegador/);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -417,4 +510,16 @@ function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary);
+}
+
+function sharedCatalogResponse(value: unknown, initialized: boolean): Response {
+  const body = JSON.stringify(value);
+  const etag = `"${sha256HexSync(new TextEncoder().encode(body))}"`;
+  return new Response(body, {
+    headers: {
+      'Content-Type': 'application/json',
+      ETag: etag,
+      'X-Wiring-Library-Initialized': initialized ? '1' : '0',
+    },
+  });
 }

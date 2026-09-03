@@ -59,6 +59,7 @@ export class LibraryDetailComponent implements AfterViewInit {
 
   protected readonly mode = this.libraryService.editingMode;
   protected readonly storageError = this.libraryService.storageError;
+  protected readonly isPersisting = this.libraryService.isPersisting;
   protected readonly draft = this.draftService.draft;
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
   private readonly closeButton = viewChild<ElementRef<HTMLButtonElement>>('closeButton');
@@ -110,10 +111,10 @@ export class LibraryDetailComponent implements AfterViewInit {
     });
   }
 
-  protected onSave(): void {
+  protected async onSave(): Promise<void> {
     this.formService.commitPendingEdits();
     if (!this.canSave()) return;
-    this.libraryService.commitDraft(
+    await this.libraryService.commitDraft(
       this.libraryId(),
       this.draftService.draft(),
       this.draftService.pendingAssets(),
@@ -124,8 +125,8 @@ export class LibraryDetailComponent implements AfterViewInit {
     this.libraryService.closeDetail();
   }
 
-  protected onRemove(): void {
-    this.libraryService.removeDevice(this.libraryId());
+  protected async onRemove(): Promise<void> {
+    await this.libraryService.removeDevice(this.libraryId());
   }
 
   protected onBackdropActivate(event: Event): void {

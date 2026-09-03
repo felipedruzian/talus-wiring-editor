@@ -18,6 +18,8 @@
 //                                (default: dist/ng-diagram-av-schematic/browser)
 //   WIRING_EDITOR_STORAGE_DIR    central project storage directory
 //                                (default: ~/.local/share/talus-wiring-editor/projects)
+//   WIRING_EDITOR_LIBRARY_DIR    shared component-library directory
+//                                (default: ~/.local/share/talus-wiring-editor/library)
 //   WIRING_EDITOR_ALLOWED_HOSTS  comma-separated extra `host:port` values accepted
 //                                in the request Host header (e.g. a Tailscale
 //                                MagicDNS name), on top of the loopback defaults
@@ -25,14 +27,18 @@
 // See docs/local-service.md for the full contract, the loopback + Tailscale
 // Serve deployment plan, and what's intentionally out of scope here.
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CanonicalProjectValidationError, parseCanonicalProject } from './canonical-project-validate.mjs';
+import {
+  CanonicalProjectValidationError,
+  parseCanonicalProject,
+} from './canonical-project-validate.mjs';
+import { LibraryCatalogValidationError, parseLibraryCatalog } from './library-catalog-validate.mjs';
 
 const REPO_ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 
@@ -62,18 +68,26 @@ export const config = {
   // otherwise compare as relative against the always-absolute containment
   // check in serveStatic and reject every request.
   staticDir: resolve(
-    process.env['WIRING_EDITOR_STATIC_DIR'] || join(REPO_ROOT, 'dist', 'ng-diagram-av-schematic', 'browser'),
+    process.env['WIRING_EDITOR_STATIC_DIR'] ||
+      join(REPO_ROOT, 'dist', 'ng-diagram-av-schematic', 'browser'),
   ),
   storageDir: resolve(
     process.env['WIRING_EDITOR_STORAGE_DIR'] ||
       join(homedir(), '.local', 'share', 'talus-wiring-editor', 'projects'),
+  ),
+  libraryDir: resolve(
+    process.env['WIRING_EDITOR_LIBRARY_DIR'] ||
+      join(homedir(), '.local', 'share', 'talus-wiring-editor', 'library'),
   ),
   allowedHosts: buildAllowedHosts(DEFAULT_PORT, process.env['WIRING_EDITOR_ALLOWED_HOSTS']),
 };
 
 const PROJECT_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/;
 const MAX_BODY_BYTES = 5 * 1024 * 1024; // 5 MB — generous for a hand-edited circuit project.
+const MAX_LIBRARY_BODY_BYTES = 24 * 1024 * 1024;
 const MUTATING_METHODS = new Set(['PUT', 'POST', 'PATCH', 'DELETE']);
+const EMPTY_LIBRARY_BODY = JSON.stringify({ version: 2, devices: [], assets: {} });
+let libraryMutationTail = Promise.resolve();
 
 const CONTENT_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -106,7 +120,12 @@ export function createWiringEditorServer(cfg = config) {
         return;
       }
       if (err instanceof HttpError) {
-        sendJson(res, err.statusCode, { error: err.code, message: err.message });
+        sendJson(
+          res,
+          err.statusCode,
+          { error: err.code, message: err.message },
+          err.etag ? { ETag: err.etag } : undefined,
+        );
         return;
       }
       console.error('[wiring-editor-server] unhandled error:', err);
@@ -118,7 +137,11 @@ export function createWiringEditorServer(cfg = config) {
 async function handleRequest(req, res, cfg) {
   const hostHeader = req.headers.host;
   if (typeof hostHeader !== 'string' || !cfg.allowedHosts.has(hostHeader)) {
-    throw new HttpError(400, 'invalid_host', `cabeçalho Host não reconhecido: ${hostHeader ?? '(ausente)'}`);
+    throw new HttpError(
+      400,
+      'invalid_host',
+      `cabeçalho Host não reconhecido: ${hostHeader ?? '(ausente)'}`,
+    );
   }
 
   if (MUTATING_METHODS.has(req.method ?? '')) {
@@ -139,6 +162,11 @@ async function handleRequest(req, res, cfg) {
     return;
   }
 
+  if (segments[0] === 'api' && segments[1] === 'library') {
+    await handleLibraryApi(req, res, segments, cfg);
+    return;
+  }
+
   await serveStatic(req, res, url, cfg);
 }
 
@@ -152,7 +180,11 @@ async function handleRequest(req, res, cfg) {
  */
 function rejectCrossOriginMutation(req, hostHeader) {
   const secFetchSite = req.headers['sec-fetch-site'];
-  if (typeof secFetchSite === 'string' && secFetchSite !== 'same-origin' && secFetchSite !== 'none') {
+  if (
+    typeof secFetchSite === 'string' &&
+    secFetchSite !== 'same-origin' &&
+    secFetchSite !== 'none'
+  ) {
     throw new HttpError(
       403,
       'cross_site_forbidden',
@@ -250,7 +282,7 @@ async function getProject(res, cfg, id) {
 
 async function putProject(req, res, cfg, id) {
   requireJsonContentType(req);
-  const body = await readJsonBody(req);
+  const body = await readJsonBody(req, MAX_BODY_BYTES, '5 MB');
   if (body === null) {
     throw new HttpError(400, 'invalid_body', 'corpo vazio: esperado um objeto JSON');
   }
@@ -293,6 +325,149 @@ async function deleteProject(res, cfg, id) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Shared component library — /api/library
+// ---------------------------------------------------------------------------
+
+async function handleLibraryApi(req, res, segments, cfg) {
+  if (segments.length !== 2) return sendJson(res, 404, { error: 'not_found' });
+  if (req.method === 'GET') return void (await getLibrary(res, cfg));
+  if (req.method === 'PUT') return void (await putLibrary(req, res, cfg));
+  return sendJson(res, 405, { error: 'method_not_allowed' });
+}
+
+async function getLibrary(res, cfg) {
+  const current = await readLibraryState(cfg);
+  res.writeHead(200, libraryResponseHeaders(current.etag, current.initialized));
+  res.end(current.body);
+}
+
+async function putLibrary(req, res, cfg) {
+  requireJsonContentType(req);
+  const ifMatch = req.headers['if-match'];
+  if (typeof ifMatch !== 'string' || ifMatch.trim() === '') {
+    throw new HttpError(
+      428,
+      'precondition_required',
+      'If-Match é obrigatório para salvar a biblioteca',
+    );
+  }
+  const body = await readJsonBody(req, MAX_LIBRARY_BODY_BYTES, '24 MiB');
+  if (body === null) {
+    throw new HttpError(400, 'invalid_body', 'corpo vazio: esperado um catálogo JSON');
+  }
+
+  await withLibraryMutationLock(async () => {
+    let catalog;
+    try {
+      catalog = parseLibraryCatalog(body);
+    } catch (err) {
+      if (err instanceof LibraryCatalogValidationError) {
+        throw new HttpError(400, 'invalid_library', err.message);
+      }
+      throw err;
+    }
+    const current = await readLibraryState(cfg);
+    if (ifMatch !== current.etag) {
+      const error = new HttpError(
+        412,
+        'library_conflict',
+        'A biblioteca foi alterada por outro navegador; recarregue antes de salvar.',
+      );
+      error.etag = current.etag;
+      throw error;
+    }
+
+    const serialized = JSON.stringify(catalog);
+    const etag = strongEtag(serialized);
+    await writeLibraryAtomically(cfg, serialized);
+    res.writeHead(200, {
+      ...libraryResponseHeaders(etag, true),
+      'Content-Length': '0',
+    });
+    res.end();
+  });
+}
+
+function resolveLibraryDir(cfg) {
+  return resolve(cfg.libraryDir || join(cfg.storageDir, '..', 'library'));
+}
+
+async function readLibraryState(cfg) {
+  const filePath = join(resolveLibraryDir(cfg), 'catalog.json');
+  let body;
+  let initialized = true;
+  try {
+    body = await readFile(filePath, 'utf8');
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+    body = EMPTY_LIBRARY_BODY;
+    initialized = false;
+  }
+
+  try {
+    parseLibraryCatalog(JSON.parse(body));
+  } catch (err) {
+    console.error('[wiring-editor-server] invalid persisted library catalog:', err);
+    throw new HttpError(500, 'invalid_library_state', 'A biblioteca central está corrompida.');
+  }
+  return { body, etag: strongEtag(body), initialized };
+}
+
+async function writeLibraryAtomically(cfg, body) {
+  const directory = resolveLibraryDir(cfg);
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const filePath = join(directory, 'catalog.json');
+  const tmpPath = join(directory, `.catalog.${randomUUID()}.tmp`);
+  let handle;
+  try {
+    handle = await open(tmpPath, 'wx', 0o600);
+    await handle.writeFile(body, 'utf8');
+    await handle.sync();
+    await handle.close();
+    handle = undefined;
+    await rename(tmpPath, filePath);
+    const directoryHandle = await open(directory, 'r');
+    try {
+      await directoryHandle.sync();
+    } finally {
+      await directoryHandle.close();
+    }
+  } catch (err) {
+    await handle?.close().catch(() => {});
+    await rm(tmpPath, { force: true }).catch(() => {});
+    throw err;
+  }
+}
+
+async function withLibraryMutationLock(callback) {
+  const previous = libraryMutationTail;
+  let release;
+  libraryMutationTail = new Promise((resolveLock) => {
+    release = resolveLock;
+  });
+  await previous.catch(() => {});
+  try {
+    return await callback();
+  } finally {
+    release();
+  }
+}
+
+function strongEtag(body) {
+  return `"${createHash('sha256').update(body).digest('hex')}"`;
+}
+
+function libraryResponseHeaders(etag, initialized) {
+  return {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Wiring-Library-Initialized': initialized ? '1' : '0',
+    ETag: etag,
+  };
+}
+
 function projectFilePath(cfg, id) {
   // `id` is already validated against PROJECT_ID_PATTERN (no path separators,
   // no leading dot), so this can't escape storageDir.
@@ -301,13 +476,14 @@ function projectFilePath(cfg, id) {
 
 function requireJsonContentType(req) {
   const contentType = req.headers['content-type'];
-  const mimeType = typeof contentType === 'string' ? contentType.split(';')[0].trim().toLowerCase() : '';
+  const mimeType =
+    typeof contentType === 'string' ? contentType.split(';')[0].trim().toLowerCase() : '';
   if (mimeType !== 'application/json') {
     throw new HttpError(415, 'unsupported_media_type', 'Content-Type deve ser application/json');
   }
 }
 
-async function readJsonBody(req) {
+async function readJsonBody(req, maxBytes, limitLabel) {
   const raw = await new Promise((resolveBody, rejectBody) => {
     const chunks = [];
     let size = 0;
@@ -328,10 +504,16 @@ async function readJsonBody(req) {
       if (settled) return;
 
       size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
+      if (size > maxBytes) {
         settled = true;
         chunks.length = 0;
-        rejectBody(new HttpError(413, 'payload_too_large', 'corpo da requisição excede o limite de 5 MB'));
+        rejectBody(
+          new HttpError(
+            413,
+            'payload_too_large',
+            `corpo da requisição excede o limite de ${limitLabel}`,
+          ),
+        );
         return;
       }
       chunks.push(chunk);
@@ -369,12 +551,13 @@ async function readJsonBody(req) {
   }
 }
 
-function sendJson(res, statusCode, body) {
+function sendJson(res, statusCode, body, extraHeaders = {}) {
   const payload = JSON.stringify(body);
   res.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
+    ...extraHeaders,
   });
   res.end(payload);
 }

@@ -12,8 +12,9 @@
 // down in afterEach. A fresh temp directory backs storageDir per test file
 // run so tests never touch the real ~/.local/share/talus-wiring-editor path.
 
+import { createHash } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -80,6 +81,8 @@ function baseConfig(storageDir, staticDir) {
     allowedHosts: new Set([`${HOST}:PORT_PLACEHOLDER`]),
   };
 }
+
+const strongEtag = (body) => `"${createHash('sha256').update(body).digest('hex')}"`;
 
 /** Starts a fresh server on an ephemeral port and returns its base URL + close(). */
 async function startServer(cfg) {
@@ -274,13 +277,16 @@ function canonicalCableBudgetPayload(total) {
 describe('wiring-editor-server', () => {
   let storageDir;
   let staticDir;
+  let libraryDir;
   let cfg;
   let server;
 
   beforeEach(async () => {
     storageDir = await mkdtemp(join(tmpdir(), 'wiring-editor-storage-'));
     staticDir = await mkdtemp(join(tmpdir(), 'wiring-editor-static-'));
+    libraryDir = await mkdtemp(join(tmpdir(), 'wiring-editor-library-'));
     cfg = baseConfig(storageDir, staticDir);
+    cfg.libraryDir = libraryDir;
     server = await startServer(cfg);
   });
 
@@ -288,6 +294,170 @@ describe('wiring-editor-server', () => {
     await server.close();
     await rm(storageDir, { recursive: true, force: true });
     await rm(staticDir, { recursive: true, force: true });
+    await rm(libraryDir, { recursive: true, force: true });
+  });
+
+  describe('shared component library', () => {
+    it('returns an exact empty catalog with a strong body ETag before initialization', async () => {
+      const response = await fetch(`${server.baseUrl}/api/library`);
+      const body = await response.text();
+
+      expect(response.status).toBe(200);
+      expect(body).toBe('{"version":2,"devices":[],"assets":{}}');
+      expect(response.headers.get('etag')).toBe(strongEtag(body));
+      expect(response.headers.get('cache-control')).toBe('no-store');
+      expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+      expect(response.headers.get('x-wiring-library-initialized')).toBe('0');
+    });
+
+    it('requires If-Match, writes atomically with mode 0600 and advances the ETag', async () => {
+      const initial = await fetch(`${server.baseUrl}/api/library`);
+      const etag = initial.headers.get('etag');
+      const catalog = {
+        version: 2,
+        devices: [
+          {
+            libraryId: 'lib-custom-test',
+            template: {
+              type: 'device',
+              deviceId: '',
+              manufacturer: 'Talus',
+              model: 'Teste',
+              ports: [],
+            },
+          },
+        ],
+        assets: {},
+      };
+
+      const missing = await fetch(`${server.baseUrl}/api/library`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(catalog),
+      });
+      expect(missing.status).toBe(428);
+
+      const saved = await fetch(`${server.baseUrl}/api/library`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'If-Match': etag },
+        body: JSON.stringify(catalog),
+      });
+      expect(saved.status).toBe(200);
+      expect(saved.headers.get('etag')).not.toBe(etag);
+
+      const onDisk = await readFile(join(libraryDir, 'catalog.json'), 'utf8');
+      expect(JSON.parse(onDisk)).toEqual(catalog);
+      expect((await lstat(join(libraryDir, 'catalog.json'))).mode & 0o777).toBe(0o600);
+      expect((await fetch(`${server.baseUrl}/api/library`)).headers.get('etag')).toBe(
+        strongEtag(onDisk),
+      );
+    });
+
+    it('serializes competing writes and rejects the stale writer without overwriting', async () => {
+      const first = await fetch(`${server.baseUrl}/api/library`);
+      const etag = first.headers.get('etag');
+      const catalogs = ['A', 'B'].map((model) => ({
+        version: 2,
+        devices: [
+          {
+            libraryId: `lib-${model.toLowerCase()}`,
+            template: {
+              type: 'device',
+              deviceId: '',
+              manufacturer: 'Talus',
+              model,
+              ports: [],
+            },
+          },
+        ],
+        assets: {},
+      }));
+
+      const responses = await Promise.all(
+        catalogs.map((catalog) =>
+          fetch(`${server.baseUrl}/api/library`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'If-Match': etag },
+            body: JSON.stringify(catalog),
+          }),
+        ),
+      );
+
+      expect(responses.map((response) => response.status).sort()).toEqual([200, 412]);
+      const stored = await (await fetch(`${server.baseUrl}/api/library`)).json();
+      expect(catalogs).toContainEqual(stored);
+    });
+
+    it('rejects forged artwork, SVG assets and dangling artwork references', async () => {
+      const initial = await fetch(`${server.baseUrl}/api/library`);
+      const etag = initial.headers.get('etag');
+      const hash = '0'.repeat(64);
+      const base = {
+        version: 2,
+        devices: [
+          {
+            libraryId: 'lib-image',
+            template: {
+              type: 'device',
+              deviceId: '',
+              manufacturer: 'Talus',
+              model: 'Imagem',
+              ports: [{ id: 'p1', label: 'P1', direction: 'input' }],
+              footprintId: 'image',
+              footprint: {
+                id: 'image',
+                label: 'Imagem',
+                rows: 1,
+                cols: 1,
+                pins: [{ id: 'p1', label: 'P1', cell: { row: 0, col: 0 } }],
+                shapes: [],
+                artwork: { assetHash: hash, x: 0, y: 0, width: 1, height: 1 },
+              },
+            },
+          },
+        ],
+        assets: {},
+      };
+
+      const dangling = await fetch(`${server.baseUrl}/api/library`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'If-Match': etag },
+        body: JSON.stringify(base),
+      });
+      expect(dangling.status).toBe(400);
+
+      base.assets[hash] = {
+        mimeType: 'image/svg+xml',
+        width: 1,
+        height: 1,
+        byteLength: 6,
+        dataUrl: 'data:image/svg+xml;base64,PHN2Zy8+',
+      };
+      const svg = await fetch(`${server.baseUrl}/api/library`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'If-Match': etag },
+        body: JSON.stringify(base),
+      });
+      expect(svg.status).toBe(400);
+
+      base.assets[hash] = {
+        mimeType: 'image/png',
+        width: 1,
+        height: 1,
+        byteLength: 1,
+        dataUrl: 'data:image/png;base64,AA==',
+      };
+      const forged = await fetch(`${server.baseUrl}/api/library`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'If-Match': etag },
+        body: JSON.stringify(base),
+      });
+      expect(forged.status).toBe(400);
+    });
+
+    it('does not route nested library paths to the Angular index', async () => {
+      expect((await fetch(`${server.baseUrl}/api/library/extra`)).status).toBe(404);
+    });
   });
 
   describe('PUT/GET/list round trip', () => {

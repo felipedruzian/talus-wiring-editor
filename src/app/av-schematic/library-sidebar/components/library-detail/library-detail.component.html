@@ -52,14 +52,31 @@
         </div>
       }
       @if (mode() === 'edit') {
-        <button class="remove-button p10" type="button" (click)="onRemove()">
+        <button
+          class="remove-button p10"
+          type="button"
+          (click)="onRemove()"
+          [disabled]="isPersisting()"
+        >
           Remover do catálogo
         </button>
       }
       <span class="action-spacer"></span>
-      <button class="cancel-button p10" type="button" (click)="onBack()">Cancelar</button>
-      <button class="save-button p10" type="button" (click)="onSave()" [disabled]="!canSave()">
-        Salvar no catálogo
+      <button
+        class="cancel-button p10"
+        type="button"
+        (click)="onBack()"
+        [disabled]="isPersisting()"
+      >
+        Cancelar
+      </button>
+      <button
+        class="save-button p10"
+        type="button"
+        (click)="onSave()"
+        [disabled]="!canSave() || isPersisting()"
+      >
+        {{ isPersisting() ? 'Salvando...' : 'Salvar no catálogo' }}
       </button>
     </footer>
   </section>

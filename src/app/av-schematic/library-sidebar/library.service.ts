@@ -5,9 +5,11 @@ import {
   browserLocalStorage,
   loadLibraryCatalog,
   MAX_LIBRARY_ASSETS,
+  prepareLibraryCatalog,
   persistLibraryCatalog,
   referencedArtworkHashes,
 } from './library-storage';
+import { loadSharedLibrary, saveSharedLibrary } from './library-api';
 import { matchesLibrarySearch } from './library-search';
 import { SEED_LIBRARY, type LibraryDevice } from './seed-library';
 
@@ -26,10 +28,15 @@ export class LibraryService {
   readonly editingMode = signal<LibraryEditMode | null>(null);
   readonly searchQuery = signal('');
   readonly storageError = signal<string | null>(this.initialCatalog.loadError ?? null);
+  readonly isPersisting = signal(false);
   private returnFocus: HTMLElement | null = null;
+  private centralState: 'pending' | 'ready' | 'unavailable' | 'error' = 'pending';
+  private centralEtag: string | null = null;
+  private readonly centralHydration: Promise<void>;
 
   constructor() {
     this.artworkStore.replace(this.initialCatalog.assets);
+    this.centralHydration = this.hydrateFromCentralService();
   }
 
   readonly editingDevice = computed<LibraryDevice | null>(() => {
@@ -64,11 +71,13 @@ export class LibraryService {
     this.editingMode.set('edit');
   }
 
-  commitDraft(
+  async commitDraft(
     libraryId: string,
     template: DeviceNodeData,
     pendingAssets: readonly RasterArtworkAsset[] = [],
-  ): boolean {
+  ): Promise<boolean> {
+    await this.centralHydration;
+    if (this.isPersisting()) return false;
     const mode = this.editingMode();
     let nextDevices: LibraryDevice[];
     if (mode === 'create') {
@@ -104,13 +113,7 @@ export class LibraryService {
       this.storageError.set('O componente referencia uma imagem que não está disponível.');
       return false;
     }
-    const result = persistLibraryCatalog(this.storage, { devices: nextDevices, assets });
-    this.storageError.set(result.ok ? null : result.message);
-    if (!result.ok) return false;
-    this.devices.set(nextDevices);
-    this.artworkStore.replace(assets);
-    this.closeDetail();
-    return true;
+    return this.commitCatalog({ devices: nextDevices, assets }, true);
   }
 
   closeDetail(): void {
@@ -125,21 +128,27 @@ export class LibraryService {
     }
   }
 
-  removeDevice(libraryId: string): void {
-    this.devices.update((list) => list.filter((d) => d.libraryId !== libraryId));
-    this.persist();
-    if (this.editingDeviceId() === libraryId) {
-      this.closeDetail();
-    }
+  async removeDevice(libraryId: string): Promise<boolean> {
+    await this.centralHydration;
+    const nextDevices = this.devices().filter((device) => device.libraryId !== libraryId);
+    const hashes = referencedArtworkHashes(nextDevices);
+    return this.commitCatalog(
+      { devices: nextDevices, assets: this.artworkStore.referenced(hashes) },
+      this.editingDeviceId() === libraryId,
+    );
   }
 
-  restoreDefaults(): void {
+  async restoreDefaults(): Promise<boolean> {
+    await this.centralHydration;
     const restored = [
       ...structuredClone(SEED_LIBRARY),
       ...this.devices().filter((device) => device.libraryId.startsWith('lib-custom-')),
     ];
-    this.devices.set(restored);
-    if (this.persist()) this.closeDetail();
+    const hashes = referencedArtworkHashes(restored);
+    return this.commitCatalog(
+      { devices: restored, assets: this.artworkStore.referenced(hashes) },
+      true,
+    );
   }
 
   artworkAsset(hash: string | undefined): RasterArtworkAsset | undefined {
@@ -150,14 +159,98 @@ export class LibraryService {
     this.storageError.set(null);
   }
 
-  private persist(): boolean {
-    const hashes = referencedArtworkHashes(this.devices());
-    const result = persistLibraryCatalog(this.storage, {
-      devices: this.devices(),
-      assets: this.artworkStore.referenced(hashes),
-    });
-    this.storageError.set(result.ok ? null : result.message);
-    return result.ok;
+  private async commitCatalog(
+    catalog: { devices: LibraryDevice[]; assets: RasterArtworkAsset[] },
+    closeDetail: boolean,
+  ): Promise<boolean> {
+    const prepared = prepareLibraryCatalog(catalog);
+    if (!prepared.ok) {
+      this.storageError.set(prepared.message);
+      return false;
+    }
+    if (this.centralState === 'error') {
+      this.storageError.set(
+        'A biblioteca central está disponível, mas não pôde ser validada. Nada foi salvo.',
+      );
+      return false;
+    }
+
+    this.isPersisting.set(true);
+    try {
+      if (this.centralState === 'ready' && this.centralEtag) {
+        const remote = await saveSharedLibrary(prepared.payload, this.centralEtag);
+        if (remote.kind === 'conflict' || remote.kind === 'error') {
+          this.storageError.set(remote.message);
+          return false;
+        }
+        if (remote.kind === 'unavailable') {
+          this.storageError.set(
+            'O serviço central ficou indisponível. Nada foi salvo para evitar versões divergentes.',
+          );
+          return false;
+        }
+        this.centralEtag = remote.etag;
+      }
+
+      this.devices.set(structuredClone(catalog.devices));
+      this.artworkStore.replace(catalog.assets);
+      const local = persistLibraryCatalog(this.storage, catalog);
+      this.storageError.set(
+        local.ok
+          ? null
+          : this.centralState === 'ready'
+            ? `Salvo no Talus, mas o cache deste navegador falhou: ${local.message}`
+            : local.message,
+      );
+      if (!local.ok && this.centralState !== 'ready') return false;
+      if (closeDetail) this.closeDetail();
+      return true;
+    } finally {
+      this.isPersisting.set(false);
+    }
+  }
+
+  private async hydrateFromCentralService(): Promise<void> {
+    const remote = await loadSharedLibrary();
+    if (remote.kind === 'unavailable') {
+      this.centralState = 'unavailable';
+      return;
+    }
+    if (remote.kind === 'error') {
+      this.centralState = 'error';
+      this.storageError.set(remote.message);
+      return;
+    }
+
+    this.centralState = 'ready';
+    this.centralEtag = remote.etag;
+    if (!remote.initialized) {
+      const prepared = prepareLibraryCatalog(this.initialCatalog);
+      if (!prepared.ok) {
+        this.centralState = 'error';
+        this.storageError.set(prepared.message);
+        return;
+      }
+      const initialized = await saveSharedLibrary(prepared.payload, remote.etag);
+      if (initialized.kind === 'saved') {
+        this.centralEtag = initialized.etag;
+        return;
+      }
+      this.centralState = initialized.kind === 'unavailable' ? 'unavailable' : 'error';
+      if (initialized.kind !== 'unavailable') this.storageError.set(initialized.message);
+      return;
+    }
+
+    this.devices.set(structuredClone(remote.catalog.devices));
+    this.artworkStore.replace(remote.catalog.assets);
+    const local = persistLibraryCatalog(this.storage, remote.catalog);
+    if (!local.ok) {
+      this.storageError.set(
+        `Biblioteca central carregada, mas o cache local falhou: ${local.message}`,
+      );
+    } else {
+      this.storageError.set(null);
+    }
   }
 
   private captureReturnFocus(): void {

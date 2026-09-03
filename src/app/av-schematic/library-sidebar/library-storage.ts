@@ -28,13 +28,16 @@ export interface LibraryCatalog {
   loadError?: string;
 }
 
-interface PersistedLibraryV2 {
+export interface PersistedLibraryV2 {
   version: typeof LIBRARY_STORAGE_VERSION;
   devices: LibraryDevice[];
   assets: Record<string, Omit<RasterArtworkAsset, 'hash'>>;
 }
 
 export type LibraryPersistenceResult = { ok: true } | { ok: false; message: string };
+export type PreparedLibraryCatalog =
+  | { ok: true; payload: PersistedLibraryV2; serialized: string }
+  | { ok: false; message: string };
 
 export function browserLocalStorage(): Storage | null {
   try {
@@ -83,6 +86,26 @@ export function persistLibraryCatalog(
       message: 'O armazenamento local não está disponível; as alterações durarão apenas nesta aba.',
     };
   }
+  const prepared = prepareLibraryCatalog(catalog);
+  if (!prepared.ok) return prepared;
+  try {
+    storage.setItem(LIBRARY_STORAGE_KEY, prepared.serialized);
+    return { ok: true };
+  } catch (error) {
+    const quota =
+      error instanceof DOMException &&
+      (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED');
+    return {
+      ok: false,
+      message: quota
+        ? 'O navegador ficou sem espaço para salvar o catálogo. Remova imagens ou libere armazenamento e tente novamente.'
+        : 'Não foi possível salvar o catálogo neste navegador. As alterações durarão apenas nesta aba.',
+    };
+  }
+}
+
+/** Validate and serialize without mutating storage; used by the central API client. */
+export function prepareLibraryCatalog(catalog: LibraryCatalog): PreparedLibraryCatalog {
   const assetsByHash = new Map<string, RasterArtworkAsset>();
   for (const asset of catalog.assets) {
     const existing = assetsByHash.get(asset.hash);
@@ -122,20 +145,14 @@ export function persistLibraryCatalog(
         'O catálogo excede o limite local de 16 MiB. Remova imagens sem uso e tente novamente.',
     };
   }
-  try {
-    storage.setItem(LIBRARY_STORAGE_KEY, serialized);
-    return { ok: true };
-  } catch (error) {
-    const quota =
-      error instanceof DOMException &&
-      (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED');
-    return {
-      ok: false,
-      message: quota
-        ? 'O navegador ficou sem espaço para salvar o catálogo. Remova imagens ou libere armazenamento e tente novamente.'
-        : 'Não foi possível salvar o catálogo neste navegador. As alterações durarão apenas nesta aba.',
-    };
-  }
+  return { ok: true, payload, serialized };
+}
+
+/** Strict central-response parser: unlike local recovery, it never repairs data silently. */
+export function parseSharedLibraryCatalog(value: unknown): LibraryCatalog | null {
+  const recovered = recoverPersistedLibrary(value);
+  if (!recovered || recovered.wasRepaired || recovered.catalog.loadError) return null;
+  return recovered.catalog;
 }
 
 /** Compatibility helper that preserves any already stored artwork. */
