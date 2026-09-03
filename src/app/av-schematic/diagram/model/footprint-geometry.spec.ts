@@ -482,6 +482,55 @@ describe('rigid module geometry on non-uniform boards', () => {
     }
   });
 
+  it.each([0, 90, 180, 270] as const)(
+    'rejects rigid markers that resolve to the same hole at rotation %s',
+    (rotation) => {
+      const uniform: BoardNodeData = {
+        type: 'board',
+        boardId: 'uniform-collision',
+        label: 'Uniform collision',
+        rows: 30,
+        cols: 30,
+        pitch: 20,
+      };
+      const colliding: Footprint = {
+        id: 'colliding-markers',
+        label: 'Colliding markers',
+        rows: 1,
+        cols: 2,
+        pins: [
+          {
+            id: 'a',
+            label: 'A',
+            cell: { row: 0, col: 0 },
+            artworkPoint: { x: 0, y: 0 },
+          },
+          {
+            id: 'b',
+            label: 'B',
+            cell: { row: 0, col: 1 },
+            artworkPoint: { x: 5e-7, y: 0 },
+          },
+        ],
+        shapes: [],
+        physicalBounds: { x: -0.5, y: -0.5, width: 2, height: 1 },
+      };
+
+      expect(
+        validatePlacement(
+          'colliding',
+          uniform,
+          colliding,
+          { boardId: uniform.boardId, anchor: { row: 10, col: 10 }, rotation },
+          [],
+        ),
+      ).toMatchObject({
+        kind: 'incompatible-grid',
+        blockedBy: ['a', 'b'],
+      });
+    },
+  );
+
   it('uses the rendered board margin as physical surface at every rotation', () => {
     const uniform: BoardNodeData = {
       type: 'board',

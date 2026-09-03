@@ -572,7 +572,7 @@ describe('wiring-editor-server', () => {
       expect(forged.status).toBe(400);
     });
 
-    it('rejects a library footprint whose rigid pins share one marker', async () => {
+    it('rejects a library footprint whose rigid pins collide within physical tolerance', async () => {
       const initial = await fetch(`${server.baseUrl}/api/library`);
       const etag = initial.headers.get('etag');
       const catalog = await initial.json();
@@ -604,7 +604,7 @@ describe('wiring-editor-server', () => {
                 id: 'b',
                 label: 'B',
                 cell: { row: 0, col: 1 },
-                artworkPoint: { x: 0, y: 0 },
+                artworkPoint: { x: 5e-7, y: 0 },
               },
             ],
             shapes: [],

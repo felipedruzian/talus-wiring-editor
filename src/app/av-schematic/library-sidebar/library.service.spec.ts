@@ -198,7 +198,7 @@ describe('LibraryService', () => {
     expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
   });
 
-  it('repairs a catalog entry whose rigid pins share one physical marker', () => {
+  it('repairs a catalog entry whose rigid pins collide within physical tolerance', () => {
     const storage = new MemoryStorage();
     const invalid = {
       libraryId: 'lib-duplicate-marker',
@@ -227,7 +227,7 @@ describe('LibraryService', () => {
               id: 'b',
               label: 'B',
               cell: { row: 0, col: 1 },
-              artworkPoint: { x: 0, y: 0 },
+              artworkPoint: { x: 5e-7, y: 0 },
             },
           ],
           shapes: [],
