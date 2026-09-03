@@ -83,6 +83,14 @@ import {
 } from './wireviz-schema-keys';
 import { isWireColorPairCoherent } from './wire-colors';
 import { defaultVisualPlane, isValidVisualPlane } from './visual-planes';
+import {
+  categoryValidationError,
+  deterministicLegacyCategoryId,
+  isCanonicalLibraryCategory,
+  migrateLegacyDeviceCategories,
+  UNCATEGORIZED_CATEGORY,
+  type LibraryCategory,
+} from '../../library-sidebar/library-category';
 
 /**
  * Untrusted JSON (disk, network) -> the current canonical project.
@@ -123,18 +131,19 @@ export function parseCanonicalProject(raw: unknown): CanonicalProjectV4 {
   const version = root['formatVersion'];
 
   if (version === 1) return migrateV1(parseV1(root));
-  if (version === 2) return parseCurrent(root, true, false, false);
-  if (version === 3) return parseCurrent(root, false, false, false);
-  if (version === 4) return parseCurrent(root, false, true, false);
-  if (version === CANONICAL_FORMAT_VERSION) return parseCurrent(root, false, true, true);
+  if (version === 2) return parseCurrent(root, true, false, false, false);
+  if (version === 3) return parseCurrent(root, false, false, false, false);
+  if (version === 4) return parseCurrent(root, false, true, false, false);
+  if (version === 5) return parseCurrent(root, false, true, true, false);
+  if (version === CANONICAL_FORMAT_VERSION) return parseCurrent(root, false, true, true, true);
 
   throw new CanonicalProjectError(
-    `project.formatVersion: expected 1, 2, 3, 4 or ${CANONICAL_FORMAT_VERSION}, got ${JSON.stringify(version)}`,
+    `project.formatVersion: expected 1, 2, 3, 4, 5 or ${CANONICAL_FORMAT_VERSION}, got ${JSON.stringify(version)}`,
   );
 }
 
 // ---------------------------------------------------------------------------
-// v2/v3/v4/v5 shared structure
+// v2/v3/v4/v5/v6 shared structure
 // ---------------------------------------------------------------------------
 
 function parseCurrent(
@@ -142,13 +151,14 @@ function parseCurrent(
   migrateVisualPlanes: boolean,
   readBoardJumpers: boolean,
   readResources: boolean,
+  readCategories: boolean,
 ): CanonicalProjectV4 {
   const electricalRaw = expectRecord(root['electrical'], 'project.electrical');
   const layoutRaw = expectRecord(root['layout'], 'project.layout');
   preflightV2(electricalRaw, layoutRaw);
 
   const components = expectArray(electricalRaw['components'], 'project.electrical.components').map(
-    (value, i) => parseComponent(value, `project.electrical.components[${i}]`),
+    (value, i) => parseComponent(value, `project.electrical.components[${i}]`, readCategories),
   );
   const junctions = expectArray(electricalRaw['junctions'], 'project.electrical.junctions').map(
     (value, i) => parseJunction(value, `project.electrical.junctions[${i}]`),
@@ -192,25 +202,30 @@ function parseCurrent(
         readBoardJumpers,
       ),
   );
-  const resources = readResources ? parseResources(root['resources']) : emptyResources();
+  const resources = readResources
+    ? parseResources(root['resources'], readCategories)
+    : emptyResources();
+  const categorized = readCategories
+    ? { components, resources }
+    : migrateProjectCategories(components, resources);
 
   const project: CanonicalProjectV4 = {
     formatVersion: CANONICAL_FORMAT_VERSION,
-    electrical: { components, junctions, cables, nets },
+    electrical: { components: categorized.components, junctions, cables, nets },
     layout: {
       boards,
       components: componentLayouts,
       junctions: junctionLayouts,
       conductors: conductorLayouts,
     },
-    resources,
+    resources: categorized.resources,
   };
 
   validateProject(project);
   return project;
 }
 
-function parseResources(raw: unknown): CanonicalResources {
+function parseResources(raw: unknown, readCategories: boolean): CanonicalResources {
   const resources = expectRecord(raw, 'project.resources');
   const artwork = expectRecord(resources['artworkAssets'], 'project.resources.artworkAssets');
   const entries = Object.entries(artwork);
@@ -252,11 +267,85 @@ function parseResources(raw: unknown): CanonicalResources {
     const { hash: _hash, ...resource } = asset;
     artworkAssets[hash] = resource;
   }
-  return { artworkAssets };
+  return {
+    artworkAssets,
+    categories: readCategories ? parseCategoryResources(resources['categories']) : {},
+  };
 }
 
 function emptyResources(): CanonicalResources {
-  return { artworkAssets: {} };
+  return { artworkAssets: {}, categories: {} };
+}
+
+function parseCategoryResources(raw: unknown): CanonicalResources['categories'] {
+  const resources = expectRecord(raw, 'project.resources.categories');
+  const entries = Object.entries(resources);
+  if (entries.length > 512) {
+    throw new CanonicalProjectError('project.resources.categories: accepts at most 512 categories');
+  }
+  const categories: CanonicalResources['categories'] = {};
+  const parsedCategories: LibraryCategory[] = [];
+  for (const [id, value] of entries) {
+    const label = `project.resources.categories.${id}`;
+    const resource = expectRecord(value, label);
+    const category = {
+      id,
+      name: expectString(resource['name'], `${label}.name`),
+      prefix: expectString(resource['prefix'], `${label}.prefix`),
+    };
+    if (
+      !isCanonicalLibraryCategory(category) ||
+      categoryValidationError(category, parsedCategories) ||
+      (category.id === UNCATEGORIZED_CATEGORY.id &&
+        (category.name !== UNCATEGORIZED_CATEGORY.name ||
+          category.prefix !== UNCATEGORIZED_CATEGORY.prefix))
+    ) {
+      throw new CanonicalProjectError(`${label}: invalid category definition`);
+    }
+    parsedCategories.push(category);
+    categories[id] = { name: category.name, prefix: category.prefix };
+  }
+  return categories;
+}
+
+/** Deterministic v1-v5 migration: category labels become stable v6 resources. */
+function migrateProjectCategories(
+  components: CanonicalComponent[],
+  resources: CanonicalResources,
+): { components: CanonicalComponent[]; resources: CanonicalResources } {
+  const migrated = migrateLegacyDeviceCategories(
+    components.map((component) => ({
+      libraryId: component.id,
+      template: {
+        type: 'device' as const,
+        deviceId: component.deviceId,
+        manufacturer: component.manufacturer,
+        model: component.model,
+        category: component.category,
+        ports: [],
+      },
+    })),
+  );
+  const categoryByComponentId = new Map(
+    migrated.devices.map((device) => [device.libraryId, device.template.categoryId]),
+  );
+  const categoriesById = new Map(migrated.categories.map((category) => [category.id, category]));
+  const nextComponents = components.map((component) => {
+    const categoryId = categoryByComponentId.get(component.id) ?? UNCATEGORIZED_CATEGORY.id;
+    return { ...component, categoryId };
+  });
+  const categoryIds = new Set(nextComponents.map((component) => component.categoryId));
+  const categories = Object.fromEntries(
+    [...categoryIds].sort().map((id) => {
+      const category = categoriesById.get(id) ?? {
+        id: deterministicLegacyCategoryId(id),
+        name: id,
+        prefix: UNCATEGORIZED_CATEGORY.prefix,
+      };
+      return [id, { name: category.name, prefix: category.prefix }];
+    }),
+  );
+  return { components: nextComponents, resources: { ...resources, categories } };
 }
 
 /**
@@ -624,6 +713,7 @@ function validateProject(project: CanonicalProjectV4): void {
 
   validateLayout(project, boardsById, componentsById, junctionsById, conductorIds);
   validateArtworkResourceReferences(project);
+  validateCategoryResourceReferences(project);
 }
 
 function validateArtworkResourceReferences(project: CanonicalProjectV4): void {
@@ -645,6 +735,29 @@ function validateArtworkResourceReferences(project: CanonicalProjectV4): void {
     if (!referenced.has(hash)) {
       throw new CanonicalProjectError(
         `project.resources.artworkAssets: unreferenced artwork "${hash}"`,
+      );
+    }
+  }
+}
+
+function validateCategoryResourceReferences(project: CanonicalProjectV4): void {
+  const referenced = new Set(
+    project.electrical.components.map(
+      (component) => component.categoryId ?? UNCATEGORIZED_CATEGORY.id,
+    ),
+  );
+  const available = new Set(Object.keys(project.resources.categories));
+  for (const categoryId of referenced) {
+    if (!available.has(categoryId)) {
+      throw new CanonicalProjectError(
+        `project.resources.categories: missing category "${categoryId}" referenced by a component`,
+      );
+    }
+  }
+  for (const categoryId of available) {
+    if (!referenced.has(categoryId)) {
+      throw new CanonicalProjectError(
+        `project.resources.categories: unreferenced category "${categoryId}"`,
       );
     }
   }
@@ -1395,7 +1508,11 @@ function resolveEndpoint(
 // v2 entry parsers
 // ---------------------------------------------------------------------------
 
-function parseComponent(raw: unknown, label: string): CanonicalComponent {
+function parseComponent(
+  raw: unknown,
+  label: string,
+  requireCategoryId: boolean,
+): CanonicalComponent {
   const obj = expectRecord(raw, label);
   const pins = expectArray(obj['pins'], `${label}.pins`).map((p, i) =>
     parsePin(p, `${label}.pins[${i}]`),
@@ -1414,6 +1531,9 @@ function parseComponent(raw: unknown, label: string): CanonicalComponent {
     deviceId: expectString(obj['deviceId'], `${label}.deviceId`),
     manufacturer: expectString(obj['manufacturer'], `${label}.manufacturer`),
     model: expectString(obj['model'], `${label}.model`),
+    categoryId: requireCategoryId
+      ? expectNonEmptyString(obj['categoryId'], `${label}.categoryId`)
+      : (expectOptionalString(obj['categoryId'], `${label}.categoryId`) ?? ''),
     category: expectOptionalString(obj['category'], `${label}.category`),
     location: expectOptionalString(obj['location'], `${label}.location`),
     wirevizName: expectOptionalString(obj['wirevizName'], `${label}.wirevizName`),
@@ -2285,6 +2405,7 @@ function migrateV1(legacy: LegacyProject): CanonicalProjectV4 {
     deviceId: component.deviceId,
     manufacturer: component.manufacturer,
     model: component.model,
+    categoryId: '',
     category: component.category,
     location: component.location,
     pins: component.pins.map((pin) => ({
@@ -2383,9 +2504,14 @@ function migrateV1(legacy: LegacyProject): CanonicalProjectV4 {
     },
     resources: emptyResources(),
   };
-
-  validateProject(project);
-  return project;
+  const categorized = migrateProjectCategories(project.electrical.components, project.resources);
+  const migrated = {
+    ...project,
+    electrical: { ...project.electrical, components: categorized.components },
+    resources: categorized.resources,
+  };
+  validateProject(migrated);
+  return migrated;
 }
 
 // ---------------------------------------------------------------------------

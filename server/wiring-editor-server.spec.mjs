@@ -130,7 +130,7 @@ async function startServer(cfg) {
 
 function validProjectPayload() {
   return {
-    formatVersion: 5,
+    formatVersion: 6,
     electrical: {
       components: [
         {
@@ -138,6 +138,7 @@ function validProjectPayload() {
           deviceId: 'SOURCE',
           manufacturer: '',
           model: '',
+          categoryId: 'uncategorized',
           pins: [{ id: 'out', label: 'OUT', direction: 'output' }],
         },
         {
@@ -145,6 +146,7 @@ function validProjectPayload() {
           deviceId: 'LOAD-A',
           manufacturer: '',
           model: '',
+          categoryId: 'uncategorized',
           pins: [{ id: 'in', label: 'IN', direction: 'input' }],
         },
         {
@@ -152,6 +154,7 @@ function validProjectPayload() {
           deviceId: 'LOAD-B',
           manufacturer: '',
           model: '',
+          categoryId: 'uncategorized',
           pins: [{ id: 'in', label: 'IN', direction: 'input' }],
         },
       ],
@@ -219,7 +222,10 @@ function validProjectPayload() {
         { conductorId: 'branch-b', visualPlane: 20, fromTap: 2 },
       ],
     },
-    resources: { artworkAssets: {} },
+    resources: {
+      artworkAssets: {},
+      categories: { uncategorized: { name: 'Não categorizado', prefix: 'DEV' } },
+    },
   };
 }
 
@@ -964,12 +970,14 @@ describe('wiring-editor-server', () => {
       });
       expect(recoveredRes.status).toBe(200);
       const recovered = await (await fetch(`${server.baseUrl}/api/projects/legacy-route`)).json();
-      expect(recovered.nets[0]).toMatchObject({
-        routingMode: 'manual',
-        points: recoverable.nets[0].points,
+      expect(recovered.electrical.nets[0].conductors[0]).toMatchObject({
         gauge: '22 AWG',
         length: '120 mm',
-        note: 'Rota legada',
+        notes: 'Rota legada',
+      });
+      expect(recovered.layout.conductors[0]).toMatchObject({
+        routingMode: 'manual',
+        points: recoverable.nets[0].points,
       });
 
       const malformed = legacyConnectedProjectPayload();
@@ -987,8 +995,8 @@ describe('wiring-editor-server', () => {
       const stored = await (
         await fetch(`${server.baseUrl}/api/projects/legacy-malformed-route`)
       ).json();
-      expect(stored.nets[0].routingMode).toBeUndefined();
-      expect(stored.nets[0].points).toBeUndefined();
+      expect(stored.layout.conductors[0].routingMode).toBeUndefined();
+      expect(stored.layout.conductors[0].points).toBeUndefined();
     });
 
     it('returns 404 for GET of a project id that was never saved', async () => {
@@ -1114,11 +1122,44 @@ describe('wiring-editor-server', () => {
       });
       expect(res.status).toBe(200);
       const stored = await (await fetch(`${server.baseUrl}/api/projects/migrated-planes`)).json();
-      expect(stored.formatVersion).toBe(5);
-      expect(stored.resources).toEqual({ artworkAssets: {} });
+      expect(stored.formatVersion).toBe(6);
+      expect(stored.resources).toEqual({
+        artworkAssets: {},
+        categories: { uncategorized: { name: 'Não categorizado', prefix: 'DEV' } },
+      });
       expect(stored.layout.components.every((item) => item.visualPlane === 10)).toBe(true);
       expect(stored.layout.junctions.every((item) => item.visualPlane === 30)).toBe(true);
       expect(stored.layout.conductors.every((item) => item.visualPlane === 20)).toBe(true);
+    });
+
+    it('persists v6 category resources and rejects a dangling categoryId', async () => {
+      const project = validProjectPayload();
+      project.formatVersion = 6;
+      for (const component of project.electrical.components) component.categoryId = 'category-lab';
+      project.resources = {
+        artworkAssets: {},
+        categories: { 'category-lab': { name: 'Laboratório', prefix: 'LAB' } },
+      };
+      const accepted = await fetch(`${server.baseUrl}/api/projects/categories-v6`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(accepted.status).toBe(200);
+      expect(
+        await (await fetch(`${server.baseUrl}/api/projects/categories-v6`)).json(),
+      ).toMatchObject({
+        formatVersion: 6,
+        resources: { categories: project.resources.categories },
+      });
+
+      project.resources.categories = {};
+      const rejected = await fetch(`${server.baseUrl}/api/projects/categories-v6-bad`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(rejected.status).toBe(400);
     });
 
     it('stores per-conductor metadata with a tolerant orthogonal manual route', async () => {

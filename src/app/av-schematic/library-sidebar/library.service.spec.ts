@@ -1059,7 +1059,13 @@ describe('LibraryService', () => {
       libraryId: 'lib-shared',
       template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Versão remota' },
     };
-    expect(persistLibraryCatalog(storage, { devices: [localDevice], assets: [] }).ok).toBe(true);
+    expect(
+      persistLibraryCatalog(storage, {
+        categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
+        devices: [localDevice],
+        assets: [],
+      }).ok,
+    ).toBe(true);
     const remote = deferred<Response>();
     const fetchMock = vi.fn<typeof fetch>().mockReturnValue(remote.promise);
     vi.stubGlobal('localStorage', storage);
@@ -1070,7 +1076,15 @@ describe('LibraryService', () => {
     expect(service.editingDeviceId()).toBeNull();
 
     remote.resolve(
-      sharedCatalogResponse({ version: 2, devices: [remoteDevice], assets: {} }, true),
+      sharedCatalogResponse(
+        {
+          version: 3,
+          categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
+          devices: [remoteDevice],
+          assets: {},
+        },
+        true,
+      ),
     );
     await opening;
 
@@ -1085,7 +1099,13 @@ describe('LibraryService', () => {
       libraryId: 'lib-custom-deleted',
       template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Excluído' },
     };
-    expect(persistLibraryCatalog(storage, { devices: [deleted], assets: [] }).ok).toBe(true);
+    expect(
+      persistLibraryCatalog(storage, {
+        categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
+        devices: [deleted],
+        assets: [],
+      }).ok,
+    ).toBe(true);
     const remote = deferred<Response>();
     const fetchMock = vi.fn<typeof fetch>().mockReturnValue(remote.promise);
     vi.stubGlobal('localStorage', storage);
@@ -1093,7 +1113,17 @@ describe('LibraryService', () => {
     const service = createLibraryService();
 
     const opening = service.beginEdit(deleted.libraryId);
-    remote.resolve(sharedCatalogResponse({ version: 2, devices: [], assets: {} }, true));
+    remote.resolve(
+      sharedCatalogResponse(
+        {
+          version: 3,
+          categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
+          devices: [],
+          assets: {},
+        },
+        true,
+      ),
+    );
     await opening;
 
     expect(service.editingDeviceId()).toBeNull();

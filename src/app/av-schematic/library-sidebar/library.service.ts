@@ -246,6 +246,20 @@ export class LibraryService {
     return categoryById(this.resolvedCategories(), categoryId);
   }
 
+  /**
+   * Makes category names embedded in an opened project available to the UI
+   * without silently publishing them to the shared library on this host.
+   */
+  hydrateProjectCategories(
+    resources: Readonly<Record<string, { name: string; prefix: string }>>,
+  ): void {
+    const candidates = Object.entries(resources).flatMap(([id, resource]) => {
+      const category = canonicalCategory(id, resource.name, resource.prefix);
+      return categoryValidationError(category, []) ? [] : [category];
+    });
+    this.projectCategories.set(candidates);
+  }
+
   async createCategory(name: string, prefix: string): Promise<boolean> {
     await this.centralHydration;
     if (this.isPersisting()) return false;

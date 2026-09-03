@@ -1,25 +1,33 @@
-# Round-trip WireViz e projeto canônico v5
+# Round-trip WireViz e projeto canônico v6
 
 ## Contrato persistido
 
-`CanonicalProjectV5` possui `formatVersion: 5` e três seções independentes:
+`CanonicalProjectV6` possui `formatVersion: 6` e três seções independentes:
 
 - `electrical`: componentes, junções, cabos e nets com seus endpoints e
   condutores, inclusive cor e metadados próprios de cada ligação;
 - `layout`: placas, posições, furos, taps visuais e rotas manuais;
 - `resources`: imagens PNG/WebP endereçadas por SHA-256 e usadas pelos
-  footprints do projeto.
+  footprints do projeto, além das categorias referenciadas pelos componentes.
 
 O WireViz importa e exporta somente `electrical`. Abrir ou exportar um projeto
 não precisa apagar geometria, pois ela nunca é confundida com o documento
 elétrico. Recursos visuais também permanecem fora dessa troca. O parser aceita
-snapshots v1, v2, v3 e v4 e os migra em memória; fios v1 que
+snapshots v1 a v5 e os migra em memória; fios v1 que
 compartilham um pino são reunidos pela conectividade em uma única net v2.
 
 Cada imagem usada via `footprint.artwork.assetHash` viaja no próprio projeto.
 Ao abrir, os bytes são validados e hidratados antes da criação dos nós, de modo
 que o mesmo projeto preserve a figura em outro navegador/host mesmo que a
 biblioteca local desse cliente ainda não contenha o componente.
+
+Cada componente v6 referencia `categoryId`. Somente as definições usadas
+viajam em `resources.categories`, com `name` e `prefix`. Ao abrir, elas são
+hidratadas como categorias transitórias da biblioteca quando não existirem no
+catálogo compartilhado: a abertura não publica nem renomeia categorias nesse
+host. A próxima gravação preserva a mesma definição. Snapshots anteriores
+convertem a string `category` em ID determinístico; a categoria fixa
+`uncategorized` (`Não categorizado`, prefixo `DEV`) é o fallback.
 
 ## Jumpers locais da protoboard
 

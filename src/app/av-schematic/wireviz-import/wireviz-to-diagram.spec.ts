@@ -253,7 +253,7 @@ describe('wirevizToElectrical', () => {
     const electrical = importMultidrop().electrical;
     const net = electrical.nets[0];
     const project: CanonicalProjectV2 = {
-      formatVersion: 5,
+      formatVersion: 6,
       electrical,
       layout: {
         boards: [],
@@ -272,7 +272,7 @@ describe('wirevizToElectrical', () => {
           toTap: conductor.to.kind === 'junction' ? index : undefined,
         })),
       },
-      resources: { artworkAssets: {} },
+      resources: { artworkAssets: {}, categories: {} },
     };
 
     const model = fromCanonicalProject(project);

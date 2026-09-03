@@ -170,15 +170,15 @@ adivinhar a identidade do node a partir do nome do conector.
 
 ## Formato canônico que pode ser serializado
 
-`diagram/model/canonical-project.ts` define `CanonicalProjectV5`, serializado
+`diagram/model/canonical-project.ts` define `CanonicalProjectV6`, serializado
 em JSON e independente dos tipos de runtime `Node`/`Edge` do `ng-diagram`.
 A seção `electrical` contém componentes, junções, cabos e nets; `layout`
 contém placas, posições, furos, taps e rotas manuais; `resources` contém as
-imagens de footprints usadas no projeto. Essa separação, adicionada
+imagens de footprints e as categorias referenciadas usadas no projeto. Essa separação, adicionada
 pela issue #2, impede que uma exportação WireViz confunda semântica elétrica
 com geometria que o formato não representa. `toCanonicalProject()` /
 `fromCanonicalProject()` são funções puras de ida e volta, enquanto
-`parseCanonicalProject()` aceita v5 e migra snapshots v1/v2/v3/v4 em memória.
+`parseCanonicalProject()` aceita v6 e migra snapshots v1/v2/v3/v4/v5 em memória.
 
 `canonical-project.spec.ts` cobre placas, componentes, pinos, nets, cores,
 rotas manuais, junções multi-drop e migração v1. O contrato de round-trip da

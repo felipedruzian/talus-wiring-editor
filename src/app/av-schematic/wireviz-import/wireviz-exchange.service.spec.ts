@@ -28,7 +28,7 @@ function emptyProject(): CanonicalProjectV2 {
     formatVersion: CANONICAL_FORMAT_VERSION,
     electrical: { components: [], junctions: [], cables: [], nets: [] },
     layout: { boards: [], components: [], junctions: [], conductors: [] },
-    resources: { artworkAssets: {} },
+    resources: { artworkAssets: {}, categories: {} },
   };
 }
 
@@ -236,13 +236,14 @@ describe('buildImportedProject junction taps', () => {
       dataUrl: 'data:image/png;base64,AA==',
     };
 
-    expect(buildImportedProject(previous.electrical, previous).resources).toEqual(
-      previous.resources,
-    );
+    expect(buildImportedProject(previous.electrical, previous).resources).toEqual({
+      ...previous.resources,
+      categories: { uncategorized: { name: 'Não categorizado', prefix: 'DEV' } },
+    });
     expect(
       buildImportedProject({ components: [], junctions: [], cables: [], nets: [] }, previous)
         .resources,
-    ).toEqual({ artworkAssets: {} });
+    ).toEqual({ artworkAssets: {}, categories: {} });
   });
 
   it.each([

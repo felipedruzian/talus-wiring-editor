@@ -18,6 +18,8 @@ import { NodeVisibilityConfigService } from '../diagram/node-visibility/node-vis
 import { ArtworkAssetStore, type RasterArtworkAsset } from '../diagram/artwork/artwork-asset.store';
 import { isDeviceNode } from '../diagram/model/guards';
 import { beginModelHistoryGroup } from '../diagram/model/model-history-group';
+import { LibraryService } from '../library-sidebar/library.service';
+import { SEED_LIBRARY_CATEGORIES, type LibraryCategory } from '../library-sidebar/library-category';
 
 /**
  * Same-origin project persistence client for the local wiring-editor service
@@ -44,6 +46,7 @@ export class ProjectStorageService {
   private readonly visibilityConfig = inject(NodeVisibilityConfigService, { optional: true });
   private readonly avConfig = inject(AV_SCHEMATIC_CONFIG);
   private readonly artworkStore = inject(ArtworkAssetStore);
+  private readonly libraryService = inject(LibraryService, { optional: true });
 
   private readonly _status = signal<ProjectStorageStatus>('idle');
   private readonly _operation = signal<ProjectStorageOperation | null>(null);
@@ -139,6 +142,7 @@ export class ProjectStorageService {
         committedModel.getEdges(),
         this.cableInventory,
         this.projectArtwork(nodes),
+        this.categoryInventory(),
       ),
     );
     this.cableInventory = project.electrical.cables.map(cloneCable);
@@ -153,7 +157,7 @@ export class ProjectStorageService {
   snapshotImportSkeleton(): CanonicalProjectV4 {
     const committedModel = this.modelService.getModel();
     const nodes = committedModel.getNodes();
-    return toCanonicalProject(nodes, [], [], this.projectArtwork(nodes));
+    return toCanonicalProject(nodes, [], [], this.projectArtwork(nodes), this.categoryInventory());
   }
 
   /** Keeps the non-visual cable inventory aligned with a live wire-id rename. */
@@ -181,6 +185,7 @@ export class ProjectStorageService {
   async replaceProject(project: CanonicalProjectV4): Promise<void> {
     const parsed = parseCanonicalProject(project);
     this.artworkStore.registerMany(artworkAssetsFromProject(parsed));
+    this.libraryService?.hydrateProjectCategories(parsed.resources.categories);
     const { nodes, edges } = fromCanonicalProject(parsed);
     await this.replaceModel(nodes, edges);
     this.cableInventory = parsed.electrical.cables.map(cloneCable);
@@ -197,6 +202,11 @@ export class ProjectStorageService {
       }),
     );
     return this.artworkStore.referenced(hashes);
+  }
+
+  /** Project resources supplement the shared catalog without requiring its presence on this host. */
+  private categoryInventory(): readonly LibraryCategory[] {
+    return this.libraryService?.projectCategoryInventory() ?? SEED_LIBRARY_CATEGORIES;
   }
 
   /** Refreshes the actionable report without blocking save on warnings. */

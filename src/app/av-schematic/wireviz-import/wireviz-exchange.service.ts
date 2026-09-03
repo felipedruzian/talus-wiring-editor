@@ -22,6 +22,7 @@ import {
 import { importWireViz } from './import-wireviz';
 import { type WireVizCompatibilityReport, type WireVizReportEntry } from './wireviz-report';
 import { WireVizImportError, type WireVizImportOptions } from './wireviz-to-diagram';
+import { UNCATEGORIZED_CATEGORY } from '../library-sidebar/library-category';
 
 export type WireVizExchangeStatus = 'idle' | 'loading' | 'success' | 'error';
 
@@ -248,6 +249,7 @@ function inferImportOptions(project: CanonicalProjectV4): WireVizImportOptions {
       deviceId: component.deviceId,
       manufacturer: component.manufacturer,
       model: component.model,
+      categoryId: component.categoryId,
       category: component.category,
       location: component.location,
       pins: component.pins.map((pin) => ({
@@ -271,7 +273,16 @@ export function buildImportedProject(
   importedElectrical: CanonicalElectrical,
   previous: CanonicalProjectV4,
 ): CanonicalProjectV4 {
-  const electrical = withPhysicalBindings(importedElectrical, previous);
+  const boundElectrical = withPhysicalBindings(importedElectrical, previous);
+  // Programmatic import callers from pre-v6 may still omit the category. The
+  // canonical project always makes the deterministic fallback explicit.
+  const electrical: CanonicalElectrical = {
+    ...boundElectrical,
+    components: boundElectrical.components.map((component) => ({
+      ...component,
+      categoryId: component.categoryId ?? UNCATEGORIZED_CATEGORY.id,
+    })),
+  };
   const previousComponents = new Map(
     previous.layout.components.map((layout) => [layout.componentId, layout]),
   );
@@ -339,16 +350,17 @@ export function buildImportedProject(
       junctions,
       conductors,
     },
-    resources: resourcesReferencedBy(components, previous.resources),
+    resources: resourcesReferencedBy(components, electrical.components, previous.resources),
   };
 }
 
 function resourcesReferencedBy(
-  components: CanonicalProjectV4['layout']['components'],
+  layouts: CanonicalProjectV4['layout']['components'],
+  components: readonly CanonicalElectrical['components'][number][],
   previous: CanonicalResources,
 ): CanonicalResources {
   const hashes = new Set(
-    components.flatMap((component) => {
+    layouts.flatMap((component) => {
       const hash = component.footprint?.artwork?.assetHash;
       return hash ? [hash] : [];
     }),
@@ -356,6 +368,17 @@ function resourcesReferencedBy(
   return {
     artworkAssets: Object.fromEntries(
       Object.entries(previous.artworkAssets).filter(([hash]) => hashes.has(hash)),
+    ),
+    categories: Object.fromEntries(
+      [...new Set(components.map((component) => component.categoryId ?? UNCATEGORIZED_CATEGORY.id))]
+        .sort()
+        .map((id) => [
+          id,
+          previous.categories[id] ?? {
+            name: UNCATEGORIZED_CATEGORY.name,
+            prefix: UNCATEGORIZED_CATEGORY.prefix,
+          },
+        ]),
     ),
   };
 }

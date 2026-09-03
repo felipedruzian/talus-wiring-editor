@@ -319,6 +319,7 @@ function buildComponent(
     deviceId: existing?.deviceId ?? connector.name,
     manufacturer: existing?.manufacturer ?? connector.manufacturer ?? '',
     model: existing?.model ?? connector.mpn ?? connector.type ?? '',
+    categoryId: existing?.categoryId ?? 'uncategorized',
     category: existing?.category,
     location: existing?.location,
     wirevizName: connector.name,
