@@ -9,7 +9,13 @@ const STRONG_ETAG_PATTERN = /^"[a-f0-9]{64}"$/;
 const MAX_SHARED_LIBRARY_RESPONSE_BYTES = 24 * 1024 * 1024;
 
 export type SharedLibraryLoadResult =
-  | { kind: 'loaded'; catalog: LibraryCatalog; etag: string; initialized: boolean }
+  | {
+      kind: 'loaded';
+      catalog: LibraryCatalog;
+      etag: string;
+      initialized: boolean;
+      needsUpgrade: boolean;
+    }
   | { kind: 'unavailable' }
   | { kind: 'error'; message: string };
 
@@ -56,15 +62,16 @@ export async function loadSharedLibrary(
   } catch {
     return { kind: 'error', message: 'A biblioteca central contém JSON inválido.' };
   }
-  const catalog = parseSharedLibraryCatalog(raw);
-  if (!catalog) {
+  const parsed = parseSharedLibraryCatalog(raw);
+  if (!parsed) {
     return { kind: 'error', message: 'A biblioteca central contém dados inválidos.' };
   }
   return {
     kind: 'loaded',
-    catalog,
+    catalog: parsed.catalog,
     etag,
     initialized: response.headers.get('x-wiring-library-initialized') !== '0',
+    needsUpgrade: parsed.needsUpgrade,
   };
 }
 
