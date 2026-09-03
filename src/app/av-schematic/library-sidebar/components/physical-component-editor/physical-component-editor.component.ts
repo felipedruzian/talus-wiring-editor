@@ -213,6 +213,10 @@ export class PhysicalComponentEditorComponent {
         const height = width * (asset.height / asset.width);
         return {
           ...footprint,
+          pins: footprint.pins.map((pin) => ({
+            ...pin,
+            artworkPoint: pin.artworkPoint ?? { x: pin.cell.col, y: pin.cell.row },
+          })),
           artwork: {
             assetHash: asset.hash,
             x: -0.5,
@@ -557,7 +561,17 @@ export class PhysicalComponentEditorComponent {
   private setPinCell(index: number, cell: FootprintCell): void {
     this.updateFootprint((footprint) => ({
       ...footprint,
-      pins: footprint.pins.map((pin, pinIndex) => (pinIndex === index ? { ...pin, cell } : pin)),
+      pins: footprint.pins.map((pin, pinIndex) =>
+        pinIndex === index
+          ? {
+              ...pin,
+              cell,
+              ...(footprint.artwork || pin.artworkPoint
+                ? { artworkPoint: { x: cell.col, y: cell.row } }
+                : {}),
+            }
+          : pin,
+      ),
     }));
   }
 
@@ -632,6 +646,14 @@ export function resizeFootprintGrid(
       row: Math.min(pin.cell.row, rows - 1),
       col: Math.min(pin.cell.col, cols - 1),
     },
+    ...(pin.artworkPoint
+      ? {
+          artworkPoint: {
+            x: Math.min(pin.artworkPoint.x, cols - 1),
+            y: Math.min(pin.artworkPoint.y, rows - 1),
+          },
+        }
+      : {}),
   }));
   const pinCells = pins.map((pin) => cellKey(pin.cell));
   if (new Set(pinCells).size !== pinCells.length) {

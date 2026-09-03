@@ -13,7 +13,10 @@ import {
   footprintDrawPoint,
   footprintDrawnExtent,
   footprintNodeSize,
-  footprintPinHoles,
+  footprintPinPoint,
+  isRigidFootprint,
+  rotateCell,
+  rotateFootprintPoint,
   type FootprintChannel,
 } from '../model/footprint-geometry';
 import {
@@ -59,14 +62,26 @@ export function footprintPinViews(
   const portIds = new Set(ports.map((port) => port.id));
   const pinsById = new Map(footprint.pins.map((pin) => [pin.id, pin]));
   const extent = footprintDrawnExtent(footprint, rotation, channel);
-  return footprintPinHoles(footprint, { anchor: { row: 0, col: 0 }, rotation }).map((pin) => ({
-    id: pin.pinId,
-    label: pin.label,
-    x: (pin.cell.col - extent.left) * pitch,
-    y: (applyFootprintChannel(pin.cell.row, channel) - extent.top) * pitch,
-    port: portIds.has(pin.pinId),
-    primary: pinsById.get(pin.pinId)?.primary ?? false,
-  }));
+  const rigid = isRigidFootprint(footprint);
+  return footprint.pins.map((pin) => {
+    const point = rigid
+      ? (() => {
+          const marker = footprintPinPoint(pin);
+          return rotateFootprintPoint(marker.x, marker.y, footprint, rotation);
+        })()
+      : (() => {
+          const cell = rotateCell(pin.cell, rotation, footprint);
+          return { x: cell.col, y: applyFootprintChannel(cell.row, channel) };
+        })();
+    return {
+      id: pin.id,
+      label: pin.label,
+      x: (point.x - extent.left) * pitch,
+      y: (point.y - extent.top) * pitch,
+      port: portIds.has(pin.id),
+      primary: pinsById.get(pin.id)?.primary ?? false,
+    };
+  });
 }
 
 /** A pin pad drawn on the illustration, already rotated and channel-mapped. */
@@ -82,8 +97,12 @@ export function footprintPadViews(
   rotation: BoardRotation,
   channel: FootprintChannel | null,
 ): FootprintPadView[] {
+  const rigid = isRigidFootprint(footprint);
   return footprint.pins.map((pin) => {
-    const point = footprintDrawPoint(pin.cell.col, pin.cell.row, footprint, rotation, channel);
+    const marker = footprintPinPoint(pin);
+    const point = rigid
+      ? rotateFootprintPoint(marker.x, marker.y, footprint, rotation)
+      : footprintDrawPoint(pin.cell.col, pin.cell.row, footprint, rotation, channel);
     return { id: pin.id, cx: point.x, cy: point.y, primary: pin.primary === true };
   });
 }

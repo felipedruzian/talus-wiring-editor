@@ -4,6 +4,8 @@ import {
   footprintDrawPoint,
   footprintDrawnExtent,
   footprintNodeSize,
+  footprintPinPoint,
+  isRigidFootprint,
   type FootprintChannel,
 } from '../../diagram/model/footprint-geometry';
 import { resolveFootprint, type FootprintShape } from '../../diagram/model/footprint';
@@ -53,15 +55,10 @@ export const renderFootprintNode: DxfNodeRenderer = (ctx, node) => {
     renderShape(ctx, shape, footprint, rotation, pitch, origin, channel);
   }
   for (const pin of footprint.pins) {
-    const center = shapePoint(
-      pin.cell.col,
-      pin.cell.row,
-      footprint,
-      rotation,
-      pitch,
-      origin,
-      channel,
-    );
+    const pinPoint = isRigidFootprint(footprint)
+      ? footprintPinPoint(pin)
+      : { x: pin.cell.col, y: pin.cell.row };
+    const center = shapePoint(pinPoint.x, pinPoint.y, footprint, rotation, pitch, origin, channel);
     const mapped = ctx.mapper.mapPoint(center.x, center.y);
     ctx.doc.addEntity(
       new DxfCircle(

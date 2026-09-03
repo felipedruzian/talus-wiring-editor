@@ -55,6 +55,8 @@ export class BoardPlacementService {
     switch (conflict.kind) {
       case 'out-of-bounds':
         return `"${conflict.nodeId}" não cabe em "${conflict.boardId}": ${where || 'fora da placa'}.`;
+      case 'incompatible-grid':
+        return `"${conflict.nodeId}" não encaixa rigidamente nos furos de "${conflict.boardId}" nesta posição/rotação (terminais: ${conflict.blockedBy.join(', ')}).`;
       case 'occupied':
         return `"${conflict.nodeId}" não pode ocupar ${where} em "${conflict.boardId}": já usado por ${conflict.blockedBy.join(', ')}.`;
       case 'net-conflict':
@@ -169,7 +171,17 @@ export class BoardPlacementService {
     const rotation: BoardRotation = stepRotation(placement.rotation, step);
     // Keep pin 1 fixed. The integer transform is exactly reversible after four
     // turns, unlike center deltas rounded at each step.
-    const anchor = anchorAfterRotation(footprint, placement, rotation);
+    const anchor = anchorAfterRotation(footprint, placement, rotation, board.data);
+    if (!anchor) {
+      this._conflict.set({
+        kind: 'incompatible-grid',
+        nodeId,
+        boardId: board.data.boardId,
+        holes: [],
+        blockedBy: footprint.pins.map((pin) => pin.id),
+      });
+      return false;
+    }
 
     const rotated = await this.commitPlacement(node, board, footprint, {
       boardId: placement.boardId,
@@ -184,11 +196,19 @@ export class BoardPlacementService {
 
   /** Every hole currently claimed on any board, by any device. */
   currentClaims(): BoardHoleClaim[] {
-    return this.modelService
-      .getModel()
-      .getNodes()
+    const nodes = this.modelService.getModel().getNodes();
+    const boards = new Map(
+      nodes.filter(isBoardNode).map((board) => [board.data.boardId, board.data]),
+    );
+    return nodes
       .filter(isDeviceNode)
-      .flatMap((node) => deviceHoleClaims(node.id, node.data));
+      .flatMap((node) =>
+        deviceHoleClaims(
+          node.id,
+          node.data,
+          boards.get(node.data.placement?.boardId ?? node.data.boardId ?? ''),
+        ),
+      );
   }
 
   private async seatDroppedNode(node: Node<DeviceNodeData>): Promise<void> {
@@ -278,13 +298,16 @@ export class BoardPlacementService {
     }
 
     this._conflict.set(null);
-    const data = syncPortHolesToPlacement({
-      ...node.data,
-      placement,
-      boardId: placement.boardId,
-      footprintRotation: placement.rotation,
-      footprintPitch: board.data.pitch,
-    });
+    const data = syncPortHolesToPlacement(
+      {
+        ...node.data,
+        placement,
+        boardId: placement.boardId,
+        footprintRotation: placement.rotation,
+        footprintPitch: board.data.pitch,
+      },
+      board.data,
+    );
     const previousNodes = this.modelService.getModel().getNodes();
     const connectedEdges = this.modelService.getConnectedEdges(node.id).filter(isWireEdge);
     const modelEdges = this.modelService.getModel().getEdges().filter(isWireEdge);

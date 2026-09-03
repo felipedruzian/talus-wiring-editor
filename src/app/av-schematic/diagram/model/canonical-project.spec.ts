@@ -224,16 +224,27 @@ describe('canonical project round-trip', () => {
       rows: 2,
       cols: 1,
       pins: [
-        { id: 'top', label: 'TOP', cell: { row: 0, col: 0 }, primary: true },
-        { id: 'bottom', label: 'BOTTOM', cell: { row: 1, col: 0 } },
+        {
+          id: 'top',
+          label: 'TOP',
+          cell: { row: 0, col: 0 },
+          artworkPoint: { x: 0, y: 0 },
+          primary: true,
+        },
+        {
+          id: 'bottom',
+          label: 'BOTTOM',
+          cell: { row: 1, col: 0 },
+          artworkPoint: { x: 0, y: 29 / 17 },
+        },
       ],
       shapes: [],
       artwork: {
         assetHash: hash,
-        x: -2,
-        y: -2,
-        width: 4,
-        height: 4,
+        x: -1,
+        y: -0.5,
+        width: 3,
+        height: 3,
         preserveAspectRatio: true,
       },
     };

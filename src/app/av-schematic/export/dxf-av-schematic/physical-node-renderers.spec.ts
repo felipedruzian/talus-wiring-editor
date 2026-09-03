@@ -8,6 +8,7 @@ import {
   footprintNodeSize,
   footprintPinHoles,
   placementNodePosition,
+  resolveFootprintPinHoles,
 } from '../../diagram/model/footprint-geometry';
 import {
   ARDUINO_NANO_FOOTPRINT,
@@ -512,6 +513,61 @@ describe('breadboard DXF rendering', () => {
       );
 
     const expected = footprintPinHoles(straddler, straddlePlacement).map((pin) => {
+      const local = holeLocalPoint(breadboardNode.data, pin.hole);
+      return mapper.mapPoint(
+        breadboardNode.position.x + local.x,
+        breadboardNode.position.y + local.y,
+      );
+    });
+    expect(pads.map((pad) => ({ x: pad.x, y: pad.y }))).toEqual(expected);
+  });
+
+  it('exports every rigid Nano marker on the exact breadboard hole it resolves to', () => {
+    const nanoPlacement = {
+      boardId: 'bb',
+      anchor: { row: breadboardRowIndex('I'), col: 3 },
+      rotation: 0 as const,
+    };
+    const nanoNode: Node<DeviceNodeData> = {
+      id: 'nano-rigid',
+      type: NodeTemplateType.FootprintNode,
+      position: placementNodePosition(
+        { board: breadboardNode.data, position: breadboardNode.position },
+        nanoPlacement,
+        ARDUINO_NANO_FOOTPRINT,
+      ),
+      data: {
+        type: 'device',
+        deviceId: 'NANO-RIGID',
+        manufacturer: 'Arduino',
+        model: 'Nano',
+        boardId: 'bb',
+        footprintId: ARDUINO_NANO_FOOTPRINT.id,
+        footprint: ARDUINO_NANO_FOOTPRINT,
+        placement: nanoPlacement,
+        ports: ARDUINO_NANO_FOOTPRINT.pins.map((pin) => ({
+          id: pin.id,
+          label: pin.label,
+          direction: 'input',
+        })),
+      },
+    };
+    const nanoDoc = new DxfExporter(buildAvDxfConfig()).export(
+      [breadboardNode, nanoNode],
+      [],
+      bounds,
+    );
+    const pads = nanoDoc
+      .getEntities()
+      .filter(
+        (entity): entity is DxfCircle =>
+          entity instanceof DxfCircle && entity.layerName === LAYERS.FOOTPRINTS,
+      );
+    const expected = resolveFootprintPinHoles(
+      ARDUINO_NANO_FOOTPRINT,
+      nanoPlacement,
+      breadboardNode.data,
+    ).pins.map((pin) => {
       const local = holeLocalPoint(breadboardNode.data, pin.hole);
       return mapper.mapPoint(
         breadboardNode.position.x + local.x,

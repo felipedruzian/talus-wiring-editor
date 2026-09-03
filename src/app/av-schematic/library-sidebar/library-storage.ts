@@ -382,6 +382,7 @@ function isFootprint(value: unknown): value is Footprint {
         pinIds.has(pin['id']) ||
         typeof pin['label'] !== 'string' ||
         !isFootprintCell(pin['cell'], rows, cols) ||
+        (pin['artworkPoint'] !== undefined && !isFinitePoint(pin['artworkPoint'])) ||
         (pin['primary'] !== undefined && typeof pin['primary'] !== 'boolean') ||
         pinCells.has(cellKey(pin['cell']))
       ) {
@@ -402,7 +403,24 @@ function isFootprint(value: unknown): value is Footprint {
   ) {
     return false;
   }
-  return value['artwork'] === undefined || isFootprintArtwork(value['artwork']);
+  return (
+    (value['artwork'] === undefined || isFootprintArtwork(value['artwork'])) &&
+    (value['physicalBounds'] === undefined || isFootprintPhysicalBounds(value['physicalBounds']))
+  );
+}
+
+function isFootprintPhysicalBounds(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isFiniteNumber(value['x']) &&
+    isFiniteNumber(value['y']) &&
+    isPositiveFinite(value['width']) &&
+    isPositiveFinite(value['height'])
+  );
+}
+
+function isFinitePoint(value: unknown): value is { x: number; y: number } {
+  return isRecord(value) && isFiniteNumber(value['x']) && isFiniteNumber(value['y']);
 }
 
 function isFootprintArtwork(value: unknown): value is FootprintArtwork {

@@ -28,15 +28,24 @@ export interface TrustedComponentArtwork {
 export interface TrustedComponentPin {
   readonly id: string;
   readonly label: string;
+  /** Electrical board address used by legacy/uniform grids. */
   readonly row: number;
   readonly col: number;
+  /** Physical marker center in artwork pitch units. */
+  readonly marker: Readonly<{ x: number; y: number }>;
   readonly primary?: true;
 }
 
 const REVISION = '2026-09-03';
 
+type TrustedComponentPinInput = Omit<TrustedComponentPin, 'marker'> & {
+  readonly marker?: Readonly<{ x: number; y: number }>;
+};
+
 function trustedArtwork(
-  definition: Omit<TrustedComponentArtwork, 'kind' | 'revision' | 'license'>,
+  definition: Omit<TrustedComponentArtwork, 'kind' | 'revision' | 'license' | 'pins'> & {
+    readonly pins: readonly TrustedComponentPinInput[];
+  },
 ): TrustedComponentArtwork {
   return Object.freeze({
     ...definition,
@@ -45,7 +54,14 @@ function trustedArtwork(
     license: 'MIT' as const,
     bounds: Object.freeze({ ...definition.bounds }),
     grid: Object.freeze({ ...definition.grid }),
-    pins: Object.freeze(definition.pins.map((pin) => Object.freeze({ ...pin }))),
+    pins: Object.freeze(
+      definition.pins.map((pin) =>
+        Object.freeze({
+          ...pin,
+          marker: Object.freeze({ ...(pin.marker ?? { x: pin.col, y: pin.row }) }),
+        }),
+      ),
+    ),
   });
 }
 
@@ -163,6 +179,7 @@ export interface TrustedFootprintDefinition {
   readonly pins?: readonly {
     readonly id: string;
     readonly cell: Readonly<{ row: number; col: number }>;
+    readonly artworkPoint?: Readonly<{ x: number; y: number }>;
     readonly primary?: boolean;
   }[];
 }
@@ -188,6 +205,8 @@ export function trustedArtworkForFootprintDefinition(
     return (
       pin?.cell.row === trustedPin.row &&
       pin.cell.col === trustedPin.col &&
+      pin.artworkPoint?.x === trustedPin.marker.x &&
+      pin.artworkPoint.y === trustedPin.marker.y &&
       (pin.primary === true) === (trustedPin.primary === true)
     );
   })

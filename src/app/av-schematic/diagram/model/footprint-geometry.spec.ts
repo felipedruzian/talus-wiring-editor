@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { ARDUINO_NANO_ARTWORK } from '../artwork/trusted-component-artwork';
+import { ARDUINO_NANO_ARTWORK, TB6612FNG_ARTWORK } from '../artwork/trusted-component-artwork';
+import { createBreadboard830 } from './breadboard';
+import { holeLocalPoint } from './board-geometry';
 import {
   anchorAfterRotation,
   anchorForNodePosition,
@@ -11,6 +13,7 @@ import {
   footprintNodeSize,
   footprintOccupiedHoles,
   footprintPinHoles,
+  resolveFootprintPinHoles,
   isPlacementInBounds,
   placementNodePosition,
   rotateCell,
@@ -19,8 +22,9 @@ import {
   syncPortHolesToPlacement,
   validatePlacement,
 } from './footprint-geometry';
-import { ARDUINO_NANO_FOOTPRINT, type Footprint } from './footprint';
+import { ARDUINO_NANO_FOOTPRINT, TB6612FNG_FOOTPRINT, type Footprint } from './footprint';
 import { type BoardNodeData, type DeviceNodeData, type DevicePlacement } from './interfaces';
+import { footprintPinViews } from '../node/footprint-node.component';
 
 const board: BoardNodeData = {
   type: 'board',
@@ -321,6 +325,117 @@ describe('bounds and occupancy', () => {
         { boardId: board.boardId, ownerId: 'blocker', hole: { row: 0, col: 0 } },
       ]),
     ).toEqual({ row: 0, col: 1 });
+  });
+});
+
+describe('rigid module geometry on non-uniform boards', () => {
+  const breadboard = createBreadboard830({
+    boardId: 'bb-830',
+    label: 'Breadboard 830',
+    pitch: 20,
+  });
+  const boardPosition = { x: 80, y: 120 };
+
+  for (const [name, module, artwork] of [
+    ['Arduino Nano', ARDUINO_NANO_FOOTPRINT, ARDUINO_NANO_ARTWORK],
+    ['TB6612FNG', TB6612FNG_FOOTPRINT, TB6612FNG_ARTWORK],
+  ] as const) {
+    for (const rotation of [0, 180] as const) {
+      it(`keeps ${name} marker, port and hole coincident over the channel at ${rotation} degrees`, () => {
+        const placement: DevicePlacement = {
+          boardId: breadboard.boardId,
+          anchor: { row: 5, col: 3 },
+          rotation,
+        };
+        const resolution = resolveFootprintPinHoles(module, placement, breadboard);
+        expect(resolution.missingPinIds).toEqual([]);
+        expect(validatePlacement(name, breadboard, module, placement, [])).toBeNull();
+
+        const nodePosition = placementNodePosition(
+          { board: breadboard, position: boardPosition },
+          placement,
+          module,
+        );
+        const ports = module.pins.map((pin) => ({
+          id: pin.id,
+          label: pin.label,
+          direction: 'input' as const,
+        }));
+        const views = new Map(
+          footprintPinViews(module, rotation, breadboard.pitch, ports).map((pin) => [pin.id, pin]),
+        );
+        for (const pin of resolution.pins) {
+          const view = views.get(pin.pinId);
+          const marker = artwork.pins.find((candidate) => candidate.id === pin.pinId)?.marker;
+          expect(view).toBeDefined();
+          expect(marker).toBeDefined();
+          const hole = holeLocalPoint(breadboard, pin.hole);
+          expect(nodePosition.x + (view?.x ?? 0)).toBeCloseTo(boardPosition.x + hole.x);
+          expect(nodePosition.y + (view?.y ?? 0)).toBeCloseTo(boardPosition.y + hole.y);
+        }
+        expect(new Set(resolution.pins.map((pin) => pin.hole.row))).toEqual(new Set([5, 9]));
+      });
+    }
+  }
+
+  it('rejects the formerly accepted Nano placement whose lower markers land in the trench', () => {
+    const placement: DevicePlacement = {
+      boardId: breadboard.boardId,
+      anchor: { row: 4, col: 3 },
+      rotation: 0,
+    };
+    const resolution = resolveFootprintPinHoles(ARDUINO_NANO_FOOTPRINT, placement, breadboard);
+    expect(resolution.missingPinIds).toHaveLength(15);
+    expect(
+      validatePlacement('nano', breadboard, ARDUINO_NANO_FOOTPRINT, placement, []),
+    ).toMatchObject({ kind: 'incompatible-grid' });
+  });
+
+  it('rejects a long-axis rotation that crosses spacer rows or the channel', () => {
+    for (const rotation of [90, 270] as const) {
+      expect(
+        validatePlacement(
+          'nano',
+          breadboard,
+          ARDUINO_NANO_FOOTPRINT,
+          { boardId: breadboard.boardId, anchor: { row: 4, col: 20 }, rotation },
+          [],
+        ),
+      ).toMatchObject({ kind: 'incompatible-grid' });
+    }
+  });
+
+  it('supports all four rigid rotations on a uniform hole grid', () => {
+    const uniform: BoardNodeData = {
+      type: 'board',
+      boardId: 'uniform',
+      label: 'Uniform',
+      rows: 30,
+      cols: 30,
+      pitch: 20,
+    };
+    for (const rotation of [0, 90, 180, 270] as const) {
+      const placement = {
+        boardId: uniform.boardId,
+        anchor: { row: 3, col: 3 },
+        rotation,
+      };
+      expect(validatePlacement('nano', uniform, ARDUINO_NANO_FOOTPRINT, placement, [])).toBeNull();
+      expect(
+        resolveFootprintPinHoles(ARDUINO_NANO_FOOTPRINT, placement, uniform).pins,
+      ).toHaveLength(ARDUINO_NANO_FOOTPRINT.pins.length);
+    }
+  });
+
+  it('claims holes below the Nano artwork overhang, not only its 7 x 15 header grid', () => {
+    const placement: DevicePlacement = {
+      boardId: breadboard.boardId,
+      anchor: { row: 5, col: 3 },
+      rotation: 0,
+    };
+    const occupied = footprintOccupiedHoles(ARDUINO_NANO_FOOTPRINT, placement, breadboard);
+    expect(occupied).toContainEqual({ row: 5, col: 2 });
+    expect(occupied).toContainEqual({ row: 5, col: 18 });
   });
 });
 

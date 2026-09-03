@@ -6,7 +6,11 @@ import {
 } from './board-geometry';
 import { boardHoleLabel } from './board-ports';
 import { findTraceDefects, findTraceOverlaps } from './board-trace';
-import { deviceHoleClaims } from './footprint-geometry';
+import {
+  deviceHoleClaims,
+  isPlacementInBounds,
+  resolveFootprintPinHoles,
+} from './footprint-geometry';
 import { resolveFootprint } from './footprint';
 import { isBoardNode, isDeviceNode, isWireEdge } from './guards';
 import { OPERATIONAL_LIMITS } from './operational-limits.mjs';
@@ -128,7 +132,13 @@ export function inspectPhysicalLayout(
 
   const claims: BoardHoleClaim[] = nodes
     .filter(isDeviceNode)
-    .flatMap((node) => deviceHoleClaims(node.id, node.data));
+    .flatMap((node) =>
+      deviceHoleClaims(
+        node.id,
+        node.data,
+        boardsById.get(node.data.placement?.boardId ?? node.data.boardId ?? ''),
+      ),
+    );
   for (const claim of findOutOfBoundsHoleClaims(claims, boardsById)) {
     diagnostics.push({
       severity: 'error',
@@ -149,13 +159,35 @@ export function inspectPhysicalLayout(
   }
 
   for (const node of nodes.filter(isDeviceNode)) {
-    if (node.data.placement && !resolveFootprint(node.data)) {
+    const footprint = resolveFootprint(node.data);
+    if (node.data.placement && !footprint) {
       diagnostics.push({
         severity: 'error',
         code: 'footprint-missing',
         path: `layout.components.${node.id}.footprint`,
         message: `O componente "${node.id}" está encaixado sem uma definição de footprint disponível.`,
       });
+      continue;
+    }
+    const placement = node.data.placement;
+    const board = placement ? boardsById.get(placement.boardId) : undefined;
+    if (placement && footprint && board) {
+      const resolution = resolveFootprintPinHoles(footprint, placement, board);
+      if (resolution.missingPinIds.length > 0) {
+        diagnostics.push({
+          severity: 'error',
+          code: 'placement-incompatible-grid',
+          path: `layout.components.${node.id}.placement`,
+          message: `O componente "${node.id}" não encaixa rigidamente nos furos de "${board.label}" nesta posição/rotação.`,
+        });
+      } else if (!isPlacementInBounds(board, footprint, placement)) {
+        diagnostics.push({
+          severity: 'error',
+          code: 'placement-physical-bounds',
+          path: `layout.components.${node.id}.placement`,
+          message: `O corpo físico de "${node.id}" ultrapassa os limites de "${board.label}".`,
+        });
+      }
     }
   }
 

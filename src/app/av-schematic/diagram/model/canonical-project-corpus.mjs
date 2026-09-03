@@ -147,6 +147,74 @@ function changedDetached(name, change) {
   return { name, accepted: false, raw };
 }
 
+function rigidGapProject() {
+  return {
+    formatVersion: 2,
+    electrical: {
+      components: [
+        {
+          id: 'rigid-module',
+          deviceId: 'RIGID-1',
+          manufacturer: 'project',
+          model: 'rigid',
+          pins: [],
+        },
+      ],
+      junctions: [],
+      cables: [],
+      nets: [],
+    },
+    layout: {
+      boards: [
+        {
+          id: 'gap-board',
+          label: 'Gap board',
+          rows: 4,
+          cols: 4,
+          pitch: 20,
+          centerGap: 40,
+          holes: holes(4, 4),
+          position: { x: 0, y: 0 },
+        },
+      ],
+      components: [
+        {
+          componentId: 'rigid-module',
+          position: { x: 999, y: 999 },
+          boardId: 'gap-board',
+          footprintId: 'rigid-gap-module',
+          footprint: {
+            id: 'rigid-gap-module',
+            label: 'Rigid gap module',
+            rows: 2,
+            cols: 1,
+            pins: [
+              {
+                id: 'top',
+                label: 'TOP',
+                cell: { row: 0, col: 0 },
+                artworkPoint: { x: 0, y: 0 },
+                primary: true,
+              },
+              {
+                id: 'bottom',
+                label: 'BOTTOM',
+                cell: { row: 1, col: 0 },
+                artworkPoint: { x: 0, y: 3 },
+              },
+            ],
+            shapes: [],
+            physicalBounds: { x: -0.5, y: -0.5, width: 1, height: 4 },
+          },
+          placement: { boardId: 'gap-board', anchor: { row: 1, col: 1 }, rotation: 0 },
+        },
+      ],
+      junctions: [],
+      conductors: [],
+    },
+  };
+}
+
 const completeGridWithoutHoleList = basePhysicalProject();
 delete completeGridWithoutHoleList.layout.boards[0].holes;
 
@@ -407,6 +475,29 @@ export const canonicalValidationCorpus = [
     name: 'accepts retained footprint geometry without a placement',
     accepted: true,
     raw: baseDetachedFootprintProject(),
+  },
+  {
+    name: 'accepts rigid marker coordinates that bridge a non-uniform channel exactly',
+    accepted: true,
+    raw: rigidGapProject(),
+  },
+  {
+    name: 'rejects rigid markers that would land inside a board channel',
+    accepted: false,
+    raw: (() => {
+      const raw = rigidGapProject();
+      raw.layout.components[0].footprint.pins[1].artworkPoint.y = 1;
+      return raw;
+    })(),
+  },
+  {
+    name: 'rejects rigid physical bounds that extend past the board edge',
+    accepted: false,
+    raw: (() => {
+      const raw = rigidGapProject();
+      raw.layout.components[0].footprint.physicalBounds.x = -2;
+      return raw;
+    })(),
   },
   changed('rejects footprintId without an embedded footprint', (raw) => {
     delete raw.layout.components[0].footprint;

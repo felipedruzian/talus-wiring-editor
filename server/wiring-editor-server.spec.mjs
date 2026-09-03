@@ -671,10 +671,10 @@ describe('wiring-editor-server', () => {
       project.layout.components[0].position = { x: 999, y: -999 };
       project.layout.components[0].footprint.artwork = {
         assetHash: PNG_1X1_HASH,
-        x: -2,
-        y: -2,
-        width: 4,
-        height: 4,
+        x: -1,
+        y: -1,
+        width: 3,
+        height: 1,
         preserveAspectRatio: true,
       };
       project.resources.artworkAssets[PNG_1X1_HASH] = PNG_1X1_RESOURCE;
@@ -688,7 +688,7 @@ describe('wiring-editor-server', () => {
 
       const saved = await (await fetch(`${server.baseUrl}/api/projects/artwork-seated`)).json();
       expect(saved.layout.components[0]).toMatchObject({
-        position: { x: 9, y: 36 },
+        position: { x: 26, y: 53 },
         pinHoles: [
           { pinId: 'a', hole: { row: 2, col: 1 } },
           { pinId: 'b', hole: { row: 2, col: 2 } },

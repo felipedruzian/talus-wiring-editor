@@ -158,6 +158,11 @@ function validateFootprint(value, label, footprintId, referencedAssets) {
     pinIds.add(id);
     expectString(record.label, `${pinLabel}.label`, 16_384, true);
     const cell = validateCell(record.cell, `${pinLabel}.cell`, rows, cols);
+    if (record.artworkPoint !== undefined) {
+      const point = expectRecord(record.artworkPoint, `${pinLabel}.artworkPoint`);
+      expectFinite(point.x, `${pinLabel}.artworkPoint.x`);
+      expectFinite(point.y, `${pinLabel}.artworkPoint.y`);
+    }
     const key = `${cell.row}:${cell.col}`;
     if (pinCells.has(key)) fail(`${pinLabel}.cell: another pin already occupies ${key}`);
     pinCells.add(key);
@@ -186,6 +191,13 @@ function validateFootprint(value, label, footprintId, referencedAssets) {
       fail(`${label}.artwork.preserveAspectRatio: expected boolean`);
     }
     referencedAssets.add(hash);
+  }
+  if (footprint.physicalBounds !== undefined) {
+    const bounds = expectRecord(footprint.physicalBounds, `${label}.physicalBounds`);
+    for (const key of ['x', 'y']) expectFinite(bounds[key], `${label}.physicalBounds.${key}`);
+    for (const key of ['width', 'height']) {
+      expectPositiveFinite(bounds[key], `${label}.physicalBounds.${key}`);
+    }
   }
 }
 

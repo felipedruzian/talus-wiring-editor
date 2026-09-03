@@ -81,6 +81,13 @@ export interface FootprintPin {
   id: string;
   label: string;
   cell: FootprintCell;
+  /**
+   * Physical center of the pin marker in artwork pitch units. When absent,
+   * the marker is the legacy cell center (`x = col`, `y = row`). Keeping this
+   * separate from `cell` lets a rigid component bridge a non-uniform board
+   * without stretching its image to the board's address grid.
+   */
+  artworkPoint?: { x: number; y: number };
   /** Marks pin 1 / polarity so the illustration can key off it. */
   primary?: boolean;
 }
@@ -99,6 +106,13 @@ export interface FootprintArtwork {
   preserveAspectRatio?: boolean;
 }
 
+export interface FootprintPhysicalBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface Footprint {
   id: string;
   label: string;
@@ -109,6 +123,8 @@ export interface Footprint {
   shapes: FootprintShape[];
   /** Optional user-supplied raster image, referenced by content hash. */
   artwork?: FootprintArtwork;
+  /** Rigid physical body bounds in pitch units, independent from its renderer. */
+  physicalBounds?: FootprintPhysicalBounds;
   /**
    * Cells the body physically covers beyond its pins. Absent means the body
    * covers its whole `rows x cols` bounding box, which is the usual case for a
@@ -234,6 +250,7 @@ function trustedModuleFootprint(
       id: pin.id,
       label: pin.label,
       cell: { row: pin.row, col: pin.col },
+      artworkPoint: { ...pin.marker },
       primary: pin.primary,
     })),
     shapes: [
@@ -257,6 +274,12 @@ function trustedModuleFootprint(
         fill: 'silk',
       },
     ],
+    physicalBounds: {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+    },
   };
 }
 
@@ -359,9 +382,14 @@ export function resolveFootprint(reference: FootprintReference): Footprint | und
 export function cloneFootprint(footprint: Footprint): Footprint {
   return {
     ...footprint,
-    pins: footprint.pins.map((pin) => ({ ...pin, cell: { ...pin.cell } })),
+    pins: footprint.pins.map((pin) => ({
+      ...pin,
+      cell: { ...pin.cell },
+      artworkPoint: pin.artworkPoint ? { ...pin.artworkPoint } : undefined,
+    })),
     shapes: footprint.shapes.map((shape) => ({ ...shape })),
     artwork: footprint.artwork ? { ...footprint.artwork } : undefined,
+    physicalBounds: footprint.physicalBounds ? { ...footprint.physicalBounds } : undefined,
     bodyCells: footprint.bodyCells?.map((cell) => ({ ...cell })),
   };
 }

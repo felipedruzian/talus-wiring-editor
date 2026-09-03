@@ -14,8 +14,9 @@ import {
   footprintNodeSize,
   footprintPinHoles,
   placementNodePosition,
+  resolveFootprintPinHoles,
 } from '../model/footprint-geometry';
-import { RESISTOR_1K_FOOTPRINT, type Footprint } from '../model/footprint';
+import { ARDUINO_NANO_FOOTPRINT, RESISTOR_1K_FOOTPRINT, type Footprint } from '../model/footprint';
 import {
   NodeTemplateType,
   type BoardNodeData,
@@ -135,6 +136,7 @@ class ModelStub {
   // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'ng-diagram-port',
   template: '<ng-content />',
+  host: { '[attr.data-port-id]': 'id()' },
 })
 class PortStubComponent {
   readonly id = input<string>();
@@ -439,5 +441,54 @@ describe('FootprintNodeComponent bundled physical modules', () => {
     expect(image?.getAttribute('data-asset-revision')).toBe(testCase.artwork.revision);
     expect(svg?.querySelector('.footprint-node__pin-pad')).toBeNull();
     expect(host.querySelectorAll('.footprint-node__port')).toHaveLength(testCase.ports);
+  });
+
+  it('renders a seated Nano rigidly with every port centered on its breadboard hole', () => {
+    const nanoPlacement: DevicePlacement = {
+      boardId: breadboard.data.boardId,
+      anchor: { row: breadboardRowIndex('I'), col: 3 },
+      rotation: 0,
+    };
+    const seed = SEED_LIBRARY.find((candidate) => candidate.libraryId === 'lib-arduino-nano');
+    if (!seed) throw new Error('Missing Nano seed');
+    const nano: Node<DeviceNodeData> = {
+      id: 'nano-seated',
+      type: NodeTemplateType.FootprintNode,
+      position: placementNodePosition(
+        { board: breadboard.data, position: breadboard.position },
+        nanoPlacement,
+        ARDUINO_NANO_FOOTPRINT,
+      ),
+      data: {
+        ...structuredClone(seed.template),
+        deviceId: 'NANO-SEATED',
+        boardId: breadboard.data.boardId,
+        placement: nanoPlacement,
+      },
+    };
+
+    const { host } = render(nano);
+    const image = host.querySelector('image');
+    expect(image?.getAttribute('transform')).toBe('matrix(1 0 0 1 -1.5 -0.5)');
+    const holes = new Map(
+      resolveFootprintPinHoles(ARDUINO_NANO_FOOTPRINT, nanoPlacement, breadboard.data).pins.map(
+        (pin) => [pin.pinId, pin.hole],
+      ),
+    );
+    const ports = [...host.querySelectorAll<HTMLElement>('.footprint-node__port')];
+    expect(ports).toHaveLength(30);
+    for (const port of ports) {
+      const resolvedHole = holes.get(port.dataset['portId'] ?? '');
+      expect(resolvedHole).toBeDefined();
+      if (!resolvedHole) continue;
+      const target = holeLocalPoint(breadboard.data, resolvedHole);
+      const half = Number.parseFloat(port.style.height) / 2;
+      expect(nano.position.x + Number.parseFloat(port.style.left)).toBeCloseTo(
+        breadboard.position.x + target.x,
+      );
+      expect(nano.position.y + Number.parseFloat(port.style.top) + half).toBeCloseTo(
+        breadboard.position.y + target.y,
+      );
+    }
   });
 });
