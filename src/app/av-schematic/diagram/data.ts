@@ -1,4 +1,5 @@
 import { type Edge, type Node } from 'ng-diagram';
+import { SEED_LIBRARY } from '../library-sidebar/seed-library';
 import {
   MINIMAL_TWO_NETS_PLACEMENT,
   MINIMAL_TWO_NETS_WIREVIZ_YAML,
@@ -50,81 +51,56 @@ const boardA: Node<BoardNodeData> = {
   data: PLACA_A_BOARD,
 };
 
-// Nano and TB6612FNG are positioned so their illustrated cards overlap board
-// A's own footprint (x: 60..292, y: 60..192 for rows=6/cols=11/pitch=20 - see
-// board-geometry.ts::boardSize) in the visual plane. `nodes` below keeps the
-// persistent default keeps the board behind components and wires. Still just
-// one ng-diagram canvas: the board is an ordinary node, not a background layer.
+function physicalSeed(libraryId: string): DeviceNodeData {
+  const seed = SEED_LIBRARY.find((candidate) => candidate.libraryId === libraryId);
+  if (!seed?.template.footprint) throw new Error(`Missing physical seed "${libraryId}"`);
+  return structuredClone(seed.template);
+}
+
+// Nano and TB6612FNG remain loose physical modules over board A: their exact
+// bodies do not fit its 6-row grid, so the canvas preserves the authored pixel
+// positions and the few hand-addressed rail contacts without claiming a false
+// seated placement. The board stays behind them in the shared visual plane.
 const nano: Node<DeviceNodeData> = {
   id: 'nano-1',
-  type: NodeTemplateType.DeviceNode,
+  type: NodeTemplateType.FootprintNode,
   position: { x: 70, y: 66 },
   data: {
-    type: 'device',
+    ...physicalSeed('lib-arduino-nano'),
     deviceId: 'NANO-1',
-    manufacturer: 'Arduino',
-    model: 'Nano',
-    category: 'microcontroller',
     location: 'Board A',
     boardId: 'board-a',
-    ports: [
-      { id: 'vin', label: 'VIN', direction: 'input', connectorType: 'Power' },
-      { id: 'd9', label: 'D9', direction: 'output', connectorType: 'PWM' },
-      { id: 'd8', label: 'D8', direction: 'output', connectorType: 'GPIO' },
+    ports: physicalSeed('lib-arduino-nano').ports.map((port) => ({
+      ...port,
       // L1 is GND_SYS and L3 is 5V_LOGIC on placa A; both of these pins really
       // do belong to those rails, so addressing them is not a short.
-      {
-        id: 'gnd',
-        label: 'GND',
-        direction: 'output',
-        connectorType: 'Power',
-        hole: { row: 0, col: 1 },
-      },
-      {
-        id: '5v',
-        label: '5V',
-        direction: 'output',
-        connectorType: 'Power',
-        hole: { row: 2, col: 1 },
-      },
-    ],
+      ...(port.id === 'gnd'
+        ? { direction: 'output' as const, hole: { row: 0, col: 1 } }
+        : port.id === '5v'
+          ? { direction: 'output' as const, hole: { row: 2, col: 1 } }
+          : {}),
+    })),
   },
 };
 
 const tb6612: Node<DeviceNodeData> = {
   id: 'tb6612-1',
-  type: NodeTemplateType.DeviceNode,
+  type: NodeTemplateType.FootprintNode,
   position: { x: 185, y: 66 },
   data: {
-    type: 'device',
+    ...physicalSeed('lib-tb6612fng'),
     deviceId: 'DRV-1',
-    manufacturer: 'Toshiba',
-    model: 'TB6612FNG',
-    category: 'motor-driver',
     location: 'Board A',
     boardId: 'board-a',
-    ports: [
-      { id: 'pwma', label: 'PWMA', direction: 'input', connectorType: 'PWM' },
-      { id: 'ain1', label: 'AIN1', direction: 'input', connectorType: 'GPIO' },
-      { id: 'stby', label: 'STBY', direction: 'input', connectorType: 'GPIO' },
+    ports: physicalSeed('lib-tb6612fng').ports.map((port) => ({
+      ...port,
       // L3 is 5V_LOGIC (shared with the Nano's 5V, one net) and L2 is GND_MOT.
-      {
-        id: 'vcc',
-        label: 'VCC',
-        direction: 'input',
-        connectorType: 'Power',
-        hole: { row: 2, col: 6 },
-      },
-      {
-        id: 'gnd',
-        label: 'GND',
-        direction: 'input',
-        connectorType: 'Power',
-        hole: { row: 1, col: 6 },
-      },
-      { id: 'ao1', label: 'AO1', direction: 'output', connectorType: 'Motor' },
-      { id: 'ao2', label: 'AO2', direction: 'output', connectorType: 'Motor' },
-    ],
+      ...(port.id === 'vcc'
+        ? { hole: { row: 2, col: 6 } }
+        : port.id === 'gnd'
+          ? { hole: { row: 1, col: 6 } }
+          : {}),
+    })),
   },
 };
 

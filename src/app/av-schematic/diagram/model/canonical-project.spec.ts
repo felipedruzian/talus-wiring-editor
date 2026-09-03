@@ -1,6 +1,8 @@
 import { type Edge, type Node } from 'ng-diagram';
 import { describe, expect, it } from 'vitest';
 import { diagramModel } from '../data';
+import { trustedArtworkForFootprint } from '../artwork/trusted-component-artwork';
+import { SEED_LIBRARY } from '../../library-sidebar/seed-library';
 import {
   CanonicalProjectError,
   buildNets,
@@ -79,6 +81,28 @@ describe('canonical physical validation corpus', () => {
       notes: 'Canal central e bulk incorporado',
     });
     expect(parsed.layout.components[0]?.position).toEqual({ x: 30.25, y: 69.25 });
+  });
+
+  it('keeps the pre-rigid v5 raster contract readable across a board channel', () => {
+    const legacy = must(
+      canonicalValidationCorpus.find(
+        (testCase) =>
+          testCase.name === 'accepts legacy v5 raster footprints without rigid marker metadata',
+      ),
+    );
+    const parsed = parseCanonicalProject(clone(legacy.raw));
+
+    expect(parsed.formatVersion).toBe(5);
+    expect(parsed.layout.components[0]).toMatchObject({
+      pinHoles: [
+        { pinId: 'a', hole: { row: 1, col: 1 } },
+        { pinId: 'b', hole: { row: 2, col: 1 } },
+      ],
+    });
+    expect(parsed.layout.components[0]?.footprint?.pins).toEqual([
+      { id: 'a', label: 'A', cell: { row: 0, col: 0 }, primary: true },
+      { id: 'b', label: 'B', cell: { row: 1, col: 0 } },
+    ]);
   });
 });
 
@@ -222,16 +246,27 @@ describe('canonical project round-trip', () => {
       rows: 2,
       cols: 1,
       pins: [
-        { id: 'top', label: 'TOP', cell: { row: 0, col: 0 }, primary: true },
-        { id: 'bottom', label: 'BOTTOM', cell: { row: 1, col: 0 } },
+        {
+          id: 'top',
+          label: 'TOP',
+          cell: { row: 0, col: 0 },
+          artworkPoint: { x: 0, y: 0 },
+          primary: true,
+        },
+        {
+          id: 'bottom',
+          label: 'BOTTOM',
+          cell: { row: 1, col: 0 },
+          artworkPoint: { x: 0, y: 29 / 17 },
+        },
       ],
       shapes: [],
       artwork: {
         assetHash: hash,
-        x: -2,
-        y: -2,
-        width: 4,
-        height: 4,
+        x: -1,
+        y: -0.5,
+        width: 3,
+        height: 3,
         preserveAspectRatio: true,
       },
     };
@@ -664,6 +699,37 @@ describe('canonical project round-trip', () => {
     expect(rebuilt.data.footprintRotation).toBe(90);
     expect(rebuilt.data.footprintPitch).toBe(17);
     expect(toCanonicalProject(reopened.nodes, reopened.edges)).toEqual(saved);
+  });
+
+  it('round-trips every bundled physical module with its trusted definition and rotation', () => {
+    const modules = SEED_LIBRARY.filter((candidate) =>
+      ['lib-arduino-nano', 'lib-mpu6050-gy521', 'lib-tb6612fng'].includes(candidate.libraryId),
+    );
+
+    for (const [index, module] of modules.entries()) {
+      const node: Node<DeviceNodeData> = {
+        id: `module-${index}`,
+        type: NodeTemplateType.FootprintNode,
+        position: { x: 100 + index * 25.5, y: 200 - index * 13.25 },
+        data: {
+          ...clone(module.template),
+          deviceId: `MODULE-${index}`,
+          footprintRotation: 90,
+          footprintPitch: 17,
+        },
+      };
+      const saved = toCanonicalProject([node], []);
+      const reopened = fromCanonicalProject(parseCanonicalProject(clone(saved)));
+      const rebuilt = must(reopened.nodes.find(isDeviceNode));
+
+      expect(rebuilt.type).toBe(NodeTemplateType.FootprintNode);
+      expect(rebuilt.position).toEqual(node.position);
+      expect(rebuilt.data.footprintRotation).toBe(90);
+      expect(rebuilt.data.footprintPitch).toBe(17);
+      expect(rebuilt.data.footprint).toEqual(node.data.footprint);
+      expect(trustedArtworkForFootprint(rebuilt.data.footprint?.id)).toBeDefined();
+      expect(toCanonicalProject(reopened.nodes, reopened.edges)).toEqual(saved);
+    }
   });
 
   it('keeps a component without a footprint on the generic renderer', () => {

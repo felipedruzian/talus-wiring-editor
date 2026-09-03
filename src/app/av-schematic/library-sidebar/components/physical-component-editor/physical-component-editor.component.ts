@@ -9,6 +9,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { ArtworkAssetStore } from '../../../diagram/artwork/artwork-asset.store';
+import { trustedArtworkForFootprintDefinition } from '../../../diagram/artwork/trusted-component-artwork';
 import { footprintDrawnExtent } from '../../../diagram/model/footprint-geometry';
 import {
   type Footprint,
@@ -71,6 +72,17 @@ export class PhysicalComponentEditorComponent {
       this.artworkAssets.asset(hash) ??
       null
     );
+  });
+  protected readonly previewArtwork = computed(() => {
+    const footprint = this.footprint();
+    if (!footprint) return null;
+    const raster = footprint.artwork;
+    const rasterAsset = this.asset();
+    if (raster && rasterAsset) {
+      return { source: rasterAsset.dataUrl, geometry: raster, trusted: false };
+    }
+    const trusted = trustedArtworkForFootprintDefinition(footprint);
+    return trusted ? { source: trusted.href, geometry: trusted.bounds, trusted: true } : null;
   });
   protected readonly extent = computed(() => {
     const footprint = this.footprint();
@@ -201,6 +213,10 @@ export class PhysicalComponentEditorComponent {
         const height = width * (asset.height / asset.width);
         return {
           ...footprint,
+          pins: footprint.pins.map((pin) => ({
+            ...pin,
+            artworkPoint: pin.artworkPoint ?? { x: pin.cell.col, y: pin.cell.row },
+          })),
           artwork: {
             assetHash: asset.hash,
             x: -0.5,
@@ -545,7 +561,17 @@ export class PhysicalComponentEditorComponent {
   private setPinCell(index: number, cell: FootprintCell): void {
     this.updateFootprint((footprint) => ({
       ...footprint,
-      pins: footprint.pins.map((pin, pinIndex) => (pinIndex === index ? { ...pin, cell } : pin)),
+      pins: footprint.pins.map((pin, pinIndex) =>
+        pinIndex === index
+          ? {
+              ...pin,
+              cell,
+              ...(footprint.artwork || pin.artworkPoint
+                ? { artworkPoint: { x: cell.col, y: cell.row } }
+                : {}),
+            }
+          : pin,
+      ),
     }));
   }
 
@@ -620,6 +646,14 @@ export function resizeFootprintGrid(
       row: Math.min(pin.cell.row, rows - 1),
       col: Math.min(pin.cell.col, cols - 1),
     },
+    ...(pin.artworkPoint
+      ? {
+          artworkPoint: {
+            x: Math.min(pin.artworkPoint.x, cols - 1),
+            y: Math.min(pin.artworkPoint.y, rows - 1),
+          },
+        }
+      : {}),
   }));
   const pinCells = pins.map((pin) => cellKey(pin.cell));
   if (new Set(pinCells).size !== pinCells.length) {

@@ -20,7 +20,8 @@ type LibraryEditMode = 'create' | 'edit';
 export class LibraryService {
   private readonly artworkStore = inject(ArtworkAssetStore);
   private readonly storage = browserLocalStorage();
-  private readonly initialCatalog = loadLibraryCatalog(this.storage);
+  private readonly initialLoad = loadLibraryCatalog(this.storage);
+  private readonly initialCatalog = this.initialLoad.catalog;
 
   readonly devices = signal<LibraryDevice[]>(this.initialCatalog.devices);
   readonly isExpanded = signal(false);
@@ -253,6 +254,13 @@ export class LibraryService {
     this.centralState = 'ready';
     this.centralEtag = remote.etag;
     if (!remote.initialized) {
+      if (this.initialLoad.needsRepair || this.initialCatalog.loadError) {
+        this.centralState = 'error';
+        this.storageError.set(
+          'O cache local precisou de reparos; a biblioteca central vazia não foi inicializada automaticamente.',
+        );
+        return;
+      }
       const prepared = prepareLibraryCatalog(this.initialCatalog);
       if (!prepared.ok) {
         this.centralState = 'error';
@@ -262,11 +270,37 @@ export class LibraryService {
       const initialized = await saveSharedLibrary(prepared.payload, remote.etag);
       if (initialized.kind === 'saved') {
         this.centralEtag = initialized.etag;
+        const local = persistLibraryCatalog(this.storage, this.initialCatalog);
+        if (!local.ok) {
+          this.storageError.set(
+            `Salvo no Talus, mas o cache deste navegador falhou: ${local.message}`,
+          );
+        }
         return;
       }
       this.centralState = initialized.kind === 'unavailable' ? 'unavailable' : 'error';
       if (initialized.kind !== 'unavailable') this.storageError.set(initialized.message);
       return;
+    }
+
+    if (remote.needsUpgrade) {
+      const prepared = prepareLibraryCatalog(remote.catalog);
+      if (!prepared.ok) {
+        this.centralState = 'error';
+        this.storageError.set(prepared.message);
+        return;
+      }
+      const upgraded = await saveSharedLibrary(prepared.payload, remote.etag);
+      if (upgraded.kind !== 'saved') {
+        this.centralState = upgraded.kind === 'unavailable' ? 'unavailable' : 'error';
+        this.storageError.set(
+          upgraded.kind === 'unavailable'
+            ? 'O serviço central ficou indisponível durante a atualização da biblioteca. O cache local foi preservado.'
+            : upgraded.message,
+        );
+        return;
+      }
+      this.centralEtag = upgraded.etag;
     }
 
     this.devices.set(structuredClone(remote.catalog.devices));

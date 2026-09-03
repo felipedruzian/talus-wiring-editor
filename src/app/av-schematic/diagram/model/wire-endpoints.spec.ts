@@ -11,7 +11,7 @@ describe('wire endpoint inspection', () => {
     if (!edge) throw new Error('fixture has no W1 wire edge');
 
     expect(describeWireEndpoints(diagramModel.nodes, edge)).toEqual({
-      source: { deviceId: 'NANO-1', portLabel: 'D9' },
+      source: { deviceId: 'NANO-1', portLabel: 'D9 / BIN1' },
       target: { deviceId: 'DRV-1', portLabel: 'PWMA' },
     });
   });

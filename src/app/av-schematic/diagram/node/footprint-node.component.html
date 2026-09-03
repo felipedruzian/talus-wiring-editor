@@ -1,5 +1,10 @@
 @if (footprint(); as footprint) {
-  <div class="footprint-node" [style.width.px]="size().width" [style.height.px]="size().height">
+  <div
+    class="footprint-node"
+    [class.footprint-node--integral]="integralArtwork()"
+    [style.width.px]="size().width"
+    [style.height.px]="size().height"
+  >
     <div class="footprint-node__caption">
       <span>{{ data().deviceId }}</span>
       <span>{{ data().model }}</span>
@@ -32,6 +37,9 @@
           [attr.href]="image.href"
           [attr.transform]="image.transform"
           [attr.preserveAspectRatio]="image.preserveAspectRatio"
+          [attr.data-artwork-kind]="image.kind"
+          [attr.data-artwork-id]="image.artworkId"
+          [attr.data-asset-revision]="image.revision"
         />
       } @else {
         @for (shape of shapes(); track $index) {
@@ -85,14 +93,16 @@
         }
       }
 
-      @for (pad of pads(); track pad.id) {
-        <circle
-          class="footprint-node__pin-pad"
-          [class.footprint-node__pin-pad--primary]="pad.primary"
-          [attr.cx]="pad.cx"
-          [attr.cy]="pad.cy"
-          r="0.19"
-        />
+      @if (!integralArtwork()) {
+        @for (pad of pads(); track pad.id) {
+          <circle
+            class="footprint-node__pin-pad"
+            [class.footprint-node__pin-pad--primary]="pad.primary"
+            [attr.cx]="pad.cx"
+            [attr.cy]="pad.cy"
+            r="0.19"
+          />
+        }
       }
     </svg>
 

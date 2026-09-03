@@ -35,6 +35,12 @@
   box-shadow: 0 2px 7px rgb(0 0 0 / 18%);
 }
 
+.footprint-node--integral {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
 .footprint-node__caption {
   position: absolute;
   left: 4px;

@@ -1162,7 +1162,18 @@ function validateV2Layout(
           `${label}: boardId and placement.boardId must identify the same board`,
         );
       }
-      const occupied = footprintOccupiedHoles(layout.footprint, layout.placement);
+      const pinResolution = resolveFootprintPinHoles(layout.footprint, layout.placement, board);
+      if (pinResolution.missingPinIds.length > 0) {
+        throw new CanonicalProjectValidationError(
+          `${label}.placement: rigid pin markers do not match board holes (${pinResolution.missingPinIds.join(', ')})`,
+        );
+      }
+      if (!rigidArtworkFitsBoard(board, layout.footprint, layout.placement)) {
+        throw new CanonicalProjectValidationError(
+          `${label}.placement: rigid physical bounds extend beyond board "${board.id}"`,
+        );
+      }
+      const occupied = footprintOccupiedHoles(layout.footprint, layout.placement, board);
       const unavailable = occupied.filter((hole) => !isBoardHoleAvailable(board, hole));
       if (unavailable.length > 0) {
         const first = unavailable[0];
@@ -1172,9 +1183,7 @@ function validateV2Layout(
       }
       layout.boardId = layout.placement.boardId;
       layout.position = placementNodePosition(board, layout.placement, layout.footprint);
-      const footprintHoles = new Map(
-        footprintPinHoles(layout.footprint, layout.placement).map((pin) => [pin.pinId, pin.hole]),
-      );
+      const footprintHoles = new Map(pinResolution.pins.map((pin) => [pin.pinId, pin.hole]));
       layout.pinHoles = component.pins.flatMap((pin) => {
         const hole = footprintHoles.get(pin.id);
         return hole ? [{ pinId: pin.id, hole: { ...hole } }] : [];
@@ -1543,17 +1552,38 @@ function validateV2Board(board) {
 function validateV2Footprint(footprint, label) {
   const pinIds = new Set();
   const pinCells = new Set();
+  const pinPoints = new Map();
+  const rigid = isRigidFootprint(footprint);
   for (const pin of footprint.pins) {
     if (pinIds.has(pin.id)) {
       throw new CanonicalProjectValidationError(`${label}.pins: duplicate id "${pin.id}"`);
     }
     pinIds.add(pin.id);
     validateV2FootprintCell(pin.cell, footprint, `${label}.pins "${pin.id}".cell`);
+    if (
+      pin.artworkPoint !== undefined &&
+      (!Number.isFinite(pin.artworkPoint.x) || !Number.isFinite(pin.artworkPoint.y))
+    ) {
+      throw new CanonicalProjectValidationError(
+        `${label}.pins "${pin.id}".artworkPoint: expected finite coordinates`,
+      );
+    }
     const cellKey = holeKey(pin.cell);
     if (pinCells.has(cellKey)) {
       throw new CanonicalProjectValidationError(`${label}.pins: two pins occupy cell "${cellKey}"`);
     }
     pinCells.add(cellKey);
+    if (rigid) {
+      const point = footprintPinPoint(pin);
+      const pointKey = `${point.x}:${point.y}`;
+      const otherPinId = pinPoints.get(pointKey);
+      if (otherPinId) {
+        throw new CanonicalProjectValidationError(
+          `${label}.pins: pins "${otherPinId}" and "${pin.id}" share physical marker "${pointKey}"`,
+        );
+      }
+      pinPoints.set(pointKey, pin.id);
+    }
   }
   const bodyCells = new Set();
   for (const cell of footprint.bodyCells ?? []) {
@@ -1621,14 +1651,14 @@ function validateV2PhysicalBinding(
   if (!componentLayout) {
     throw new CanonicalProjectValidationError(`${label}: pin component has no layout`);
   }
+  const physicalBoardId = componentLayout.placement?.boardId ?? componentLayout.boardId;
+  const board = physicalBoardId ? boardsById.get(physicalBoardId) : undefined;
   const pinHole =
     componentLayout.placement && componentLayout.footprint
-      ? footprintPinHoles(componentLayout.footprint, componentLayout.placement).find(
+      ? footprintPinHoles(componentLayout.footprint, componentLayout.placement, board).find(
           (candidate) => candidate.pinId === pin.pinId,
         )?.hole
       : componentLayout.pinHoles?.find((candidate) => candidate.pinId === pin.pinId)?.hole;
-  const physicalBoardId = componentLayout.placement?.boardId ?? componentLayout.boardId;
-  const board = physicalBoardId ? boardsById.get(physicalBoardId) : undefined;
   if (!pinHole || !board) {
     throw new CanonicalProjectValidationError(`${label}: cannot resolve the pin's board hole`);
   }
@@ -1744,7 +1774,65 @@ function cellToHole(cell, footprint, placement) {
   return { row: placement.anchor.row + rotated.row, col: placement.anchor.col + rotated.col };
 }
 
-function footprintPinHoles(footprint, placement) {
+function isRigidFootprint(footprint) {
+  return (
+    footprint.physicalBounds !== undefined ||
+    footprint.pins.some((pin) => pin.artworkPoint !== undefined)
+  );
+}
+
+function footprintPinPoint(pin) {
+  return pin.artworkPoint ?? { x: pin.cell.col, y: pin.cell.row };
+}
+
+function exactHoleAtPoint(board, point) {
+  const col = Math.round((point.x - BOARD_MARGIN) / board.pitch);
+  const tolerance = Math.max(1, board.pitch) * 1e-6;
+  for (let row = 0; row < board.rows; row++) {
+    const candidate = { row, col };
+    if (!isBoardHoleAvailable(board, candidate)) continue;
+    const actual = holeLocalPoint(board, candidate);
+    if (Math.abs(actual.x - point.x) <= tolerance && Math.abs(actual.y - point.y) <= tolerance) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function rigidPointOnBoard(board, footprint, placement, point) {
+  const anchor = holeLocalPoint(board, placement.anchor);
+  const rotated = rotateFootprintPoint(point.x, point.y, footprint, placement.rotation);
+  return {
+    x: anchor.x + rotated.x * board.pitch,
+    y: anchor.y + rotated.y * board.pitch,
+  };
+}
+
+function resolveFootprintPinHoles(footprint, placement, board) {
+  if (!isRigidFootprint(footprint)) {
+    return { pins: legacyFootprintPinHoles(footprint, placement), missingPinIds: [] };
+  }
+  const pins = [];
+  const missingPinIds = [];
+  for (const pin of footprint.pins) {
+    const marker = footprintPinPoint(pin);
+    const hole = exactHoleAtPoint(board, rigidPointOnBoard(board, footprint, placement, marker));
+    if (!hole) {
+      missingPinIds.push(pin.id);
+      continue;
+    }
+    const rotated = rotateFootprintPoint(marker.x, marker.y, footprint, placement.rotation);
+    pins.push({
+      pinId: pin.id,
+      label: pin.label,
+      cell: { row: rotated.y, col: rotated.x },
+      hole,
+    });
+  }
+  return { pins, missingPinIds };
+}
+
+function legacyFootprintPinHoles(footprint, placement) {
   return footprint.pins.map((pin) => {
     const cell = rotateCell(pin.cell, placement.rotation, footprint);
     return {
@@ -1756,18 +1844,77 @@ function footprintPinHoles(footprint, placement) {
   });
 }
 
-function footprintOccupiedHoles(footprint, placement) {
+function footprintPinHoles(footprint, placement, board) {
+  return board
+    ? resolveFootprintPinHoles(footprint, placement, board).pins
+    : legacyFootprintPinHoles(footprint, placement);
+}
+
+function footprintOccupiedHoles(footprint, placement, board) {
   const bodyCells =
     footprint.bodyCells ??
     Array.from({ length: footprint.rows }, (_, row) =>
       Array.from({ length: footprint.cols }, (_, col) => ({ row, col })),
     ).flat();
   const byKey = new Map();
+  if (board && isRigidFootprint(footprint)) {
+    const include = (hole) => {
+      if (hole) byKey.set(holeKey(hole), hole);
+    };
+    for (const cell of bodyCells) {
+      include(
+        exactHoleAtPoint(
+          board,
+          rigidPointOnBoard(board, footprint, placement, { x: cell.col, y: cell.row }),
+        ),
+      );
+    }
+    for (const pin of resolveFootprintPinHoles(footprint, placement, board).pins) {
+      include(pin.hole);
+    }
+    const bounds = footprint.physicalBounds ?? footprint.artwork;
+    if (bounds) {
+      const points = footprintArtworkPoints(footprint, bounds, placement.rotation, null);
+      const minX = Math.min(...points.map((point) => point.x)) - 1e-6;
+      const maxX = Math.max(...points.map((point) => point.x)) + 1e-6;
+      const minY = Math.min(...points.map((point) => point.y)) - 1e-6;
+      const maxY = Math.max(...points.map((point) => point.y)) + 1e-6;
+      const anchor = holeLocalPoint(board, placement.anchor);
+      const available =
+        board.holes ??
+        Array.from({ length: board.rows }, (_, row) =>
+          Array.from({ length: board.cols }, (_, col) => ({ row, col })),
+        ).flat();
+      for (const hole of available) {
+        const point = holeLocalPoint(board, hole);
+        const x = (point.x - anchor.x) / board.pitch;
+        const y = (point.y - anchor.y) / board.pitch;
+        if (x >= minX && x <= maxX && y >= minY && y <= maxY) include(hole);
+      }
+    }
+    return [...byKey.values()];
+  }
   for (const cell of [...bodyCells, ...footprint.pins.map((pin) => pin.cell)]) {
     const hole = cellToHole(cell, footprint, placement);
     byKey.set(holeKey(hole), hole);
   }
   return [...byKey.values()];
+}
+
+function rigidArtworkFitsBoard(board, footprint, placement) {
+  if (!isRigidFootprint(footprint)) return true;
+  const bounds = footprint.physicalBounds ?? footprint.artwork;
+  if (!bounds) return true;
+  const anchor = holeLocalPoint(board, placement.anchor);
+  const points = footprintArtworkPoints(footprint, bounds, placement.rotation, null);
+  const maxX = (board.cols - 1) * board.pitch + BOARD_MARGIN * 2;
+  const maxY = (board.rows - 1) * board.pitch + (board.centerGap ?? 0) + BOARD_MARGIN * 2;
+  const tolerance = board.pitch * 1e-6;
+  return points.every((point) => {
+    const x = anchor.x + point.x * board.pitch;
+    const y = anchor.y + point.y * board.pitch;
+    return x >= -tolerance && x <= maxX + tolerance && y >= -tolerance && y <= maxY + tolerance;
+  });
 }
 
 function placementNodePosition(board, placement, footprint) {
@@ -1802,6 +1949,7 @@ function rotateFootprintPoint(x, y, footprint, rotation) {
 }
 
 function footprintChannel(board, footprint, placement) {
+  if (isRigidFootprint(footprint)) return null;
   const gap = board.centerGap ?? 0;
   if (gap <= 0 || board.rows < 2 || board.pitch <= 0) return null;
   const split = Math.ceil(board.rows / 2);
@@ -1907,8 +2055,10 @@ function footprintDrawnExtent(footprint, rotation, channel) {
       );
     }
   }
-  if (footprint.artwork) {
-    includePoints(footprintArtworkPoints(footprint, footprint.artwork, rotation, channel));
+  for (const bounds of [footprint.physicalBounds, footprint.artwork]) {
+    if (bounds) {
+      includePoints(footprintArtworkPoints(footprint, bounds, rotation, channel));
+    }
   }
   return extent;
 }
@@ -2237,12 +2387,26 @@ function parseFootprint(raw, label) {
       obj['artwork'] === undefined
         ? undefined
         : parseFootprintArtwork(obj['artwork'], `${label}.artwork`),
+    physicalBounds:
+      obj['physicalBounds'] === undefined
+        ? undefined
+        : parseFootprintPhysicalBounds(obj['physicalBounds'], `${label}.physicalBounds`),
     bodyCells:
       obj['bodyCells'] === undefined
         ? undefined
         : expectArray(obj['bodyCells'], `${label}.bodyCells`).map((cell, index) =>
             expectHole(cell, `${label}.bodyCells[${index}]`),
           ),
+  };
+}
+
+function parseFootprintPhysicalBounds(raw, label) {
+  const obj = expectRecord(raw, label);
+  return {
+    x: expectFiniteNumber(obj['x'], `${label}.x`),
+    y: expectFiniteNumber(obj['y'], `${label}.y`),
+    width: expectPositiveFiniteNumber(obj['width'], `${label}.width`),
+    height: expectPositiveFiniteNumber(obj['height'], `${label}.height`),
   };
 }
 
@@ -2273,6 +2437,16 @@ function parseFootprintPin(raw, label) {
     id: expectNonEmptyString(obj['id'], `${label}.id`),
     label: expectString(obj['label'], `${label}.label`),
     cell: expectHole(obj['cell'], `${label}.cell`),
+    artworkPoint:
+      obj['artworkPoint'] === undefined
+        ? undefined
+        : (() => {
+            const point = expectRecord(obj['artworkPoint'], `${label}.artworkPoint`);
+            return {
+              x: expectFiniteNumber(point['x'], `${label}.artworkPoint.x`),
+              y: expectFiniteNumber(point['y'], `${label}.artworkPoint.y`),
+            };
+          })(),
     primary: expectOptionalBoolean(obj['primary'], `${label}.primary`),
   };
 }

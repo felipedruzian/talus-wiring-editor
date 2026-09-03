@@ -43,8 +43,12 @@ import { type RasterArtworkAsset } from '../artwork/artwork-asset.store';
 import { assertValidRasterArtworkAsset } from '../../library-sidebar/artwork-import';
 import {
   footprintOccupiedHoles,
+  footprintPinPoint,
   footprintPinHoles,
+  isRigidFootprint,
   placementNodePosition,
+  resolveFootprintPinHoles,
+  rigidArtworkFitsBoard,
 } from './footprint-geometry';
 import {
   type Footprint,
@@ -725,7 +729,21 @@ function validateLayout(
           `${label}: boardId and placement.boardId must identify the same board`,
         );
       }
-      const occupied = footprintOccupiedHoles(layout.footprint, layout.placement);
+      const pinResolution = resolveFootprintPinHoles(layout.footprint, layout.placement, board);
+      if (pinResolution.missingPinIds.length > 0) {
+        throw new CanonicalProjectError(
+          `${label}.placement: rigid pin markers do not match board holes (${pinResolution.missingPinIds.join(', ')})`,
+        );
+      }
+      if (
+        isRigidFootprint(layout.footprint) &&
+        !rigidArtworkFitsBoard(board, layout.footprint, layout.placement)
+      ) {
+        throw new CanonicalProjectError(
+          `${label}.placement: rigid physical bounds extend beyond board "${board.id}"`,
+        );
+      }
+      const occupied = footprintOccupiedHoles(layout.footprint, layout.placement, board);
       const unavailable = occupied.filter((hole) => !isBoardHoleAvailable(board, hole));
       if (unavailable.length > 0) {
         const first = unavailable[0];
@@ -739,9 +757,7 @@ function validateLayout(
         layout.placement,
         layout.footprint,
       );
-      const footprintHoles = new Map(
-        footprintPinHoles(layout.footprint, layout.placement).map((pin) => [pin.pinId, pin.hole]),
-      );
+      const footprintHoles = new Map(pinResolution.pins.map((pin) => [pin.pinId, pin.hole]));
       layout.pinHoles = component.pins.flatMap((pin) => {
         const hole = footprintHoles.get(pin.id);
         return hole ? [{ pinId: pin.id, hole: { ...hole } }] : [];
@@ -1143,17 +1159,38 @@ function validateBoard(board: CanonicalBoard): void {
 function validateFootprint(footprint: Footprint, label: string): void {
   const pinIds = new Set<string>();
   const occupiedPinCells = new Set<string>();
+  const occupiedPhysicalPoints = new Map<string, string>();
+  const rigid = isRigidFootprint(footprint);
   for (const pin of footprint.pins) {
     if (pinIds.has(pin.id)) {
       throw new CanonicalProjectError(`${label}.pins: duplicate id "${pin.id}"`);
     }
     pinIds.add(pin.id);
     validateFootprintCell(pin.cell, footprint, `${label}.pins "${pin.id}".cell`);
+    if (
+      pin.artworkPoint !== undefined &&
+      (!Number.isFinite(pin.artworkPoint.x) || !Number.isFinite(pin.artworkPoint.y))
+    ) {
+      throw new CanonicalProjectError(
+        `${label}.pins "${pin.id}".artworkPoint: expected finite coordinates`,
+      );
+    }
     const cellKey = holeKey(pin.cell);
     if (occupiedPinCells.has(cellKey)) {
       throw new CanonicalProjectError(`${label}.pins: two pins occupy cell "${cellKey}"`);
     }
     occupiedPinCells.add(cellKey);
+    if (rigid) {
+      const point = footprintPinPoint(pin);
+      const pointKey = `${point.x}:${point.y}`;
+      const otherPinId = occupiedPhysicalPoints.get(pointKey);
+      if (otherPinId) {
+        throw new CanonicalProjectError(
+          `${label}.pins: pins "${otherPinId}" and "${pin.id}" share physical marker "${pointKey}"`,
+        );
+      }
+      occupiedPhysicalPoints.set(pointKey, pin.id);
+    }
   }
   const bodyCells = new Set<string>();
   for (const cell of footprint.bodyCells ?? []) {
@@ -1216,14 +1253,14 @@ function validatePhysicalBinding(
   if (!componentLayout) {
     throw new CanonicalProjectError(`${label}: pin component has no layout`);
   }
+  const physicalBoardId = componentLayout.placement?.boardId ?? componentLayout.boardId;
+  const board = physicalBoardId ? boardsById.get(physicalBoardId) : undefined;
   const pinHole =
     componentLayout.placement && componentLayout.footprint
-      ? footprintPinHoles(componentLayout.footprint, componentLayout.placement).find(
+      ? footprintPinHoles(componentLayout.footprint, componentLayout.placement, board).find(
           (candidate) => candidate.pinId === pin.pinId,
         )?.hole
       : componentLayout.pinHoles?.find((candidate) => candidate.pinId === pin.pinId)?.hole;
-  const physicalBoardId = componentLayout.placement?.boardId ?? componentLayout.boardId;
-  const board = physicalBoardId ? boardsById.get(physicalBoardId) : undefined;
   if (!pinHole || !board) {
     throw new CanonicalProjectError(`${label}: cannot resolve the pin's board hole`);
   }
@@ -1754,12 +1791,29 @@ function parseFootprint(raw: unknown, label: string): Footprint {
       obj['artwork'] === undefined
         ? undefined
         : parseFootprintArtwork(obj['artwork'], `${label}.artwork`),
+    physicalBounds:
+      obj['physicalBounds'] === undefined
+        ? undefined
+        : parseFootprintPhysicalBounds(obj['physicalBounds'], `${label}.physicalBounds`),
     bodyCells:
       obj['bodyCells'] === undefined
         ? undefined
         : expectArray(obj['bodyCells'], `${label}.bodyCells`).map((cell, index) =>
             parseFootprintCell(cell, `${label}.bodyCells[${index}]`),
           ),
+  };
+}
+
+function parseFootprintPhysicalBounds(
+  raw: unknown,
+  label: string,
+): NonNullable<Footprint['physicalBounds']> {
+  const obj = expectRecord(raw, label);
+  return {
+    x: expectFiniteNumber(obj['x'], `${label}.x`),
+    y: expectFiniteNumber(obj['y'], `${label}.y`),
+    width: expectPositiveFiniteNumber(obj['width'], `${label}.width`),
+    height: expectPositiveFiniteNumber(obj['height'], `${label}.height`),
   };
 }
 
@@ -1788,6 +1842,16 @@ function parseFootprintPin(raw: unknown, label: string): Footprint['pins'][numbe
     id: expectNonEmptyString(obj['id'], `${label}.id`),
     label: expectString(obj['label'], `${label}.label`),
     cell: parseFootprintCell(obj['cell'], `${label}.cell`),
+    artworkPoint:
+      obj['artworkPoint'] === undefined
+        ? undefined
+        : (() => {
+            const point = expectRecord(obj['artworkPoint'], `${label}.artworkPoint`);
+            return {
+              x: expectFiniteNumber(point['x'], `${label}.artworkPoint.x`),
+              y: expectFiniteNumber(point['y'], `${label}.artworkPoint.y`),
+            };
+          })(),
     primary: expectOptionalBoolean(obj['primary'], `${label}.primary`),
   };
 }

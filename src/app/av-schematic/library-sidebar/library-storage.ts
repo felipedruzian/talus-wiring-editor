@@ -39,6 +39,15 @@ export type LibraryPersistenceResult = { ok: true } | { ok: false; message: stri
 export type PreparedLibraryCatalog =
   | { ok: true; payload: PersistedLibraryV2; serialized: string }
   | { ok: false; message: string };
+export interface SharedLibraryCatalogParseResult {
+  catalog: LibraryCatalog;
+  needsUpgrade: boolean;
+}
+export interface LibraryCatalogLoadState {
+  catalog: LibraryCatalog;
+  needsUpgrade: boolean;
+  needsRepair: boolean;
+}
 
 export function browserLocalStorage(): Storage | null {
   try {
@@ -48,33 +57,49 @@ export function browserLocalStorage(): Storage | null {
   }
 }
 
-export function loadLibraryCatalog(storage: Storage | null): LibraryCatalog {
-  if (!storage) return seedCatalog();
+export function loadLibraryCatalog(storage: Storage | null): LibraryCatalogLoadState {
+  if (!storage) return cleanSeedLoadState();
   try {
     const current = storage.getItem(LIBRARY_STORAGE_KEY);
     if (current) {
-      const recovered = recoverPersistedLibrary(JSON.parse(current) as unknown);
-      if (!recovered) return seedCatalog();
-      if (recovered.wasRepaired && !recovered.catalog.loadError) {
-        persistLibraryCatalog(storage, recovered.catalog);
+      let raw: unknown;
+      try {
+        raw = JSON.parse(current) as unknown;
+      } catch {
+        return invalidSeedLoadState();
       }
-      return recovered.catalog;
+      const recovered = recoverPersistedLibrary(raw);
+      if (!recovered) return invalidSeedLoadState();
+      return {
+        catalog: recovered.catalog,
+        needsUpgrade: recovered.wasMigrated,
+        needsRepair: recovered.wasRepaired,
+      };
     }
 
     const legacy = storage.getItem(LEGACY_LIBRARY_STORAGE_KEY);
-    if (!legacy) return seedCatalog();
-    const recovered = recoverLegacyLibrary(JSON.parse(legacy) as unknown);
-    if (!recovered) return seedCatalog();
-    persistLibraryCatalog(storage, recovered);
-    return recovered;
+    if (!legacy) return cleanSeedLoadState();
+    let raw: unknown;
+    try {
+      raw = JSON.parse(legacy) as unknown;
+    } catch {
+      return invalidSeedLoadState();
+    }
+    const recovered = recoverLegacyLibrary(raw);
+    if (!recovered) return invalidSeedLoadState();
+    return {
+      catalog: recovered.catalog,
+      needsUpgrade: true,
+      needsRepair: recovered.wasRepaired,
+    };
   } catch {
-    return seedCatalog();
+    return invalidSeedLoadState();
   }
 }
 
 /** Compatibility helper for callers that only need the device list. */
 export function loadLibraryDevices(storage: Storage | null): LibraryDevice[] {
-  return loadLibraryCatalog(storage).devices;
+  return loadLibraryCatalog(storage).catalog.devices;
 }
 
 export function persistLibraryCatalog(
@@ -165,11 +190,11 @@ export function prepareLibraryCatalog(catalog: LibraryCatalog): PreparedLibraryC
   return { ok: true, payload, serialized };
 }
 
-/** Strict central-response parser: unlike local recovery, it never repairs data silently. */
-export function parseSharedLibraryCatalog(value: unknown): LibraryCatalog | null {
+/** Reject invalid-data repairs while surfacing deterministic seed migrations explicitly. */
+export function parseSharedLibraryCatalog(value: unknown): SharedLibraryCatalogParseResult | null {
   const recovered = recoverPersistedLibrary(value);
   if (!recovered || recovered.wasRepaired || recovered.catalog.loadError) return null;
-  return recovered.catalog;
+  return { catalog: recovered.catalog, needsUpgrade: recovered.wasMigrated };
 }
 
 /** Compatibility helper that preserves any already stored artwork. */
@@ -177,13 +202,13 @@ export function persistLibraryDevices(
   storage: Storage | null,
   devices: LibraryDevice[],
 ): LibraryPersistenceResult {
-  const existing = loadLibraryCatalog(storage);
+  const existing = loadLibraryCatalog(storage).catalog;
   return persistLibraryCatalog(storage, { devices, assets: existing.assets });
 }
 
 function recoverPersistedLibrary(
   value: unknown,
-): { catalog: LibraryCatalog; wasRepaired: boolean } | null {
+): { catalog: LibraryCatalog; wasRepaired: boolean; wasMigrated: boolean } | null {
   if (!isRecord(value) || value['version'] !== LIBRARY_STORAGE_VERSION) return null;
   if (!Array.isArray(value['devices']) || !isRecord(value['assets'])) return null;
 
@@ -197,6 +222,7 @@ function recoverPersistedLibrary(
         loadError: `O catálogo armazenado excede o limite de ${MAX_LIBRARY_ASSETS} imagens e não foi alterado.`,
       },
       wasRepaired: false,
+      wasMigrated: false,
     };
   }
   for (const [hash, rawAsset] of rawAssets) {
@@ -210,32 +236,65 @@ function recoverPersistedLibrary(
   return {
     catalog: {
       devices: recoveredDevices.devices,
-      assets: referencedAssets(recoveredDevices.devices, assets),
+      // Loading must not garbage-collect valid assets. An unreferenced upload may
+      // still be a user's pending library resource, and deterministic seed
+      // migrations must preserve the complete validated catalog verbatim.
+      assets: assets.map((asset) => structuredClone(asset)),
     },
     wasRepaired,
+    wasMigrated: recoveredDevices.wasMigrated,
   };
 }
 
-function recoverLegacyLibrary(value: unknown): LibraryCatalog | null {
+function recoverLegacyLibrary(
+  value: unknown,
+): { catalog: LibraryCatalog; wasRepaired: boolean } | null {
   if (!isRecord(value) || value['version'] !== 1 || !Array.isArray(value['devices'])) return null;
   const recovered = recoverDevices(value['devices'], new Set());
-  return { devices: recovered.devices, assets: [] };
+  return {
+    catalog: { devices: recovered.devices, assets: [] },
+    wasRepaired: recovered.wasRepaired,
+  };
+}
+
+function cleanSeedLoadState(): LibraryCatalogLoadState {
+  return {
+    catalog: seedCatalog(),
+    needsUpgrade: false,
+    needsRepair: false,
+  };
+}
+
+function invalidSeedLoadState(): LibraryCatalogLoadState {
+  return {
+    catalog: seedCatalog(),
+    needsUpgrade: false,
+    needsRepair: true,
+  };
 }
 
 function recoverDevices(
   candidates: readonly unknown[],
   availableHashes: ReadonlySet<string>,
-): { devices: LibraryDevice[]; wasRepaired: boolean } {
-  if (candidates.length === 0) return { devices: [], wasRepaired: false };
+): { devices: LibraryDevice[]; wasRepaired: boolean; wasMigrated: boolean } {
+  if (candidates.length === 0) {
+    return { devices: [], wasRepaired: false, wasMigrated: false };
+  }
   const devices: LibraryDevice[] = [];
   const seenIds = new Set<string>();
   let wasRepaired = false;
+  let wasMigrated = false;
   for (const candidate of candidates) {
     if (!isLibraryDevice(candidate) || seenIds.has(candidate.libraryId)) {
       wasRepaired = true;
       continue;
     }
     const device = structuredClone(candidate);
+    const upgradedTemplate = upgradeBundledPhysicalTemplate(device);
+    if (upgradedTemplate) {
+      device.template = upgradedTemplate;
+      wasMigrated = true;
+    }
     const footprint = device.template.footprint;
     const artwork = footprint?.artwork;
     if (footprint && artwork && !availableHashes.has(artwork.assetHash)) {
@@ -248,8 +307,46 @@ function recoverDevices(
     devices.push(device);
     seenIds.add(device.libraryId);
   }
-  if (devices.length === 0) return { devices: cloneSeedLibrary(), wasRepaired: true };
-  return { devices, wasRepaired };
+  if (devices.length === 0) {
+    return { devices: cloneSeedLibrary(), wasRepaired: true, wasMigrated };
+  }
+  return { devices, wasRepaired, wasMigrated };
+}
+
+/** Upgrade only the former generic built-ins; already-physical user edits remain owned by the user. */
+function upgradeBundledPhysicalTemplate(device: LibraryDevice): DeviceNodeData | null {
+  if (device.template.footprint) return null;
+  const current = SEED_LIBRARY.find(
+    (candidate) =>
+      candidate.libraryId === device.libraryId && candidate.template.footprint !== undefined,
+  );
+  const currentFootprint = current?.template.footprint;
+  if (!current || !currentFootprint) return null;
+  const oldPorts = new Map(device.template.ports.map((port) => [port.id, port]));
+  const currentPortIds = new Set(current.template.ports.map((port) => port.id));
+  const ports = [
+    ...current.template.ports.map((seedPort) => ({
+      ...structuredClone(seedPort),
+      ...structuredClone(oldPorts.get(seedPort.id)),
+      id: seedPort.id,
+      hole: undefined,
+    })),
+    ...device.template.ports
+      .filter((port) => !currentPortIds.has(port.id))
+      .map((port) => ({ ...structuredClone(port), hole: undefined })),
+  ];
+  return {
+    ...structuredClone(current.template),
+    ...structuredClone(device.template),
+    notes: device.template.notes ?? current.template.notes,
+    boardId: undefined,
+    placement: undefined,
+    footprintId: currentFootprint.id,
+    footprint: structuredClone(currentFootprint),
+    footprintRotation: device.template.footprintRotation ?? current.template.footprintRotation ?? 0,
+    footprintPitch: device.template.footprintPitch ?? current.template.footprintPitch ?? 20,
+    ports,
+  };
 }
 
 function recoverAsset(hash: string, value: unknown): RasterArtworkAsset | null {
@@ -338,6 +435,10 @@ function isFootprint(value: unknown): value is Footprint {
   const cols = value['cols'];
   const pinIds = new Set<string>();
   const pinCells = new Set<string>();
+  const pinPoints = new Set<string>();
+  const rigid =
+    value['physicalBounds'] !== undefined ||
+    value['pins'].some((pin) => isRecord(pin) && pin['artworkPoint'] !== undefined);
   if (
     !value['pins'].every((pin) => {
       if (
@@ -347,6 +448,7 @@ function isFootprint(value: unknown): value is Footprint {
         pinIds.has(pin['id']) ||
         typeof pin['label'] !== 'string' ||
         !isFootprintCell(pin['cell'], rows, cols) ||
+        (pin['artworkPoint'] !== undefined && !isFinitePoint(pin['artworkPoint'])) ||
         (pin['primary'] !== undefined && typeof pin['primary'] !== 'boolean') ||
         pinCells.has(cellKey(pin['cell']))
       ) {
@@ -354,6 +456,12 @@ function isFootprint(value: unknown): value is Footprint {
       }
       pinIds.add(pin['id']);
       pinCells.add(cellKey(pin['cell']));
+      if (rigid) {
+        const point = pin['artworkPoint'] ?? { x: pin['cell'].col, y: pin['cell'].row };
+        const pointKey = `${point.x}:${point.y}`;
+        if (pinPoints.has(pointKey)) return false;
+        pinPoints.add(pointKey);
+      }
       return true;
     }) ||
     !value['shapes'].every(isFootprintShape)
@@ -367,7 +475,24 @@ function isFootprint(value: unknown): value is Footprint {
   ) {
     return false;
   }
-  return value['artwork'] === undefined || isFootprintArtwork(value['artwork']);
+  return (
+    (value['artwork'] === undefined || isFootprintArtwork(value['artwork'])) &&
+    (value['physicalBounds'] === undefined || isFootprintPhysicalBounds(value['physicalBounds']))
+  );
+}
+
+function isFootprintPhysicalBounds(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isFiniteNumber(value['x']) &&
+    isFiniteNumber(value['y']) &&
+    isPositiveFinite(value['width']) &&
+    isPositiveFinite(value['height'])
+  );
+}
+
+function isFinitePoint(value: unknown): value is { x: number; y: number } {
+  return isRecord(value) && isFiniteNumber(value['x']) && isFiniteNumber(value['y']);
 }
 
 function isFootprintArtwork(value: unknown): value is FootprintArtwork {
@@ -442,14 +567,6 @@ function isDevicePort(value: unknown): value is DevicePort {
     (value['direction'] === 'input' || value['direction'] === 'output') &&
     optionalString(value['connectorType'])
   );
-}
-
-function referencedAssets(
-  devices: readonly LibraryDevice[],
-  assets: readonly RasterArtworkAsset[],
-): RasterArtworkAsset[] {
-  const hashes = referencedArtworkHashes(devices);
-  return assets.filter((asset) => hashes.has(asset.hash)).map((asset) => structuredClone(asset));
 }
 
 export function referencedArtworkHashes(devices: readonly LibraryDevice[]): Set<string> {

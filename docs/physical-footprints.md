@@ -185,6 +185,12 @@ As definições em `diagram/model/footprint.ts` usam unidades de furo, não
 pixels. Elas descrevem caixa, pinos e formas vetoriais originais. O tamanho em
 pixels é derivado do pitch da placa no momento da renderização.
 
+Nano, GY-521 e TB6612FNG usam ainda o registro vetorial confiável
+`diagram/artwork/trusted-component-artwork.ts`. O mesmo contrato versionado
+declara o SVG local, o envelope e todos os terminais em pitch; canvas, paleta,
+pré-visualização, snap, ocupação e exportadores partem dessa definição. Ele não
+é armazenado como upload raster nem usa `dataUrl`/`assetHash`.
+
 O catálogo desse arquivo serve para criar itens da paleta e para nós legados
 que ainda vivem apenas em memória. Ao salvar um componente físico, sua
 definição de footprint é incorporada ao próprio projeto. Um arquivo também
@@ -363,9 +369,11 @@ normalizada.
 | Peça G                |    6 × 4 | distribuição da base                                                                           |
 
 As antigas peças D e F e seus capacitores não fazem mais parte do seed: os dois
-bulk pertencem à placa de ensaio superior já montada. O seed preserva as peças E e
-G, seus resistores, um TB6612FNG encaixado e componentes externos ligados
-diretamente a furos ou trilhas.
+bulk pertencem à placa de ensaio superior já montada. O seed preserva as peças
+E e G e seus resistores. O TB6612FNG agora aparece como footprint físico solto:
+seu envelope provisório correto tem sete linhas e, portanto, não cabe na placa
+de origem de seis linhas sem produzir um encaixe falso. Os demais componentes
+externos continuam ligados diretamente a furos ou trilhas.
 
 Os dois jumpers de sinal saíam dos furos documentados `L4-C18` e `L2-C18` da
 antiga placa 6 × 18, uma linha abaixo e uma linha acima do canal. Na protoboard
@@ -376,5 +384,5 @@ destino, cada jumper termina em uma junção conectável de um tap, rotulada com
 terminal provisório junto ao Nano ou à TB6612. Essas junções sobrevivem ao round-trip sem compartilhar os pinos `D8`
 ou `STBY` e, portanto, sem fundir ou renomear as nets existentes.
 
-As ilustrações foram desenhadas neste repositório com formas SVG simples. Não
-foram incorporados assets nem trechos de código de catálogos externos.
+As ilustrações foram desenhadas neste repositório como SVGs integrais originais.
+Não foram incorporados assets nem trechos de código de catálogos externos.

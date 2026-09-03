@@ -45,20 +45,21 @@
               aria-hidden="true"
             ></span>
           }
-          @if (footprint.artwork; as artwork) {
-            @if (asset(); as artworkAsset) {
-              <img
-                class="physical-preview__artwork"
-                [src]="artworkAsset.dataUrl"
-                alt="Pré-visualização da imagem do componente"
-                draggable="false"
-                [style.left.%]="previewLeft(artwork.x)"
-                [style.top.%]="previewTop(artwork.y)"
-                [style.width.%]="previewWidth(artwork.width)"
-                [style.height.%]="previewHeight(artwork.height)"
-                [style.object-fit]="artwork.preserveAspectRatio === false ? 'fill' : 'contain'"
-              />
-            }
+          @if (previewArtwork(); as artwork) {
+            <img
+              class="physical-preview__artwork"
+              [attr.data-trusted-artwork]="artwork.trusted || null"
+              [src]="artwork.source"
+              alt="Pré-visualização da imagem do componente"
+              draggable="false"
+              [style.left.%]="previewLeft(artwork.geometry.x)"
+              [style.top.%]="previewTop(artwork.geometry.y)"
+              [style.width.%]="previewWidth(artwork.geometry.width)"
+              [style.height.%]="previewHeight(artwork.geometry.height)"
+              [style.object-fit]="
+                artwork.geometry.preserveAspectRatio === false ? 'fill' : 'contain'
+              "
+            />
           }
           @for (entry of pins(); track $index; let index = $index) {
             <button

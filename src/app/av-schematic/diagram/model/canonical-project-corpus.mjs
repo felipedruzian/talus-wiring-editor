@@ -147,6 +147,135 @@ function changedDetached(name, change) {
   return { name, accepted: false, raw };
 }
 
+function rigidGapProject() {
+  return {
+    formatVersion: 2,
+    electrical: {
+      components: [
+        {
+          id: 'rigid-module',
+          deviceId: 'RIGID-1',
+          manufacturer: 'project',
+          model: 'rigid',
+          pins: [],
+        },
+      ],
+      junctions: [],
+      cables: [],
+      nets: [],
+    },
+    layout: {
+      boards: [
+        {
+          id: 'gap-board',
+          label: 'Gap board',
+          rows: 4,
+          cols: 4,
+          pitch: 20,
+          centerGap: 40,
+          holes: holes(4, 4),
+          position: { x: 0, y: 0 },
+        },
+      ],
+      components: [
+        {
+          componentId: 'rigid-module',
+          position: { x: 999, y: 999 },
+          boardId: 'gap-board',
+          footprintId: 'rigid-gap-module',
+          footprint: {
+            id: 'rigid-gap-module',
+            label: 'Rigid gap module',
+            rows: 2,
+            cols: 1,
+            pins: [
+              {
+                id: 'top',
+                label: 'TOP',
+                cell: { row: 0, col: 0 },
+                artworkPoint: { x: 0, y: 0 },
+                primary: true,
+              },
+              {
+                id: 'bottom',
+                label: 'BOTTOM',
+                cell: { row: 1, col: 0 },
+                artworkPoint: { x: 0, y: 3 },
+              },
+            ],
+            shapes: [],
+            physicalBounds: { x: -0.5, y: -0.5, width: 1, height: 4 },
+          },
+          placement: { boardId: 'gap-board', anchor: { row: 1, col: 1 }, rotation: 0 },
+        },
+      ],
+      junctions: [],
+      conductors: [],
+    },
+  };
+}
+
+/** Exact v5-era contract: raster artwork did not yet opt pins into rigid geometry. */
+function legacyArtworkGapProject() {
+  const raw = basePhysicalProject();
+  const hash = '431ced6916a2a21a156e38701afe55bbd7f88969fbbfc56d7fe099d47f265460';
+  raw.formatVersion = 5;
+  const board = raw.layout.boards[0];
+  board.centerGap = 12;
+  board.visualPlane = 0;
+  board.traces[0].segments = [{ from: { row: 1, col: 1 }, to: { row: 2, col: 1 } }];
+  const component = raw.layout.components[0];
+  component.visualPlane = 10;
+  component.footprintId = 'legacy-artwork-gap';
+  component.footprint = {
+    id: 'legacy-artwork-gap',
+    label: 'Legacy artwork gap',
+    rows: 2,
+    cols: 1,
+    pins: [
+      { id: 'a', label: 'A', cell: { row: 0, col: 0 }, primary: true },
+      { id: 'b', label: 'B', cell: { row: 1, col: 0 } },
+    ],
+    shapes: [],
+    artwork: {
+      assetHash: hash,
+      x: -0.5,
+      y: -0.5,
+      width: 1,
+      height: 2,
+      preserveAspectRatio: true,
+    },
+  };
+  component.placement = { boardId: board.id, anchor: { row: 1, col: 1 }, rotation: 0 };
+  component.boardId = board.id;
+  component.pinHoles = [
+    { pinId: 'a', hole: { row: 1, col: 1 } },
+    { pinId: 'b', hole: { row: 2, col: 1 } },
+  ];
+  raw.layout.junctions[0].visualPlane = 30;
+  raw.layout.junctions[0].taps = 2;
+  raw.layout.junctions[0].hole = { row: 1, col: 1 };
+  raw.layout.conductors.forEach((conductor, index) => {
+    conductor.visualPlane = 20;
+    conductor.toTap = index;
+  });
+  const footprint = raw.layout.components[0].footprint;
+  for (const pin of footprint.pins) delete pin.artworkPoint;
+  raw.resources = {
+    artworkAssets: {
+      [hash]: {
+        mimeType: 'image/png',
+        width: 1,
+        height: 1,
+        byteLength: 68,
+        dataUrl:
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      },
+    },
+  };
+  return raw;
+}
+
 const completeGridWithoutHoleList = basePhysicalProject();
 delete completeGridWithoutHoleList.layout.boards[0].holes;
 
@@ -407,6 +536,57 @@ export const canonicalValidationCorpus = [
     name: 'accepts retained footprint geometry without a placement',
     accepted: true,
     raw: baseDetachedFootprintProject(),
+  },
+  {
+    name: 'accepts rigid marker coordinates that bridge a non-uniform channel exactly',
+    accepted: true,
+    raw: rigidGapProject(),
+  },
+  {
+    name: 'accepts legacy v5 raster footprints without rigid marker metadata',
+    accepted: true,
+    raw: legacyArtworkGapProject(),
+  },
+  {
+    name: 'accepts rigid physical bounds inside the rendered board margin',
+    accepted: true,
+    raw: (() => {
+      const raw = rigidGapProject();
+      raw.layout.components[0].footprint.physicalBounds = {
+        x: -1.5,
+        y: -0.5,
+        width: 3,
+        height: 4,
+      };
+      return raw;
+    })(),
+  },
+  {
+    name: 'rejects rigid markers that would land inside a board channel',
+    accepted: false,
+    raw: (() => {
+      const raw = rigidGapProject();
+      raw.layout.components[0].footprint.pins[1].artworkPoint.y = 1;
+      return raw;
+    })(),
+  },
+  {
+    name: 'rejects two rigid pins that share one physical marker',
+    accepted: false,
+    raw: (() => {
+      const raw = rigidGapProject();
+      raw.layout.components[0].footprint.pins[1].artworkPoint = { x: 0, y: 0 };
+      return raw;
+    })(),
+  },
+  {
+    name: 'rejects rigid physical bounds that extend past the board edge',
+    accepted: false,
+    raw: (() => {
+      const raw = rigidGapProject();
+      raw.layout.components[0].footprint.physicalBounds.x = -2;
+      return raw;
+    })(),
   },
   changed('rejects footprintId without an embedded footprint', (raw) => {
     delete raw.layout.components[0].footprint;

@@ -1,4 +1,6 @@
 import {
+  BOARD_MARGIN,
+  boardHoles,
   holeLocalPoint,
   holeKey,
   isBoardHoleAvailable,
@@ -34,8 +36,29 @@ export interface CellBox {
 }
 
 export interface DrawableFootprint extends CellBox {
+  id?: string;
   artwork?: FootprintArtwork;
+  physicalBounds?: Footprint['physicalBounds'];
+  pins?: readonly Pick<Footprint['pins'][number], 'id' | 'cell' | 'artworkPoint' | 'primary'>[];
   shapes?: readonly FootprintShape[];
+}
+
+export type PhysicalBoardGrid = BoardGrid & Pick<BoardNodeData, 'pitch' | 'centerGap'>;
+
+/** Explicit physical markers/bounds opt a footprint into rigid, non-stretched geometry. */
+export function isRigidFootprint(footprint: DrawableFootprint): boolean {
+  return (
+    footprint.physicalBounds !== undefined ||
+    footprint.pins?.some((pin) => pin.artworkPoint !== undefined) === true
+  );
+}
+
+/** Physical marker center for a pin, falling back to its legacy grid cell. */
+export function footprintPinPoint(pin: Pick<Footprint['pins'][number], 'cell' | 'artworkPoint'>): {
+  x: number;
+  y: number;
+} {
+  return pin.artworkPoint ?? { x: pin.cell.col, y: pin.cell.row };
 }
 
 /**
@@ -128,9 +151,10 @@ export interface FootprintChannel {
 
 export function footprintChannel(
   board: Pick<BoardNodeData, 'rows' | 'pitch' | 'centerGap'>,
-  footprint: CellBox,
+  footprint: DrawableFootprint,
   placement: Pick<DevicePlacement, 'anchor' | 'rotation'>,
 ): FootprintChannel | null {
+  if (isRigidFootprint(footprint)) return null;
   const gap = board.centerGap ?? 0;
   if (gap <= 0 || board.rows < 2 || board.pitch <= 0) return null;
   const split = lowerBoardHalfStartRow(board);
@@ -235,23 +259,97 @@ export interface FootprintPinHole {
   cell: FootprintCell;
 }
 
+export interface FootprintPinResolution {
+  pins: FootprintPinHole[];
+  /** Pins whose physical marker has no exact hole at this rigid placement. */
+  missingPinIds: string[];
+}
+
+const PHYSICAL_POINT_EPSILON = 1e-6;
+
+function exactHoleAtPoint(
+  board: PhysicalBoardGrid,
+  point: { x: number; y: number },
+): BoardHole | null {
+  const candidate = nearestAvailableHole(board, point);
+  if (!candidate) return null;
+  const actual = holeLocalPoint(board, candidate);
+  const tolerance = Math.max(1, board.pitch) * PHYSICAL_POINT_EPSILON;
+  return Math.abs(actual.x - point.x) <= tolerance && Math.abs(actual.y - point.y) <= tolerance
+    ? candidate
+    : null;
+}
+
+function rigidPointOnBoard(
+  board: PhysicalBoardGrid,
+  footprint: Footprint,
+  placement: Pick<DevicePlacement, 'anchor' | 'rotation'>,
+  point: { x: number; y: number },
+): { x: number; y: number } {
+  const anchor = holeLocalPoint(board, placement.anchor);
+  const rotated = rotateFootprintPoint(point.x, point.y, footprint, placement.rotation);
+  return {
+    x: anchor.x + rotated.x * board.pitch,
+    y: anchor.y + rotated.y * board.pitch,
+  };
+}
+
+/**
+ * Resolves pin markers to board holes. Rigid artwork uses physical coordinates
+ * and only accepts exact hole centers; ordinary vector footprints retain the
+ * legacy address-grid mapping.
+ */
+export function resolveFootprintPinHoles(
+  footprint: Footprint,
+  placement: Pick<DevicePlacement, 'anchor' | 'rotation'>,
+  board?: PhysicalBoardGrid,
+): FootprintPinResolution {
+  if (!board || !isRigidFootprint(footprint)) {
+    return {
+      pins: footprint.pins.map((pin) => {
+        const cell = rotateCell(pin.cell, placement.rotation, footprint);
+        return {
+          pinId: pin.id,
+          label: pin.label,
+          cell,
+          hole: {
+            row: placement.anchor.row + cell.row,
+            col: placement.anchor.col + cell.col,
+          },
+        };
+      }),
+      missingPinIds: [],
+    };
+  }
+
+  const pins: FootprintPinHole[] = [];
+  const missingPinIds: string[] = [];
+  for (const pin of footprint.pins) {
+    const marker = footprintPinPoint(pin);
+    const point = rigidPointOnBoard(board, footprint, placement, marker);
+    const hole = exactHoleAtPoint(board, point);
+    if (!hole) {
+      missingPinIds.push(pin.id);
+      continue;
+    }
+    const rotated = rotateFootprintPoint(marker.x, marker.y, footprint, placement.rotation);
+    pins.push({
+      pinId: pin.id,
+      label: pin.label,
+      cell: { row: rotated.y, col: rotated.x },
+      hole,
+    });
+  }
+  return { pins, missingPinIds };
+}
+
 /** Every pin's board hole (and its rotated draw cell) for a placement. */
 export function footprintPinHoles(
   footprint: Footprint,
   placement: Pick<DevicePlacement, 'anchor' | 'rotation'>,
+  board?: PhysicalBoardGrid,
 ): FootprintPinHole[] {
-  return footprint.pins.map((pin) => {
-    const cell = rotateCell(pin.cell, placement.rotation, footprint);
-    return {
-      pinId: pin.id,
-      label: pin.label,
-      cell,
-      hole: {
-        row: placement.anchor.row + cell.row,
-        col: placement.anchor.col + cell.col,
-      },
-    };
-  });
+  return resolveFootprintPinHoles(footprint, placement, board).pins;
 }
 
 /**
@@ -264,6 +362,7 @@ export function footprintPinHoles(
 export function footprintOccupiedHoles(
   footprint: Footprint,
   placement: Pick<DevicePlacement, 'anchor' | 'rotation'>,
+  board?: PhysicalBoardGrid,
 ): BoardHole[] {
   const bodyCells: FootprintCell[] =
     footprint.bodyCells ??
@@ -271,6 +370,52 @@ export function footprintOccupiedHoles(
       Array.from({ length: footprint.cols }, (_, col) => ({ row, col })),
     ).flat();
   // Pins always occupy holes, even when a custom bodyCells list omits them.
+  if (board && isRigidFootprint(footprint)) {
+    const seen = new Set<string>();
+    const holes: BoardHole[] = [];
+    const include = (hole: BoardHole | null): void => {
+      if (!hole) return;
+      const key = holeKey(hole);
+      if (seen.has(key)) return;
+      seen.add(key);
+      holes.push(hole);
+    };
+
+    for (const cell of bodyCells) {
+      include(
+        exactHoleAtPoint(
+          board,
+          rigidPointOnBoard(board, footprint, placement, { x: cell.col, y: cell.row }),
+        ),
+      );
+    }
+    for (const pin of resolveFootprintPinHoles(footprint, placement, board).pins) {
+      include(pin.hole);
+    }
+
+    // Artwork is physical body too. Conservatively claim every hole whose
+    // center is under its rotated rectangle, including overhang beyond the
+    // logical header grid (the Nano USB end extends 1.5 pitches each side).
+    const bounds = footprint.physicalBounds ?? footprint.artwork;
+    if (bounds) {
+      const points = footprintArtworkPoints(footprint, bounds, placement.rotation, null);
+      const xs = [points.origin.x, points.horizontal.x, points.vertical.x, points.opposite.x];
+      const ys = [points.origin.y, points.horizontal.y, points.vertical.y, points.opposite.y];
+      const minX = Math.min(...xs) - PHYSICAL_POINT_EPSILON;
+      const maxX = Math.max(...xs) + PHYSICAL_POINT_EPSILON;
+      const minY = Math.min(...ys) - PHYSICAL_POINT_EPSILON;
+      const maxY = Math.max(...ys) + PHYSICAL_POINT_EPSILON;
+      const anchor = holeLocalPoint(board, placement.anchor);
+      for (const hole of boardHoles(board)) {
+        const point = holeLocalPoint(board, hole);
+        const x = (point.x - anchor.x) / board.pitch;
+        const y = (point.y - anchor.y) / board.pitch;
+        if (x >= minX && x <= maxX && y >= minY && y <= maxY) include(hole);
+      }
+    }
+    return holes;
+  }
+
   const cells = [...bodyCells, ...footprint.pins.map((pin) => pin.cell)];
 
   const seen = new Set<string>();
@@ -287,13 +432,37 @@ export function footprintOccupiedHoles(
 
 /** Whether every hole a placement occupies exists on the board. */
 export function isPlacementInBounds(
-  board: BoardGrid,
+  board: PhysicalBoardGrid,
   footprint: Footprint,
   placement: Pick<DevicePlacement, 'anchor' | 'rotation'>,
 ): boolean {
-  return footprintOccupiedHoles(footprint, placement).every((hole) =>
+  const resolution = resolveFootprintPinHoles(footprint, placement, board);
+  if (resolution.missingPinIds.length > 0) return false;
+  if (isRigidFootprint(footprint) && !rigidArtworkFitsBoard(board, footprint, placement)) {
+    return false;
+  }
+  return footprintOccupiedHoles(footprint, placement, board).every((hole) =>
     isBoardHoleAvailable(board, hole),
   );
+}
+
+export function rigidArtworkFitsBoard(
+  board: PhysicalBoardGrid,
+  footprint: Footprint,
+  placement: Pick<DevicePlacement, 'anchor' | 'rotation'>,
+): boolean {
+  const bounds = footprint.physicalBounds ?? footprint.artwork;
+  if (!bounds) return true;
+  const anchor = holeLocalPoint(board, placement.anchor);
+  const points = footprintArtworkPoints(footprint, bounds, placement.rotation, null);
+  const maxX = (board.cols - 1) * board.pitch + BOARD_MARGIN * 2;
+  const maxY = (board.rows - 1) * board.pitch + (board.centerGap ?? 0) + BOARD_MARGIN * 2;
+  return [points.origin, points.horizontal, points.vertical, points.opposite].every((point) => {
+    const x = anchor.x + point.x * board.pitch;
+    const y = anchor.y + point.y * board.pitch;
+    const tolerance = board.pitch * PHYSICAL_POINT_EPSILON;
+    return x >= -tolerance && x <= maxX + tolerance && y >= -tolerance && y <= maxY + tolerance;
+  });
 }
 
 /**
@@ -391,8 +560,30 @@ export function anchorAfterRotation(
   footprint: Footprint,
   placement: Pick<DevicePlacement, 'anchor' | 'rotation'>,
   rotation: BoardRotation,
-): BoardHole {
+): BoardHole;
+export function anchorAfterRotation(
+  footprint: Footprint,
+  placement: Pick<DevicePlacement, 'anchor' | 'rotation'>,
+  rotation: BoardRotation,
+  board: PhysicalBoardGrid,
+): BoardHole | null;
+export function anchorAfterRotation(
+  footprint: Footprint,
+  placement: Pick<DevicePlacement, 'anchor' | 'rotation'>,
+  rotation: BoardRotation,
+  board?: PhysicalBoardGrid,
+): BoardHole | null {
   const pivot = footprint.pins[0]?.cell ?? { row: 0, col: 0 };
+  if (board && isRigidFootprint(footprint)) {
+    const pin = footprint.pins.find((candidate) => candidate.primary) ?? footprint.pins[0];
+    const pivotPoint = pin ? footprintPinPoint(pin) : { x: 0, y: 0 };
+    const fixed = rigidPointOnBoard(board, footprint, placement, pivotPoint);
+    const nextPivot = rotateFootprintPoint(pivotPoint.x, pivotPoint.y, footprint, rotation);
+    return exactHoleAtPoint(board, {
+      x: fixed.x - nextPivot.x * board.pitch,
+      y: fixed.y - nextPivot.y * board.pitch,
+    });
+  }
   const pivotHole = cellToHole(pivot, footprint, placement);
   const nextPivot = rotateCell(pivot, rotation, footprint);
   return {
@@ -404,10 +595,11 @@ export function anchorAfterRotation(
 /**
  * The footprint's drawn extent in cell units, in the board's piecewise space.
  *
- * The padded cell box is the baseline. Vector shapes and rigid raster artwork
- * may extend any side, including into negative fractional coordinates. The
- * bottom grows by the channel when the footprint straddles it, while artwork
- * is translated as one rigid rectangle rather than stretched across the cut.
+ * The padded cell box is the baseline. Vector shapes and rigid artwork (a
+ * bundled trusted SVG or an explicit raster upload) may extend any side,
+ * including into negative fractional coordinates. The bottom grows by the
+ * channel when the footprint straddles it, while artwork is translated as one
+ * rigid rectangle rather than stretched across the cut.
  */
 export function footprintDrawnExtent(
   footprint: DrawableFootprint,
@@ -486,11 +678,11 @@ export function footprintDrawnExtent(
       }
     }
   }
-  const artwork = footprint.artwork;
-  if (!artwork) return extent;
-  const points = footprintArtworkPoints(footprint, artwork, rotation, channel);
-  const corners = [points.origin, points.horizontal, points.vertical, points.opposite];
-  includePoints(corners);
+  for (const bounds of [footprint.physicalBounds, footprint.artwork]) {
+    if (!bounds) continue;
+    const points = footprintArtworkPoints(footprint, bounds, rotation, channel);
+    includePoints([points.origin, points.horizontal, points.vertical, points.opposite]);
+  }
   return extent;
 }
 
@@ -526,11 +718,15 @@ export function footprintNodeSize(
  * to the hand-addressed `port.hole` values the issue #1 tracer bullet uses, so
  * that path keeps working untouched.
  */
-export function deviceHoleClaims(nodeId: string, data: DeviceNodeData): BoardHoleClaim[] {
+export function deviceHoleClaims(
+  nodeId: string,
+  data: DeviceNodeData,
+  board?: PhysicalBoardGrid,
+): BoardHoleClaim[] {
   const footprint = resolveFootprint(data);
   if (footprint && data.placement) {
     const placement = data.placement;
-    return footprintOccupiedHoles(footprint, placement).map((hole) => ({
+    return footprintOccupiedHoles(footprint, placement, board).map((hole) => ({
       boardId: placement.boardId,
       ownerId: nodeId,
       hole,
@@ -550,12 +746,21 @@ export function deviceHoleClaims(nodeId: string, data: DeviceNodeData): BoardHol
  * the footprint's pins that the device actually declares as ports, mapped to
  * board holes. This is the pin <-> hole association a net endpoint depends on.
  */
-export function devicePortHoles(data: DeviceNodeData): Map<string, BoardHole> {
+export function devicePortHoles(
+  data: DeviceNodeData,
+  board?: PhysicalBoardGrid,
+): Map<string, BoardHole> {
   const result = new Map<string, BoardHole>();
   const footprint = resolveFootprint(data);
   if (footprint && data.placement) {
     const portIds = new Set(data.ports.map((port) => port.id));
-    for (const pin of footprintPinHoles(footprint, data.placement)) {
+    if (!board && isRigidFootprint(footprint)) {
+      for (const port of data.ports) {
+        if (port.hole) result.set(port.id, port.hole);
+      }
+      return result;
+    }
+    for (const pin of footprintPinHoles(footprint, data.placement, board)) {
       if (portIds.has(pin.pinId)) result.set(pin.pinId, pin.hole);
     }
     return result;
@@ -571,10 +776,13 @@ export function devicePortHoles(data: DeviceNodeData): Map<string, BoardHole> {
  * placement actually produces. Called whenever a placement changes, so the
  * persisted per-pin address never drifts from the geometry that derived it.
  */
-export function syncPortHolesToPlacement(data: DeviceNodeData): DeviceNodeData {
+export function syncPortHolesToPlacement(
+  data: DeviceNodeData,
+  board?: PhysicalBoardGrid,
+): DeviceNodeData {
   const footprint = resolveFootprint(data);
   if (!footprint || !data.placement) return data;
-  const holes = devicePortHoles(data);
+  const holes = devicePortHoles(data, board);
   return {
     ...data,
     boardId: data.placement.boardId,
@@ -586,7 +794,13 @@ export function syncPortHolesToPlacement(data: DeviceNodeData): DeviceNodeData {
 }
 
 export interface PlacementConflict {
-  kind: 'out-of-bounds' | 'occupied' | 'net-conflict' | 'unknown-board' | 'unknown-footprint';
+  kind:
+    | 'out-of-bounds'
+    | 'incompatible-grid'
+    | 'occupied'
+    | 'net-conflict'
+    | 'unknown-board'
+    | 'unknown-footprint';
   nodeId: string;
   boardId: string;
   /** Holes that caused the rejection. Empty for the `unknown-*` kinds. */
@@ -604,12 +818,31 @@ export interface PlacementConflict {
  */
 export function validatePlacement(
   nodeId: string,
-  board: BoardGrid & Pick<BoardNodeData, 'boardId'>,
+  board: PhysicalBoardGrid & Pick<BoardNodeData, 'boardId'>,
   footprint: Footprint,
   placement: DevicePlacement,
   existingClaims: readonly BoardHoleClaim[],
 ): PlacementConflict | null {
-  const occupied = footprintOccupiedHoles(footprint, placement);
+  const resolvedPins = resolveFootprintPinHoles(footprint, placement, board);
+  if (resolvedPins.missingPinIds.length > 0 && isRigidFootprint(footprint)) {
+    return {
+      kind: 'incompatible-grid',
+      nodeId,
+      boardId: board.boardId,
+      holes: [],
+      blockedBy: resolvedPins.missingPinIds,
+    };
+  }
+  const occupied = footprintOccupiedHoles(footprint, placement, board);
+  if (isRigidFootprint(footprint) && !rigidArtworkFitsBoard(board, footprint, placement)) {
+    return {
+      kind: 'out-of-bounds',
+      nodeId,
+      boardId: board.boardId,
+      holes: [],
+      blockedBy: [],
+    };
+  }
   const outOfBounds = occupied.filter((hole) => !isBoardHoleAvailable(board, hole));
   if (outOfBounds.length > 0) {
     return {
@@ -652,12 +885,36 @@ export function validatePlacement(
  */
 export function findFreeAnchor(
   nodeId: string,
-  board: BoardGrid & Pick<BoardNodeData, 'boardId'>,
+  board: PhysicalBoardGrid & Pick<BoardNodeData, 'boardId'>,
   footprint: Footprint,
   rotation: BoardRotation,
   preferred: BoardHole,
   existingClaims: readonly BoardHoleClaim[],
 ): BoardHole | null {
+  if (isRigidFootprint(footprint)) {
+    const candidates = boardHoles(board);
+    if (candidates.length === 0) return null;
+    const startIndex = candidates.findIndex(
+      (hole) =>
+        hole.row > preferred.row || (hole.row === preferred.row && hole.col >= preferred.col),
+    );
+    const start = startIndex < 0 ? 0 : startIndex;
+    for (let step = 0; step < candidates.length; step++) {
+      const anchor = candidates[(start + step) % candidates.length];
+      if (
+        !validatePlacement(
+          nodeId,
+          board,
+          footprint,
+          { boardId: board.boardId, anchor, rotation },
+          existingClaims,
+        )
+      ) {
+        return anchor;
+      }
+    }
+    return null;
+  }
   const box = rotatedFootprintBox(footprint, rotation);
   const maxRow = board.rows - box.rows;
   const maxCol = board.cols - box.cols;

@@ -10,6 +10,7 @@ import {
   loadLibraryCatalog,
   loadLibraryDevices,
   persistLibraryCatalog,
+  type PersistedLibraryV2,
 } from './library-storage';
 import { createBlankTemplate, SEED_LIBRARY } from './seed-library';
 
@@ -116,7 +117,7 @@ describe('LibraryService', () => {
     ).toBe(false);
   });
 
-  it('falls back to the seed catalog for invalid JSON, unknown versions or unsafe shapes', () => {
+  it('falls back to seeds without rewriting invalid JSON, unknown versions or unsafe shapes', () => {
     const storage = new MemoryStorage();
 
     storage.setItem(LIBRARY_STORAGE_KEY, '{broken');
@@ -125,24 +126,18 @@ describe('LibraryService', () => {
     storage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify({ version: 99, devices: [] }));
     expect(loadLibraryDevices(storage)).toEqual(SEED_LIBRARY);
     expect(loadLibraryDevices(storage)).not.toBe(SEED_LIBRARY);
-    storage.setItem(
-      LIBRARY_STORAGE_KEY,
-      JSON.stringify({
-        version: LIBRARY_STORAGE_VERSION,
-        devices: [{ libraryId: 'bad' }],
-        assets: {},
-      }),
-    );
-    expect(loadLibraryDevices(storage)).toEqual(SEED_LIBRARY);
-    expect(loadLibraryDevices(storage)).not.toBe(SEED_LIBRARY);
-    expect(JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}')).toEqual({
+    const unsafe = JSON.stringify({
       version: LIBRARY_STORAGE_VERSION,
-      devices: SEED_LIBRARY,
+      devices: [{ libraryId: 'bad' }],
       assets: {},
     });
+    storage.setItem(LIBRARY_STORAGE_KEY, unsafe);
+    expect(loadLibraryDevices(storage)).toEqual(SEED_LIBRARY);
+    expect(loadLibraryDevices(storage)).not.toBe(SEED_LIBRARY);
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(unsafe);
   });
 
-  it('salvages valid v1 entries individually and repairs the persisted payload', () => {
+  it('reports repaired entries without rewriting the persisted payload during load', () => {
     const storage = new MemoryStorage();
     const valid = {
       libraryId: 'lib-custom-valid',
@@ -152,21 +147,70 @@ describe('LibraryService', () => {
         model: 'Sensor válido',
       },
     };
-    storage.setItem(
-      LIBRARY_STORAGE_KEY,
-      JSON.stringify({
-        version: LIBRARY_STORAGE_VERSION,
-        devices: [valid, { libraryId: 'broken', template: { type: 'nope' } }, valid],
-        assets: {},
-      }),
-    );
-
-    expect(loadLibraryDevices(storage)).toEqual([valid]);
-    expect(JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}')).toEqual({
+    const serialized = JSON.stringify({
       version: LIBRARY_STORAGE_VERSION,
-      devices: [valid],
+      devices: [valid, { libraryId: 'broken', template: { type: 'nope' } }, valid],
       assets: {},
     });
+    storage.setItem(LIBRARY_STORAGE_KEY, serialized);
+
+    const loaded = loadLibraryCatalog(storage);
+
+    expect(loaded.catalog.devices).toEqual([valid]);
+    expect(loaded.needsRepair).toBe(true);
+    expect(loaded.needsUpgrade).toBe(false);
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
+  });
+
+  it('repairs a catalog entry whose rigid pins share one physical marker', () => {
+    const storage = new MemoryStorage();
+    const invalid = {
+      libraryId: 'lib-duplicate-marker',
+      template: {
+        ...createBlankTemplate(),
+        manufacturer: 'Talus',
+        model: 'Marcadores duplicados',
+        ports: [
+          { id: 'a', label: 'A', direction: 'input' as const },
+          { id: 'b', label: 'B', direction: 'output' as const },
+        ],
+        footprintId: 'duplicate-marker',
+        footprint: {
+          id: 'duplicate-marker',
+          label: 'Duplicate marker',
+          rows: 1,
+          cols: 2,
+          pins: [
+            {
+              id: 'a',
+              label: 'A',
+              cell: { row: 0, col: 0 },
+              artworkPoint: { x: 0, y: 0 },
+            },
+            {
+              id: 'b',
+              label: 'B',
+              cell: { row: 0, col: 1 },
+              artworkPoint: { x: 0, y: 0 },
+            },
+          ],
+          shapes: [],
+          physicalBounds: { x: -0.5, y: -0.5, width: 2, height: 1 },
+        },
+      },
+    };
+    const serialized = JSON.stringify({
+      version: LIBRARY_STORAGE_VERSION,
+      devices: [invalid],
+      assets: {},
+    });
+    storage.setItem(LIBRARY_STORAGE_KEY, serialized);
+
+    const loaded = loadLibraryCatalog(storage);
+
+    expect(loaded.catalog.devices).toEqual(SEED_LIBRARY);
+    expect(loaded.needsRepair).toBe(true);
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
   });
 
   it('preserves an intentionally empty persisted catalog', () => {
@@ -228,12 +272,49 @@ describe('LibraryService', () => {
     };
     storage.setItem(LEGACY_LIBRARY_STORAGE_KEY, JSON.stringify({ version: 1, devices: [custom] }));
 
-    expect(loadLibraryCatalog(storage)).toEqual({ devices: [custom], assets: [] });
-    expect(JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}')).toEqual({
+    expect(loadLibraryCatalog(storage)).toEqual({
+      catalog: { devices: [custom], assets: [] },
+      needsUpgrade: true,
+      needsRepair: false,
+    });
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBeNull();
+  });
+
+  it('upgrades former generic module seeds without erasing matching local port edits', () => {
+    const storage = new MemoryStorage();
+    const oldNano = {
+      libraryId: 'lib-arduino-nano',
+      template: {
+        ...createBlankTemplate(),
+        manufacturer: 'Arduino',
+        model: 'Nano local',
+        ports: [
+          { id: 'd9', label: 'D9 personalizado', direction: 'output' as const },
+          { id: 'gnd', label: 'GND', direction: 'input' as const },
+        ],
+      },
+    };
+    const serialized = JSON.stringify({
       version: LIBRARY_STORAGE_VERSION,
-      devices: [custom],
+      devices: [oldNano],
       assets: {},
     });
+    storage.setItem(LIBRARY_STORAGE_KEY, serialized);
+
+    const inspected = loadLibraryCatalog(storage);
+    const nano = inspected.catalog.devices[0]?.template;
+
+    expect(inspected.needsUpgrade).toBe(true);
+    expect(inspected.needsRepair).toBe(false);
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
+    expect(nano).toMatchObject({
+      model: 'Nano local',
+      footprintId: 'arduino-nano',
+      footprint: { rows: 7, cols: 15 },
+    });
+    expect(nano?.ports).toHaveLength(30);
+    expect(nano?.ports.find((port) => port.id === 'd9')?.label).toBe('D9 personalizado');
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
   });
 
   it('deduplicates artwork by hash and restores a physical custom component', async () => {
@@ -278,7 +359,7 @@ describe('LibraryService', () => {
     expect(Object.keys(payload.assets)).toEqual([hash]);
   });
 
-  it('never hydrates a persisted asset whose bytes do not match its SHA-256 key', () => {
+  it('never hydrates a persisted asset whose bytes do not match its SHA-256 key', async () => {
     const storage = new MemoryStorage();
     const asset = artworkAsset();
     const forgedHash = '0'.repeat(64);
@@ -290,24 +371,24 @@ describe('LibraryService', () => {
       byteLength: asset.byteLength,
       dataUrl: asset.dataUrl,
     };
-    storage.setItem(
-      LIBRARY_STORAGE_KEY,
-      JSON.stringify({
-        version: LIBRARY_STORAGE_VERSION,
-        devices: [device],
-        assets: { [forgedHash]: persistedAsset },
-      }),
-    );
+    const serialized = JSON.stringify({
+      version: LIBRARY_STORAGE_VERSION,
+      devices: [device],
+      assets: { [forgedHash]: persistedAsset },
+    });
+    storage.setItem(LIBRARY_STORAGE_KEY, serialized);
     vi.stubGlobal('localStorage', storage);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 404 }));
+    vi.stubGlobal('fetch', fetchMock);
 
     const service = createLibraryService();
 
     expect(service.artworkAsset(forgedHash)).toBeUndefined();
     expect(service.devices()[0]?.template.footprint?.artwork).toBeUndefined();
-    const repaired = JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}') as {
-      assets: Record<string, unknown>;
-    };
-    expect(repaired.assets).toEqual({});
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledOnce();
+    });
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
   });
 
   it('rejects a 129th referenced asset without mutating memory or storage', async () => {
@@ -345,7 +426,7 @@ describe('LibraryService', () => {
 
     const loaded = loadLibraryCatalog(storage);
 
-    expect(loaded.loadError).toMatch(/excede o limite de 128 imagens/);
+    expect(loaded.catalog.loadError).toMatch(/excede o limite de 128 imagens/);
     expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
   });
 
@@ -378,14 +459,12 @@ describe('LibraryService', () => {
       template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Compartilhado' },
     };
     vi.stubGlobal('localStorage', storage);
-    vi.stubGlobal(
-      'fetch',
-      vi
-        .fn<typeof fetch>()
-        .mockResolvedValue(
-          sharedCatalogResponse({ version: 2, devices: [remoteDevice], assets: {} }, true),
-        ),
-    );
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        sharedCatalogResponse({ version: 2, devices: [remoteDevice], assets: {} }, true),
+      );
+    vi.stubGlobal('fetch', fetchMock);
 
     const service = createLibraryService();
     await vi.waitFor(() => {
@@ -395,6 +474,209 @@ describe('LibraryService', () => {
     expect(JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}')).toMatchObject({
       devices: [remoteDevice],
     });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('conditionally persists a deterministic seed migration before publishing it', async () => {
+    const storage = new MemoryStorage();
+    const local = {
+      libraryId: 'lib-custom-local',
+      template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Cache local' },
+    };
+    expect(persistLibraryCatalog(storage, { devices: [local], assets: [] })).toEqual({ ok: true });
+    const oldNano = oldGenericNano();
+    const asset = artworkAsset();
+    const unreferencedAsset = artworkAsset(3);
+    const custom = physicalLibraryDevice('remote-custom', asset.hash);
+    const { hash, ...persistedAsset } = asset;
+    const { hash: unreferencedHash, ...persistedUnreferencedAsset } = unreferencedAsset;
+    const remoteCatalog = {
+      version: LIBRARY_STORAGE_VERSION,
+      devices: [oldNano, custom],
+      assets: {
+        [hash]: persistedAsset,
+        [unreferencedHash]: persistedUnreferencedAsset,
+      },
+    };
+    const getResponse = sharedCatalogResponse(remoteCatalog, true);
+    const getEtag = getResponse.headers.get('etag');
+    const upgradedEtag = `"${'a'.repeat(64)}"`;
+    const upgraded = deferred<Response>();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(getResponse)
+      .mockReturnValueOnce(upgraded.promise);
+    const before = storage.getItem(LIBRARY_STORAGE_KEY);
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const service = createLibraryService();
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    expect(service.devices()).toEqual([local]);
+    expect(service.artworkAsset(hash)).toBeUndefined();
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(before);
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      method: 'PUT',
+      headers: { 'If-Match': getEtag },
+    });
+    const requestBody = fetchMock.mock.calls[1]?.[1]?.body;
+    if (typeof requestBody !== 'string') throw new Error('Expected a migration request body');
+    const upgradedCatalog = JSON.parse(requestBody) as PersistedLibraryV2;
+    expect(upgradedCatalog.devices[0]?.template).toMatchObject({
+      model: 'Nano local',
+      footprintId: 'arduino-nano',
+      footprint: { rows: 7, cols: 15 },
+    });
+    expect(upgradedCatalog.devices[0]?.template.ports.find((port) => port.id === 'd9')?.label).toBe(
+      'D9 personalizado',
+    );
+    expect(
+      upgradedCatalog.devices[0]?.template.ports.find((port) => port.id === 'sense-local'),
+    ).toEqual({ id: 'sense-local', label: 'SENSE local', direction: 'input' });
+    expect(upgradedCatalog.devices[1]).toEqual(custom);
+    expect(upgradedCatalog.assets).toEqual({
+      [hash]: persistedAsset,
+      [unreferencedHash]: persistedUnreferencedAsset,
+    });
+
+    upgraded.resolve(new Response(null, { status: 200, headers: { ETag: upgradedEtag } }));
+    await vi.waitFor(() => {
+      expect(service.devices().map((device) => device.libraryId)).toEqual([
+        oldNano.libraryId,
+        custom.libraryId,
+      ]);
+    });
+
+    expect(service.artworkAsset(hash)).toEqual(asset);
+    expect(service.artworkAsset(unreferencedHash)).toEqual(unreferencedAsset);
+    expect(JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}')).toEqual(upgradedCatalog);
+
+    const currentFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(sharedCatalogResponse(upgradedCatalog, true));
+    vi.stubGlobal('fetch', currentFetch);
+    const reopened = createLibraryService();
+    await reopened.beginEdit(oldNano.libraryId);
+
+    expect(currentFetch).toHaveBeenCalledOnce();
+    expect(reopened.devices()).toEqual(service.devices());
+    expect(reopened.artworkAsset(hash)).toEqual(asset);
+    expect(reopened.artworkAsset(unreferencedHash)).toEqual(unreferencedAsset);
+  });
+
+  it.each([
+    ['ETag conflict', new Response('{}', { status: 412 }), /outro navegador/],
+    [
+      'server error',
+      new Response(JSON.stringify({ message: 'Falha central' }), { status: 500 }),
+      /Falha central/,
+    ],
+  ])(
+    'does not publish or cache a migrated catalog after %s',
+    async (_name, failedSave, expectedMessage) => {
+      const storage = new MemoryStorage();
+      const localAsset = artworkAsset(1);
+      const local = physicalLibraryDevice('local', localAsset.hash);
+      expect(
+        persistLibraryCatalog(storage, {
+          devices: [oldGenericNano(), local],
+          assets: [localAsset],
+        }),
+      ).toEqual({ ok: true });
+      const before = storage.getItem(LIBRARY_STORAGE_KEY);
+      const remoteAsset = artworkAsset(2);
+      const { hash: remoteHash, ...persistedRemoteAsset } = remoteAsset;
+      const remoteCatalog = {
+        version: LIBRARY_STORAGE_VERSION,
+        devices: [oldGenericNano(), physicalLibraryDevice('remote', remoteHash)],
+        assets: { [remoteHash]: persistedRemoteAsset },
+      };
+      const getResponse = sharedCatalogResponse(remoteCatalog, true);
+      const getEtag = getResponse.headers.get('etag');
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(getResponse)
+        .mockResolvedValueOnce(failedSave);
+      vi.stubGlobal('localStorage', storage);
+      vi.stubGlobal('fetch', fetchMock);
+
+      const service = createLibraryService();
+      await vi.waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+      });
+
+      expect(service.devices().map((device) => device.libraryId)).toEqual([
+        'lib-arduino-nano',
+        local.libraryId,
+      ]);
+      expect(service.devices()[0]?.template.footprintId).toBe('arduino-nano');
+      expect(service.artworkAsset(localAsset.hash)).toEqual(localAsset);
+      expect(service.artworkAsset(remoteHash)).toBeUndefined();
+      expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(before);
+      expect(service.storageError()).toMatch(expectedMessage);
+      expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+        method: 'PUT',
+        headers: { 'If-Match': getEtag },
+      });
+    },
+  );
+
+  it('does not attempt to upgrade or publish a corrupt central catalog', async () => {
+    const storage = new MemoryStorage();
+    const local = {
+      libraryId: 'lib-custom-local',
+      template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Cache local' },
+    };
+    expect(persistLibraryCatalog(storage, { devices: [local], assets: [] })).toEqual({ ok: true });
+    const before = storage.getItem(LIBRARY_STORAGE_KEY);
+    const corrupt = {
+      version: LIBRARY_STORAGE_VERSION,
+      devices: [oldGenericNano(), oldGenericNano()],
+      assets: {},
+    };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(sharedCatalogResponse(corrupt, true));
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const service = createLibraryService();
+    await vi.waitFor(() => {
+      expect(service.storageError()).toMatch(/dados inválidos/);
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(service.devices()).toEqual([local]);
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(before);
+  });
+
+  it('does not initialize an empty central catalog from repaired local data', async () => {
+    const storage = new MemoryStorage();
+    const local = {
+      libraryId: 'lib-custom-local',
+      template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Cache local' },
+    };
+    const serialized = JSON.stringify({
+      version: LIBRARY_STORAGE_VERSION,
+      devices: [local, local],
+      assets: {},
+    });
+    storage.setItem(LIBRARY_STORAGE_KEY, serialized);
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(sharedCatalogResponse({ version: 2, devices: [], assets: {} }, false));
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const service = createLibraryService();
+    await vi.waitFor(() => {
+      expect(service.storageError()).toMatch(/precisou de reparos/);
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(service.devices()).toEqual([local]);
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
   });
 
   it('waits for central hydration before opening an edit with the remote template', async () => {
@@ -555,6 +837,22 @@ function physicalLibraryDevice(libraryId: string, assetHash: string) {
       footprintId: footprint.id,
       footprint,
       ports: [{ id: 'signal', label: 'Sinal', direction: 'input' as const }],
+    },
+  };
+}
+
+function oldGenericNano() {
+  return {
+    libraryId: 'lib-arduino-nano',
+    template: {
+      ...createBlankTemplate(),
+      manufacturer: 'Arduino',
+      model: 'Nano local',
+      ports: [
+        { id: 'd9', label: 'D9 personalizado', direction: 'output' as const },
+        { id: 'gnd', label: 'GND', direction: 'input' as const },
+        { id: 'sense-local', label: 'SENSE local', direction: 'input' as const },
+      ],
     },
   };
 }

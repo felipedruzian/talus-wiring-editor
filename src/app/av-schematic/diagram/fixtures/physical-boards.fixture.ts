@@ -269,28 +269,6 @@ export const SEATED_COMPONENT_NODES: Node<DeviceNodeData>[] = [
     // L3-C3 (the jumper down to GND_SYS).
     ports: axialPorts('GND', 'no'),
   }),
-  seatedNode({
-    id: 'tb6612-2',
-    deviceId: 'DRV-2',
-    manufacturer: 'Toshiba',
-    model: 'TB6612FNG',
-    category: 'motor-driver',
-    footprintId: 'tb6612fng',
-    boardId: 'placa-origem',
-    anchor: { row: 0, col: 2 },
-    rotation: 0,
-    ports: [
-      { id: 'vm', label: 'VM', direction: 'input', connectorType: 'Power' },
-      { id: 'vcc', label: 'VCC', direction: 'input', connectorType: 'Power' },
-      { id: 'gnd', label: 'GND', direction: 'input', connectorType: 'Power' },
-      { id: 'pwma', label: 'PWMA', direction: 'input', connectorType: 'PWM' },
-      { id: 'ain1', label: 'AIN1', direction: 'input', connectorType: 'GPIO' },
-      { id: 'ain2', label: 'AIN2', direction: 'input', connectorType: 'GPIO' },
-      { id: 'stby', label: 'STBY', direction: 'input', connectorType: 'GPIO' },
-      { id: 'ao1', label: 'AO1', direction: 'output', connectorType: 'Motor' },
-      { id: 'ao2', label: 'AO2', direction: 'output', connectorType: 'Motor' },
-    ],
-  }),
 ];
 
 // ---------------------------------------------------------------------------
@@ -305,6 +283,44 @@ export const SEATED_COMPONENT_NODES: Node<DeviceNodeData>[] = [
  * papered over by shrinking the footprint.
  */
 export const EXTERNAL_COMPONENT_NODES: Node<DeviceNodeData>[] = [
+  (() => {
+    const footprint = getFootprint('tb6612fng');
+    if (!footprint) throw new Error('fixture "tb6612-2": missing TB6612FNG footprint');
+    return {
+      id: 'tb6612-2',
+      type: NodeTemplateType.FootprintNode,
+      position: { x: 425, y: 45 },
+      data: {
+        type: 'device',
+        deviceId: 'DRV-2',
+        manufacturer: 'Toshiba',
+        model: 'TB6612FNG',
+        category: 'motor-driver',
+        location: 'Ao lado da placa de origem',
+        notes: 'Dimensões e pinagem provisórias; o módulo não cabe nas seis linhas da placa.',
+        footprintId: footprint.id,
+        footprint: cloneFootprint(footprint),
+        footprintRotation: 0,
+        footprintPitch: BOARD_PITCH,
+        ports: footprint.pins.map((pin) => {
+          const motor = ['ao1', 'ao2', 'bo1', 'bo2'].includes(pin.id);
+          const power = pin.id === 'vm' || pin.id === 'vcc' || pin.id.startsWith('gnd');
+          return {
+            id: pin.id,
+            label: pin.label,
+            direction: motor ? ('output' as const) : ('input' as const),
+            connectorType: motor
+              ? 'Motor'
+              : power
+                ? 'Power'
+                : pin.id.startsWith('pwm')
+                  ? 'PWM'
+                  : 'GPIO',
+          };
+        }),
+      },
+    };
+  })(),
   {
     id: 'xl4015-1',
     type: NodeTemplateType.DeviceNode,

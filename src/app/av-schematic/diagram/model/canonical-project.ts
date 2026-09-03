@@ -748,10 +748,10 @@ function physicalBindingDrafts(
   const drafts: ConductorDraft[] = [];
 
   for (const node of deviceNodes) {
-    const holes = devicePortHoles(node.data);
-    if (holes.size === 0) continue;
     const boardId = node.data.placement?.boardId ?? node.data.boardId;
     const board = boardId ? boardsById.get(boardId) : undefined;
+    const holes = devicePortHoles(node.data, board?.data);
+    if (holes.size === 0) continue;
     if (!board) {
       throw new CanonicalProjectError(
         `component "${node.id}": physical pin holes require an existing board`,
@@ -1559,7 +1559,7 @@ function fromCanonicalComponent(
           )
         : (layout?.position ?? DEFAULT_POSITION),
     zOrder: data.visualPlane,
-    data: physical && placement ? syncPortHolesToPlacement(data) : data,
+    data: physical && placement ? syncPortHolesToPlacement(data, board?.data) : data,
   };
 }
 

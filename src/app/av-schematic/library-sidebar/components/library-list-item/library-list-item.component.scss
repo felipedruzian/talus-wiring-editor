@@ -123,3 +123,17 @@
   font-size: 10px;
   color: var(--ngd-txt-secondary-default);
 }
+
+.physical-device-preview {
+  display: grid;
+  place-items: center;
+  padding: 8px;
+}
+
+.physical-device-preview__illustration {
+  display: block;
+  width: 240px;
+  max-height: 150px;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 5px rgb(0 0 0 / 22%));
+}

@@ -150,6 +150,16 @@ function validateFootprint(value, label, footprintId, referencedAssets) {
 
   const pinIds = new Set();
   const pinCells = new Set();
+  const pinPoints = new Set();
+  const rigid =
+    footprint.physicalBounds !== undefined ||
+    pins.some(
+      (pin) =>
+        pin !== null &&
+        typeof pin === 'object' &&
+        !Array.isArray(pin) &&
+        pin.artworkPoint !== undefined,
+    );
   pins.forEach((pin, index) => {
     const pinLabel = `${label}.pins[${index}]`;
     const record = expectRecord(pin, pinLabel);
@@ -158,9 +168,24 @@ function validateFootprint(value, label, footprintId, referencedAssets) {
     pinIds.add(id);
     expectString(record.label, `${pinLabel}.label`, 16_384, true);
     const cell = validateCell(record.cell, `${pinLabel}.cell`, rows, cols);
+    let artworkPoint;
+    if (record.artworkPoint !== undefined) {
+      const point = expectRecord(record.artworkPoint, `${pinLabel}.artworkPoint`);
+      expectFinite(point.x, `${pinLabel}.artworkPoint.x`);
+      expectFinite(point.y, `${pinLabel}.artworkPoint.y`);
+      artworkPoint = point;
+    }
     const key = `${cell.row}:${cell.col}`;
     if (pinCells.has(key)) fail(`${pinLabel}.cell: another pin already occupies ${key}`);
     pinCells.add(key);
+    if (rigid) {
+      const point = artworkPoint ?? { x: cell.col, y: cell.row };
+      const pointKey = `${point.x}:${point.y}`;
+      if (pinPoints.has(pointKey)) {
+        fail(`${pinLabel}.artworkPoint: another pin already occupies ${pointKey}`);
+      }
+      pinPoints.add(pointKey);
+    }
     if (record.primary !== undefined && typeof record.primary !== 'boolean') {
       fail(`${pinLabel}.primary: expected boolean`);
     }
@@ -186,6 +211,13 @@ function validateFootprint(value, label, footprintId, referencedAssets) {
       fail(`${label}.artwork.preserveAspectRatio: expected boolean`);
     }
     referencedAssets.add(hash);
+  }
+  if (footprint.physicalBounds !== undefined) {
+    const bounds = expectRecord(footprint.physicalBounds, `${label}.physicalBounds`);
+    for (const key of ['x', 'y']) expectFinite(bounds[key], `${label}.physicalBounds.${key}`);
+    for (const key of ['width', 'height']) {
+      expectPositiveFinite(bounds[key], `${label}.physicalBounds.${key}`);
+    }
   }
 }
 

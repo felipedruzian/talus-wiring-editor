@@ -79,7 +79,7 @@ export function physicalEndpoint(
   const boardId = node.data.placement?.boardId ?? node.data.boardId;
   if (!boardId) return null;
   const board = nodes.filter(isBoardNode).find((candidate) => candidate.data.boardId === boardId);
-  const hole = devicePortHoles(node.data).get(portId);
+  const hole = devicePortHoles(node.data, board?.data).get(portId);
   if (!board || !hole) return null;
   return endpointAtHole(board.data.boardId, hole, traceForHole(board.data, hole));
 }

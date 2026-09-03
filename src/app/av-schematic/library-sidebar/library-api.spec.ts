@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { sha256HexSync } from './artwork-import';
 import { loadSharedLibrary, saveSharedLibrary } from './library-api';
 import { type PersistedLibraryV2 } from './library-storage';
+import { createBlankTemplate } from './seed-library';
 
 const catalog: PersistedLibraryV2 = { version: 2, devices: [], assets: {} };
 
@@ -21,8 +22,52 @@ describe('shared library API client', () => {
 
     const result = await loadSharedLibrary(fetcher);
 
-    expect(result).toMatchObject({ kind: 'loaded', initialized: true, catalog: { devices: [] } });
+    expect(result).toMatchObject({
+      kind: 'loaded',
+      initialized: true,
+      needsUpgrade: false,
+      catalog: { devices: [] },
+    });
     expect(fetcher).toHaveBeenCalledWith('/api/library', { method: 'GET' });
+  });
+
+  it('reports a deterministic physical seed migration without classifying it as corruption', async () => {
+    const oldNano = {
+      libraryId: 'lib-arduino-nano',
+      template: {
+        ...createBlankTemplate(),
+        manufacturer: 'Arduino',
+        model: 'Nano local',
+        ports: [
+          { id: 'd9', label: 'D9 personalizado', direction: 'output' as const },
+          { id: 'sense-local', label: 'SENSE local', direction: 'input' as const },
+        ],
+      },
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        responseFor(
+          { version: 2, devices: [oldNano], assets: {} },
+          { 'X-Wiring-Library-Initialized': '1' },
+        ),
+      );
+
+    const result = await loadSharedLibrary(fetcher);
+
+    expect(result).toMatchObject({ kind: 'loaded', initialized: true, needsUpgrade: true });
+    if (result.kind !== 'loaded') throw new Error('Expected a migrated central catalog');
+    expect(result.catalog.devices[0]?.template).toMatchObject({
+      model: 'Nano local',
+      footprintId: 'arduino-nano',
+      footprint: { rows: 7, cols: 15 },
+    });
+    expect(result.catalog.devices[0]?.template.ports.find((port) => port.id === 'd9')?.label).toBe(
+      'D9 personalizado',
+    );
+    expect(
+      result.catalog.devices[0]?.template.ports.find((port) => port.id === 'sense-local'),
+    ).toEqual({ id: 'sense-local', label: 'SENSE local', direction: 'input' });
   });
 
   it('treats the old SPA fallback and a missing route as unavailable', async () => {

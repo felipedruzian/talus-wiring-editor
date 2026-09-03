@@ -1,0 +1,147 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="-0.5 -0.5 8 6.1"
+  width="8"
+  height="6.1"
+  fill="none"
+  role="img"
+  aria-labelledby="gy521-title gy521-description"
+  preserveAspectRatio="xMidYMid meet"
+  data-artwork-id="gy-521-mpu6050"
+  data-asset-revision="2026-09-03"
+  data-asset-license="MIT"
+  data-pitch-unit="1"
+  data-provisional="true"
+>
+  <title id="gy521-title">Módulo GY-521 com MPU6050 em escala de pitch</title>
+  <desc id="gy521-description">
+    Ilustração original de uma variante genérica azul, com placa provisória de 8 por 6,1 unidades e
+    um header de 8 pinos.
+  </desc>
+
+  <rect x="-0.45" y="-0.45" width="7.9" height="6" rx="0.28" fill="#1769aa" />
+  <rect x="-0.45" y="-0.45" width="7.9" height="6" rx="0.28" stroke="#0b3155" stroke-width="0.12" />
+  <path d="M-0.18 1.15H7.18" stroke="#68b9e8" stroke-width="0.06" />
+
+  <rect x="-0.35" y="-0.34" width="7.7" height="0.68" rx="0.1" fill="#17232d" />
+  <g aria-label="Header de oito pinos">
+    <g data-pin-id="vcc" data-pin-x="0" data-pin-y="0" data-primary="true">
+      <rect
+        x="-0.34"
+        y="-0.34"
+        width="0.68"
+        height="0.68"
+        rx="0.04"
+        fill="#d7b24a"
+        stroke="#ffffff"
+        stroke-width="0.09"
+      />
+      <circle cx="0" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="gnd" data-pin-x="1" data-pin-y="0">
+      <rect x="0.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="1" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="scl" data-pin-x="2" data-pin-y="0">
+      <rect x="1.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="2" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="sda" data-pin-x="3" data-pin-y="0">
+      <rect x="2.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="3" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="xda" data-pin-x="4" data-pin-y="0">
+      <rect x="3.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="4" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="xcl" data-pin-x="5" data-pin-y="0">
+      <rect x="4.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="5" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="ad0" data-pin-x="6" data-pin-y="0">
+      <rect x="5.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="6" cy="0" r="0.16" fill="#17232d" />
+    </g>
+    <g data-pin-id="int" data-pin-x="7" data-pin-y="0">
+      <rect x="6.7" y="-0.3" width="0.6" height="0.6" rx="0.07" fill="#d7b24a" />
+      <circle cx="7" cy="0" r="0.16" fill="#17232d" />
+    </g>
+  </g>
+
+  <g fill="#e8f6ff" font-family="ui-monospace, monospace" font-size="0.24" text-anchor="middle">
+    <text x="0" y="0.8">VCC</text>
+    <text x="1" y="0.8">GND</text>
+    <text x="2" y="0.8">SCL</text>
+    <text x="3" y="0.8">SDA</text>
+    <text x="4" y="0.8">XDA</text>
+    <text x="5" y="0.8">XCL</text>
+    <text x="6" y="0.8">AD0</text>
+    <text x="7" y="0.8">INT</text>
+  </g>
+
+  <circle cx="0.38" cy="4.85" r="0.38" fill="#dce9ef" stroke="#0b3155" stroke-width="0.09" />
+  <circle cx="0.38" cy="4.85" r="0.2" fill="#26333d" />
+  <circle cx="6.62" cy="4.85" r="0.38" fill="#dce9ef" stroke="#0b3155" stroke-width="0.09" />
+  <circle cx="6.62" cy="4.85" r="0.2" fill="#26333d" />
+
+  <rect
+    x="2.25"
+    y="1.7"
+    width="2.5"
+    height="2.5"
+    rx="0.14"
+    fill="#26333d"
+    stroke="#9fb4c2"
+    stroke-width="0.08"
+  />
+  <circle cx="2.58" cy="2.03" r="0.11" fill="#d5dce1" />
+  <g stroke="#d5dce1" stroke-width="0.06">
+    <path d="M2.48 1.5V1.7M3.08 1.5V1.7M3.68 1.5V1.7M4.28 1.5V1.7" />
+    <path d="M2.48 4.2V4.4M3.08 4.2V4.4M3.68 4.2V4.4M4.28 4.2V4.4" />
+    <path d="M2.05 1.93H2.25M2.05 2.53H2.25M2.05 3.13H2.25M2.05 3.73H2.25" />
+    <path d="M4.75 1.93H4.95M4.75 2.53H4.95M4.75 3.13H4.95M4.75 3.73H4.95" />
+  </g>
+  <rect
+    x="5.25"
+    y="1.7"
+    width="1.15"
+    height="0.75"
+    rx="0.08"
+    fill="#d7dadd"
+    stroke="#6a737a"
+    stroke-width="0.07"
+  />
+  <rect
+    x="5.25"
+    y="2.75"
+    width="1.15"
+    height="0.75"
+    rx="0.08"
+    fill="#d7b24a"
+    stroke="#8a6b1d"
+    stroke-width="0.07"
+  />
+  <rect
+    x="0.62"
+    y="1.82"
+    width="0.9"
+    height="1.35"
+    rx="0.1"
+    fill="#293740"
+    stroke="#9fb4c2"
+    stroke-width="0.07"
+  />
+
+  <g fill="#e8f6ff" font-family="ui-sans-serif, sans-serif" text-anchor="middle">
+    <text x="3.5" y="4.95" font-size="0.62" font-weight="700">GY-521</text>
+    <text x="3.5" y="3.08" font-size="0.34">MPU-6050</text>
+  </g>
+  <g stroke="#ffffff" stroke-width="0.09" stroke-linecap="round">
+    <path d="M6.2 4.2H6.95M6.95 4.2L6.72 3.97M6.95 4.2L6.72 4.43" />
+    <path d="M6.2 4.2V3.45M6.2 3.45L5.97 3.68M6.2 3.45L6.43 3.68" />
+  </g>
+  <g fill="#ffffff" font-family="ui-monospace, monospace" font-size="0.28">
+    <text x="7.02" y="4.3">X</text>
+    <text x="6.08" y="3.35">Y</text>
+  </g>
+</svg>

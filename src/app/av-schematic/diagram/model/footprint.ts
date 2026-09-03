@@ -13,6 +13,13 @@
  * third pin column, whatever the board's pitch turns out to be.
  */
 
+import {
+  ARDUINO_NANO_ARTWORK,
+  GY_521_MPU6050_ARTWORK,
+  TB6612FNG_ARTWORK,
+  type TrustedComponentArtwork,
+} from '../artwork/trusted-component-artwork';
+
 export interface FootprintCell {
   row: number;
   col: number;
@@ -74,6 +81,13 @@ export interface FootprintPin {
   id: string;
   label: string;
   cell: FootprintCell;
+  /**
+   * Physical center of the pin marker in artwork pitch units. When absent,
+   * the marker is the legacy cell center (`x = col`, `y = row`). Keeping this
+   * separate from `cell` lets a rigid component bridge a non-uniform board
+   * without stretching its image to the board's address grid.
+   */
+  artworkPoint?: { x: number; y: number };
   /** Marks pin 1 / polarity so the illustration can key off it. */
   primary?: boolean;
 }
@@ -92,6 +106,13 @@ export interface FootprintArtwork {
   preserveAspectRatio?: boolean;
 }
 
+export interface FootprintPhysicalBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface Footprint {
   id: string;
   label: string;
@@ -102,26 +123,14 @@ export interface Footprint {
   shapes: FootprintShape[];
   /** Optional user-supplied raster image, referenced by content hash. */
   artwork?: FootprintArtwork;
+  /** Rigid physical body bounds in pitch units, independent from its renderer. */
+  physicalBounds?: FootprintPhysicalBounds;
   /**
    * Cells the body physically covers beyond its pins. Absent means the body
    * covers its whole `rows x cols` bounding box, which is the usual case for a
    * DIP/module and the conservative answer for occupancy.
    */
   bodyCells?: FootprintCell[];
-}
-
-const DIP_LEAD_INSET = 0.18;
-
-function pinRow(
-  row: number,
-  labels: readonly (readonly [id: string, label: string])[],
-  startCol = 0,
-): FootprintPin[] {
-  return labels.map(([id, label], index) => ({
-    id,
-    label,
-    cell: { row, col: startCol + index },
-  }));
 }
 
 /** Two-pin axial part (resistor, diode, wire link) lying flat across `span + 1` holes. */
@@ -225,57 +234,52 @@ function radialCapFootprint(
   };
 }
 
-/** Two-row module/DIP: pins on the first and last row, body spanning between. */
-function dualRowModuleFootprint(
-  id: string,
+/** Bundled module whose SVG, fallback vector and DXF share one pitch-unit contract. */
+function trustedModuleFootprint(
+  artwork: TrustedComponentArtwork,
   label: string,
-  rowSpan: number,
-  topPins: readonly (readonly [string, string])[],
-  bottomPins: readonly (readonly [string, string])[],
-  accentText?: string,
+  fallbackText: string,
 ): Footprint {
-  const cols = Math.max(topPins.length, bottomPins.length);
+  const { bounds } = artwork;
   return {
-    id,
+    id: artwork.footprintId,
     label,
-    rows: rowSpan + 1,
-    cols,
-    pins: [
-      ...pinRow(0, topPins).map((pin, index) => (index === 0 ? { ...pin, primary: true } : pin)),
-      ...pinRow(rowSpan, bottomPins),
-    ],
+    rows: artwork.grid.rows,
+    cols: artwork.grid.cols,
+    pins: artwork.pins.map((pin) => ({
+      id: pin.id,
+      label: pin.label,
+      cell: { row: pin.row, col: pin.col },
+      artworkPoint: { ...pin.marker },
+      primary: pin.primary,
+    })),
     shapes: [
       {
         kind: 'rect',
-        x: -0.45,
-        y: DIP_LEAD_INSET,
-        width: cols - 1 + 0.9,
-        height: rowSpan - DIP_LEAD_INSET * 2,
+        x: bounds.x + 0.05,
+        y: bounds.y + 0.05,
+        width: bounds.width - 0.1,
+        height: bounds.height - 0.1,
         rx: 0.22,
         fill: 'body',
         stroke: 'silk',
       },
       {
-        kind: 'rect',
-        x: -0.2,
-        y: rowSpan / 2 - 0.55,
-        width: cols - 1 + 0.4,
-        height: 1.1,
-        rx: 0.16,
-        fill: 'body-alt',
-        stroke: 'none',
-      },
-      { kind: 'circle', cx: 0, cy: 0.55, r: 0.17, fill: 'accent' },
-      {
         kind: 'text',
-        x: (cols - 1) / 2,
-        y: rowSpan / 2 + 0.14,
-        text: accentText ?? label,
+        x: bounds.x + bounds.width / 2,
+        y: bounds.y + bounds.height / 2,
+        text: fallbackText,
         anchor: 'middle',
         size: 0.44,
         fill: 'silk',
       },
     ],
+    physicalBounds: {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+    },
   };
 }
 
@@ -287,72 +291,23 @@ function dualRowModuleFootprint(
  * through wires instead of being seated on it. The footprint reports that
  * honestly rather than being shrunk to make a demo fit.
  */
-export const ARDUINO_NANO_FOOTPRINT: Footprint = dualRowModuleFootprint(
-  'arduino-nano',
+export const ARDUINO_NANO_FOOTPRINT: Footprint = trustedModuleFootprint(
+  ARDUINO_NANO_ARTWORK,
   'Arduino Nano',
-  6,
-  [
-    ['d13', 'D13'],
-    ['3v3', '3V3'],
-    ['aref', 'REF'],
-    ['a0', 'A0'],
-    ['a1', 'A1'],
-    ['a2', 'A2'],
-    ['a3', 'A3'],
-    ['a4', 'A4'],
-    ['a5', 'A5'],
-    ['a6', 'A6'],
-    ['a7', 'A7'],
-    ['5v', '5V'],
-    ['rst', 'RST'],
-    ['gnd', 'GND'],
-    ['vin', 'VIN'],
-  ],
-  [
-    ['d12', 'D12'],
-    ['d11', 'D11'],
-    ['d10', 'D10'],
-    ['d9', 'D9'],
-    ['d8', 'D8'],
-    ['d7', 'D7'],
-    ['d6', 'D6'],
-    ['d5', 'D5'],
-    ['d4', 'D4'],
-    ['d3', 'D3'],
-    ['d2', 'D2'],
-    ['gnd-2', 'GND'],
-    ['rst-2', 'RST'],
-    ['d0', 'D0'],
-    ['d1', 'D1'],
-  ],
   'NANO',
 );
 
-/** TB6612FNG breakout: 8 + 8 pins on a 0.5" (5 hole) row span. Fits a 6-row board. */
-export const TB6612FNG_FOOTPRINT: Footprint = dualRowModuleFootprint(
-  'tb6612fng',
+/** GY-521 breakout: one 1 x 8 header; body dimensions remain provisional. */
+export const GY_521_MPU6050_FOOTPRINT: Footprint = trustedModuleFootprint(
+  GY_521_MPU6050_ARTWORK,
+  'GY-521 / MPU6050',
+  'GY-521',
+);
+
+/** TB6612FNG breakout: two 1 x 8 headers separated by six pitch units. */
+export const TB6612FNG_FOOTPRINT: Footprint = trustedModuleFootprint(
+  TB6612FNG_ARTWORK,
   'TB6612FNG',
-  5,
-  [
-    ['vm', 'VM'],
-    ['vcc', 'VCC'],
-    ['gnd', 'GND'],
-    ['ao1', 'AO1'],
-    ['ao2', 'AO2'],
-    ['bo2', 'BO2'],
-    ['bo1', 'BO1'],
-    ['gnd-2', 'GND'],
-  ],
-  [
-    ['pwma', 'PWMA'],
-    ['ain2', 'AIN2'],
-    ['ain1', 'AIN1'],
-    ['stby', 'STBY'],
-    ['bin1', 'BIN1'],
-    ['bin2', 'BIN2'],
-    ['pwmb', 'PWMB'],
-    ['gnd-3', 'GND'],
-  ],
   'TB6612',
 );
 
@@ -396,6 +351,7 @@ export const FOOTPRINTS: Readonly<Record<string, Footprint>> = Object.freeze(
   Object.fromEntries(
     [
       ARDUINO_NANO_FOOTPRINT,
+      GY_521_MPU6050_FOOTPRINT,
       TB6612FNG_FOOTPRINT,
       RESISTOR_1K_FOOTPRINT,
       RESISTOR_1K8_FOOTPRINT,
@@ -426,9 +382,14 @@ export function resolveFootprint(reference: FootprintReference): Footprint | und
 export function cloneFootprint(footprint: Footprint): Footprint {
   return {
     ...footprint,
-    pins: footprint.pins.map((pin) => ({ ...pin, cell: { ...pin.cell } })),
+    pins: footprint.pins.map((pin) => ({
+      ...pin,
+      cell: { ...pin.cell },
+      artworkPoint: pin.artworkPoint ? { ...pin.artworkPoint } : undefined,
+    })),
     shapes: footprint.shapes.map((shape) => ({ ...shape })),
     artwork: footprint.artwork ? { ...footprint.artwork } : undefined,
+    physicalBounds: footprint.physicalBounds ? { ...footprint.physicalBounds } : undefined,
     bodyCells: footprint.bodyCells?.map((cell) => ({ ...cell })),
   };
 }

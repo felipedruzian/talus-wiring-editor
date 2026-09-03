@@ -26,6 +26,13 @@ Ao carregar, um único canvas mostra:
 Tudo isso é exercitado por `src/app/av-schematic/diagram/data.ts`, o seed com
 que o app inicializa.
 
+> **Atualização da issue #32:** a decisão elétrica de reutilizar
+> `DeviceNodeData` continua válida, mas a representação visual genérica descrita
+> abaixo foi substituída. Nano e TB6612FNG agora são `FootprintNode`, com SVG
+> integral, escala e terminais em pitch; permanecem soltos sobre a placa A
+> porque seus envelopes reais não cabem em seis linhas. O GY-521 usa o mesmo
+> contrato na biblioteca. Consulte `physical-footprints.md` para o estado atual.
+
 ## Decisão de integração: um canvas, duas peças novas, o resto reaproveitado
 
 A restrição rígida desta fatia é **nenhum segundo canvas e nenhuma
