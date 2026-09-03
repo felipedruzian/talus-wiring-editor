@@ -84,12 +84,10 @@ import {
 import { isWireColorPairCoherent } from './wire-colors';
 import { defaultVisualPlane, isValidVisualPlane } from './visual-planes';
 import {
-  categoryValidationError,
   deterministicLegacyCategoryId,
   isCanonicalLibraryCategory,
   migrateLegacyDeviceCategories,
   UNCATEGORIZED_CATEGORY,
-  type LibraryCategory,
 } from '../../library-sidebar/library-category';
 
 /**
