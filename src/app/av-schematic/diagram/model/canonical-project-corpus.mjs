@@ -617,6 +617,15 @@ export const canonicalValidationCorpus = [
     })(),
   },
   {
+    name: 'rejects distinct rigid markers that resolve to one board hole within tolerance',
+    accepted: false,
+    raw: (() => {
+      const raw = rigidGapProject();
+      raw.layout.components[0].footprint.pins[1].artworkPoint = { x: 5e-7, y: 0 };
+      return raw;
+    })(),
+  },
+  {
     name: 'rejects rigid physical bounds that extend past the board edge',
     accepted: false,
     raw: (() => {

@@ -736,6 +736,14 @@ function validateLayout(
           `${label}.placement: rigid pin markers do not match board holes (${pinResolution.missingPinIds.join(', ')})`,
         );
       }
+      const duplicateMarkerHole = duplicateResolvedMarkerHole(pinResolution.pins);
+      if (duplicateMarkerHole) {
+        throw new CanonicalProjectError(
+          `${label}.placement: rigid pin markers "${duplicateMarkerHole.firstPinId}" and ` +
+            `"${duplicateMarkerHole.secondPinId}" resolve to the same board hole ` +
+            `{row: ${duplicateMarkerHole.hole.row}, col: ${duplicateMarkerHole.hole.col}}`,
+        );
+      }
       if (
         isRigidFootprint(layout.footprint) &&
         !rigidArtworkFitsBoard(board, layout.footprint, layout.placement)
@@ -1207,6 +1215,26 @@ function validateFootprint(footprint: Footprint, label: string): void {
     }
     bodyCells.add(key);
   }
+}
+
+/**
+ * Exact marker-coordinate comparison rejects identical drawings, but board
+ * resolution has a small physical tolerance. Distinct markers inside that
+ * tolerance must still not electrically collapse onto one plated hole.
+ */
+function duplicateResolvedMarkerHole(
+  pins: readonly { pinId: string; hole: FootprintCell }[],
+): { firstPinId: string; secondPinId: string; hole: FootprintCell } | null {
+  const firstPinByHole = new Map<string, string>();
+  for (const pin of pins) {
+    const key = holeKey(pin.hole);
+    const firstPinId = firstPinByHole.get(key);
+    if (firstPinId !== undefined) {
+      return { firstPinId, secondPinId: pin.pinId, hole: pin.hole };
+    }
+    firstPinByHole.set(key, pin.pinId);
+  }
+  return null;
 }
 
 function validateFootprintCell(cell: FootprintCell, footprint: Footprint, label: string): void {
