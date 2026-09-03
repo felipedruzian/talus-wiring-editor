@@ -20,6 +20,7 @@ export const LIBRARY_STORAGE_KEY = 'talus-wiring-editor.library.v2';
 export const LEGACY_LIBRARY_STORAGE_KEY = 'talus-wiring-editor.library.v1';
 export const LIBRARY_STORAGE_VERSION = 2;
 export const MAX_LIBRARY_ASSETS = 128;
+export const MAX_LIBRARY_DEVICES = 4096;
 export const MAX_LIBRARY_STORAGE_BYTES = 16 * 1024 * 1024;
 
 export interface LibraryCatalog {
@@ -106,6 +107,22 @@ export function persistLibraryCatalog(
 
 /** Validate and serialize without mutating storage; used by the central API client. */
 export function prepareLibraryCatalog(catalog: LibraryCatalog): PreparedLibraryCatalog {
+  if (catalog.devices.length > MAX_LIBRARY_DEVICES) {
+    return {
+      ok: false,
+      message: `O catálogo aceita no máximo ${MAX_LIBRARY_DEVICES} componentes.`,
+    };
+  }
+  const deviceIds = new Set<string>();
+  if (
+    catalog.devices.some((device) => {
+      if (!isLibraryDevice(device) || deviceIds.has(device.libraryId)) return true;
+      deviceIds.add(device.libraryId);
+      return false;
+    })
+  ) {
+    return { ok: false, message: 'O catálogo contém componentes inválidos ou duplicados.' };
+  }
   const assetsByHash = new Map<string, RasterArtworkAsset>();
   for (const asset of catalog.assets) {
     const existing = assetsByHash.get(asset.hash);
@@ -382,14 +399,35 @@ function isFootprintShape(value: unknown): boolean {
       return (
         numericFields(value, ['x', 'y', 'width', 'height']) &&
         (value['width'] as number) > 0 &&
-        (value['height'] as number) > 0
+        (value['height'] as number) > 0 &&
+        optionalNonNegativeFinite(value['rx']) &&
+        optionalFootprintPaint(value['fill']) &&
+        optionalFootprintPaint(value['stroke'])
       );
     case 'circle':
-      return numericFields(value, ['cx', 'cy', 'r']) && (value['r'] as number) > 0;
+      return (
+        numericFields(value, ['cx', 'cy', 'r']) &&
+        (value['r'] as number) > 0 &&
+        optionalFootprintPaint(value['fill']) &&
+        optionalFootprintPaint(value['stroke'])
+      );
     case 'line':
-      return numericFields(value, ['x1', 'y1', 'x2', 'y2']);
+      return (
+        numericFields(value, ['x1', 'y1', 'x2', 'y2']) &&
+        optionalPositiveFinite(value['width']) &&
+        optionalFootprintPaint(value['stroke'])
+      );
     case 'text':
-      return numericFields(value, ['x', 'y']) && typeof value['text'] === 'string';
+      return (
+        numericFields(value, ['x', 'y']) &&
+        typeof value['text'] === 'string' &&
+        optionalPositiveFinite(value['size']) &&
+        (value['anchor'] === undefined ||
+          value['anchor'] === 'start' ||
+          value['anchor'] === 'middle' ||
+          value['anchor'] === 'end') &&
+        optionalFootprintPaint(value['fill'])
+      );
     default:
       return false;
   }
@@ -429,6 +467,28 @@ function numericFields(value: Record<string, unknown>, names: readonly string[])
 
 function isRasterMimeType(value: unknown): value is RasterArtworkMimeType {
   return value === 'image/png' || value === 'image/webp';
+}
+
+const FOOTPRINT_PAINTS = new Set([
+  'none',
+  'body',
+  'body-alt',
+  'accent',
+  'lead',
+  'silk',
+  'polarity',
+]);
+
+function optionalFootprintPaint(value: unknown): boolean {
+  return value === undefined || (typeof value === 'string' && FOOTPRINT_PAINTS.has(value));
+}
+
+function optionalPositiveFinite(value: unknown): boolean {
+  return value === undefined || isPositiveFinite(value);
+}
+
+function optionalNonNegativeFinite(value: unknown): boolean {
+  return value === undefined || (isFiniteNumber(value) && value >= 0);
 }
 
 const optionalString = (value: unknown): boolean =>

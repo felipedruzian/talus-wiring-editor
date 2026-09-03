@@ -17,6 +17,15 @@ const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const PORT_DIRECTIONS = new Set(['input', 'output']);
 const ROTATIONS = new Set([0, 90, 180, 270]);
 const SHAPE_KINDS = new Set(['rect', 'circle', 'line', 'text']);
+const FOOTPRINT_PAINTS = new Set([
+  'none',
+  'body',
+  'body-alt',
+  'accent',
+  'lead',
+  'silk',
+  'polarity',
+]);
 
 export class LibraryCatalogValidationError extends Error {
   constructor(message) {
@@ -189,19 +198,36 @@ function validateShape(value, label) {
       expectFinite(shape.y, `${label}.y`);
       expectPositiveFinite(shape.width, `${label}.width`);
       expectPositiveFinite(shape.height, `${label}.height`);
+      optionalNonNegativeFinite(shape.rx, `${label}.rx`);
+      optionalPaint(shape.fill, `${label}.fill`);
+      optionalPaint(shape.stroke, `${label}.stroke`);
       break;
     case 'circle':
       expectFinite(shape.cx, `${label}.cx`);
       expectFinite(shape.cy, `${label}.cy`);
       expectPositiveFinite(shape.r, `${label}.r`);
+      optionalPaint(shape.fill, `${label}.fill`);
+      optionalPaint(shape.stroke, `${label}.stroke`);
       break;
     case 'line':
       for (const key of ['x1', 'y1', 'x2', 'y2']) expectFinite(shape[key], `${label}.${key}`);
+      if (shape.width !== undefined) expectPositiveFinite(shape.width, `${label}.width`);
+      optionalPaint(shape.stroke, `${label}.stroke`);
       break;
     case 'text':
       expectFinite(shape.x, `${label}.x`);
       expectFinite(shape.y, `${label}.y`);
       expectString(shape.text, `${label}.text`, 16_384, true);
+      if (shape.size !== undefined) expectPositiveFinite(shape.size, `${label}.size`);
+      if (
+        shape.anchor !== undefined &&
+        shape.anchor !== 'start' &&
+        shape.anchor !== 'middle' &&
+        shape.anchor !== 'end'
+      ) {
+        fail(`${label}.anchor: invalid text anchor`);
+      }
+      optionalPaint(shape.fill, `${label}.fill`);
       break;
   }
 }
@@ -355,6 +381,16 @@ function expectString(value, label, maxLength, allowEmpty) {
 
 function optionalString(value, label, maxLength) {
   if (value !== undefined) expectString(value, label, maxLength, true);
+}
+
+function optionalPaint(value, label) {
+  if (value !== undefined && !FOOTPRINT_PAINTS.has(value)) fail(`${label}: invalid paint role`);
+}
+
+function optionalNonNegativeFinite(value, label) {
+  if (value !== undefined && expectFinite(value, label) < 0) {
+    fail(`${label}: expected non-negative number`);
+  }
 }
 
 function expectSafeInteger(value, label) {
