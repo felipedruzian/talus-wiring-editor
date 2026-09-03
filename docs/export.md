@@ -32,9 +32,9 @@ The `dxf/` folder has no knowledge of devices, ports, or wires — it could be l
 
 **Coordinate scale.** Renderers operate in diagram coordinates (matching `node.position` / `edge.points`); `CoordinateMapper` converts to DXF millimetres at a fixed `0.3 mm` per diagram unit. This is intentional — not paper-fitted — so a device's physical size in the DXF stays constant regardless of overall diagram size (large diagrams just produce a large extent, which is normal for CAD).
 
-**Devices.** `device-node-renderer.ts` reads port positions from `node.measuredPorts` so they line up with where ng-diagram routes wires. Each port rectangle is drawn at a fixed size and snapped flush with the device frame on the side facing away from the node. Header text uses a 1.4 line-height ratio to mirror the rendered DOM.
+**Devices.** `device-node-renderer.ts` reads port positions from `node.measuredPorts` so they line up with where ngDiagram routes wires. Each port rectangle is drawn at a fixed size and snapped flush with the device frame on the side facing away from the node. Header text uses a 1.4 line-height ratio to mirror the rendered DOM.
 
-**Wires.** `wire-edge-renderer.ts` emits one `LWPOLYLINE` per edge from `edge.points` — orthogonal today, point-following in the future, the renderer doesn't care. Each endpoint is extended a small distance toward the next routing point so it meets the outer edge of the snapped port rectangle (ng-diagram routes to the port's measured center, which sits slightly inside that edge). The `wireId` is rendered as text at two anchors along the polyline — one near each end, mirroring the two `<ng-diagram-base-edge-label>` markers in `wire-edge.component.html`.
+**Wires.** `wire-edge-renderer.ts` emits one `LWPOLYLINE` per edge from `edge.points` — orthogonal today, point-following in the future, the renderer doesn't care. Each endpoint is extended a small distance toward the next routing point so it meets the outer edge of the snapped port rectangle (ngDiagram routes to the port's measured center, which sits slightly inside that edge). The `wireId` is rendered as text at two anchors along the polyline — one near each end, mirroring the two `<ng-diagram-base-edge-label>` markers in `wire-edge.component.html`.
 
 ## Adding a renderer for a new node or edge type
 

@@ -1,6 +1,12 @@
 # Edição de rotas e endpoints de fios
 
-Os fios do canvas são arestas ortogonais com duas formas de roteamento:
+Os fios do canvas são arestas ortogonais que o usuário pode editar, reconectar
+ou deixar com uma extremidade solta. São três funcionalidades separadas: a
+edição de rota segue o pipeline interação → comando → middleware → modelo; a
+reconexão e a criação de fios pendentes mantêm ciclos próprios e compartilham
+somente a geometria pura.
+
+Há duas formas de roteamento:
 
 - automático: o `ng-diagram` calcula o traçado e o projeto não persiste pontos;
 - manual: a ligação possui `routingMode: 'manual'` e uma lista explícita de
@@ -76,6 +82,11 @@ as mesmas funções puras de snap, posição de porta e reconstrução ortogonal
 
 ## Cobertura de regressão
 
+Arestas com `routingMode: 'manual'` e `points` explícitos são responsáveis pelo
+próprio caminho; arestas automáticas são roteadas pelo ngDiagram. As três
+funcionalidades fixam a aresta no modo manual quando passam a controlar sua
+geometria.
+
 Os testes exercitam inserção, deslocamento e remoção de dobras, snap, redução
 de segmentos redundantes, relink, nova ancoragem ao mover nós e persistência da
 rota no condutor correspondente. Os testes canônicos e do serviço também
@@ -85,3 +96,15 @@ segura de projetos v1.
 Os testes Node e o build devem ser executados pelo fluxo serializado de
 verificação do projeto; este documento não pressupõe que tenham sido rodados
 em cada edição isolada de worktree.
+
+## Limites conhecidos para portar ao núcleo do ngDiagram
+
+O diretório `logic/` importa somente tipos do `ng-diagram` e é a unidade
+planejada para migração. Três pontos ainda dependem do contexto da aplicação:
+
+- `resolveEdgeGrid` reaproveita `shouldSnapDragForNode`, pois ainda não existe
+  uma configuração de snap específica para arestas;
+- `portFlowPosition` lê `measuredPorts[].side`, mas ancora apenas nas laterais
+  esquerda e direita;
+- o dispatcher local emula o pipeline de comandos, pois o ngDiagram ainda não
+  expõe uma API pública para registrar comandos e middlewares.
