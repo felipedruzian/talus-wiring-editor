@@ -58,6 +58,7 @@ rota, reconexão e criação de fios pendentes.
   podem compartilhá-los sem perda.
 - **Footprints no mesmo modelo** — placas, footprints e componentes externos são tipos de nó no mesmo `Node[]`; `BoardPlacementService` apenas reconcilia posição, encaixe e ocupação após movimentos.
 - **Cobre como junção elétrica** — um furo ou trilha usado por um condutor vira uma `CanonicalJunction` na seção `electrical`, com a geometria (`boardId`, furo, trilha) apenas em `layout`. Condutores ocultos e determinísticos ligam pinos encaixados a essa junção; as nets continuam derivadas do grafo v2.
+- **Plano visual não é layer elétrico** — `layout.*[].visualPlane` define a composição persistente do canvas, PNG e SVG por meio do `zOrder` do ng-diagram. Empates usam tipo e ID; o DXF continua com seus layers semânticos próprios. Veja [`visual-planes.md`](visual-planes.md).
 - **Autoria de net antes do cobre** — `WireEdgeData.netName` importado ou editado nunca é reescrito por movimento ou reconexão. O rótulo da trilha é apenas fallback para uma net nova; divergências permanecem salváveis e aparecem no relatório físico acionável do `ProjectStorageService`.
 - **Viewport overlays** — `appViewportBounds` / `appViewportOverlay` directives register UI elements that obscure the diagram so visibility / zoom-to-fit calculations account for them.
 - **Per-row port positioning** — each `.port-row` is `position: relative`, so each `<ng-diagram-port>`'s absolute positioning anchors to its own row, not the whole node. Side-specific transforms push the port shape entirely outside the card edge.
@@ -87,8 +88,8 @@ src/app/av-schematic/
 │   │   ├── footprint-geometry.ts         # Rotação, snap, ocupação e associação pino-furo
 │   │   ├── physical-connectivity.ts      # Resolução pino -> furo -> trilha e rótulo de cobre
 │   │   ├── physical-diagnostics.ts       # Relatório acionável de encaixe, cobre e divergência de net
-│   │   ├── canonical-project.ts          # CanonicalProjectV2 <-> Node/Edge; elétrica separada do layout
-│   │   ├── canonical-project-parse.ts    # Validação v2 e migração de snapshots v1
+│   │   ├── canonical-project.ts          # CanonicalProjectV3 <-> Node/Edge; elétrica separada do layout
+│   │   ├── canonical-project-parse.ts    # Validação v3 e migração de snapshots v1/v2
 │   │   ├── canonical-project-corpus.mjs  # Casos idênticos para os validadores TypeScript e Node
 │   │   ├── net-grouping.ts               # Nets determinísticas derivadas da conectividade
 │   │   ├── electrical-equivalence.ts     # Comparação elétrica independente da ordem textual

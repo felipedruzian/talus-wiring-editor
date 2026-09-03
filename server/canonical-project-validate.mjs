@@ -45,16 +45,14 @@ const WIREVIZ_COLOR_CODES = {
   GD: '#d4af37',
 };
 const ALLOWED_BOARD_ROTATIONS = [0, 90, 180, 270];
-const ALLOWED_FOOTPRINT_PAINTS = [
-  'none',
-  'body',
-  'body-alt',
-  'accent',
-  'lead',
-  'silk',
-  'polarity',
-];
+const ALLOWED_FOOTPRINT_PAINTS = ['none', 'body', 'body-alt', 'accent', 'lead', 'silk', 'polarity'];
 const ALLOWED_TEXT_ANCHORS = ['start', 'middle', 'end'];
+const DEFAULT_VISUAL_PLANES = Object.freeze({
+  board: 0,
+  component: 10,
+  conductor: 20,
+  junction: 30,
+});
 // Keep these geometry constants aligned with board-geometry.ts and
 // footprint-geometry.ts. The server stays dependency-free from Angular code.
 const BOARD_MARGIN = 16;
@@ -93,10 +91,11 @@ export function parseCanonicalProject(raw) {
   const version = root['formatVersion'];
 
   if (version === 1) return parseV1(root);
-  if (version === 2) return parseV2(root);
+  if (version === 2) return parseV2(root, true);
+  if (version === 3) return parseV2(root, false);
 
   throw new CanonicalProjectValidationError(
-    `project.formatVersion: expected 1 or 2, got ${JSON.stringify(version)}`,
+    `project.formatVersion: expected 1, 2 or 3, got ${JSON.stringify(version)}`,
   );
 }
 
@@ -183,7 +182,7 @@ function parseV1(root) {
   return { formatVersion: 1, boards, components, nets };
 }
 
-function parseV2(root) {
+function parseV2(root, migrateVisualPlanes) {
   const electricalRaw = expectRecord(root['electrical'], 'project.electrical');
   const layoutRaw = expectRecord(root['layout'], 'project.layout');
   preflightV2(electricalRaw, layoutRaw);
@@ -205,20 +204,39 @@ function parseV2(root) {
 
   const layout = {
     boards: expectArray(layoutRaw['boards'], 'project.layout.boards').map((value, index) =>
-      parseBoard(value, `project.layout.boards[${index}]`),
+      parseBoard(
+        value,
+        `project.layout.boards[${index}]`,
+        true,
+        migrateVisualPlanes ? DEFAULT_VISUAL_PLANES.board : undefined,
+      ),
     ),
     components: expectArray(layoutRaw['components'], 'project.layout.components').map(
-      (value, index) => parseV2ComponentLayout(value, `project.layout.components[${index}]`),
+      (value, index) =>
+        parseV2ComponentLayout(
+          value,
+          `project.layout.components[${index}]`,
+          migrateVisualPlanes ? DEFAULT_VISUAL_PLANES.component : undefined,
+        ),
     ),
     junctions: expectArray(layoutRaw['junctions'], 'project.layout.junctions').map((value, index) =>
-      parseV2JunctionLayout(value, `project.layout.junctions[${index}]`),
+      parseV2JunctionLayout(
+        value,
+        `project.layout.junctions[${index}]`,
+        migrateVisualPlanes ? DEFAULT_VISUAL_PLANES.junction : undefined,
+      ),
     ),
     conductors: expectArray(layoutRaw['conductors'], 'project.layout.conductors').map(
-      (value, index) => parseV2ConductorLayout(value, `project.layout.conductors[${index}]`),
+      (value, index) =>
+        parseV2ConductorLayout(
+          value,
+          `project.layout.conductors[${index}]`,
+          migrateVisualPlanes ? DEFAULT_VISUAL_PLANES.conductor : undefined,
+        ),
     ),
   };
 
-  const project = { formatVersion: 2, electrical, layout };
+  const project = { formatVersion: 3, electrical, layout };
   validateV2Project(project);
   return project;
 }
@@ -659,11 +677,12 @@ function parseV2Conductor(raw, label) {
   };
 }
 
-function parseV2ComponentLayout(raw, label) {
+function parseV2ComponentLayout(raw, label, fallbackVisualPlane) {
   const obj = expectRecord(raw, label);
   return {
     componentId: expectNonEmptyString(obj['componentId'], `${label}.componentId`),
     position: expectPoint(obj['position'], `${label}.position`),
+    visualPlane: parseVisualPlane(obj['visualPlane'], `${label}.visualPlane`, fallbackVisualPlane),
     boardId: expectOptionalString(obj['boardId'], `${label}.boardId`),
     footprintId: expectOptionalString(obj['footprintId'], `${label}.footprintId`),
     footprint:
@@ -704,11 +723,12 @@ function parseV2PinPlacement(raw, label) {
   };
 }
 
-function parseV2JunctionLayout(raw, label) {
+function parseV2JunctionLayout(raw, label, fallbackVisualPlane) {
   const obj = expectRecord(raw, label);
   return {
     junctionId: expectNonEmptyString(obj['junctionId'], `${label}.junctionId`),
     position: expectPoint(obj['position'], `${label}.position`),
+    visualPlane: parseVisualPlane(obj['visualPlane'], `${label}.visualPlane`, fallbackVisualPlane),
     taps: expectBoundedPositiveInteger(
       obj['taps'],
       `${label}.taps`,
@@ -721,7 +741,7 @@ function parseV2JunctionLayout(raw, label) {
   };
 }
 
-function parseV2ConductorLayout(raw, label) {
+function parseV2ConductorLayout(raw, label, fallbackVisualPlane) {
   const obj = expectRecord(raw, label);
   const routingMode =
     obj['routingMode'] === undefined
@@ -736,6 +756,7 @@ function parseV2ConductorLayout(raw, label) {
   const points = validateManualRoute(routingMode, parsedPoints, label);
   return {
     conductorId: expectNonEmptyString(obj['conductorId'], `${label}.conductorId`),
+    visualPlane: parseVisualPlane(obj['visualPlane'], `${label}.visualPlane`, fallbackVisualPlane),
     routingMode,
     points,
     fromTap:
@@ -1039,10 +1060,7 @@ function validateV2Layout(
       layout.boardId = layout.placement.boardId;
       layout.position = placementNodePosition(board, layout.placement);
       const footprintHoles = new Map(
-        footprintPinHoles(layout.footprint, layout.placement).map((pin) => [
-          pin.pinId,
-          pin.hole,
-        ]),
+        footprintPinHoles(layout.footprint, layout.placement).map((pin) => [pin.pinId, pin.hole]),
       );
       layout.pinHoles = component.pins.flatMap((pin) => {
         const hole = footprintHoles.get(pin.id);
@@ -1121,9 +1139,7 @@ function validateV2Layout(
         ? board.traces?.find((candidate) => candidate.id === traceId)
         : undefined;
       if (traceId && !trace) {
-        throw new CanonicalProjectValidationError(
-          `${label}.boardPort: unknown trace "${traceId}"`,
-        );
+        throw new CanonicalProjectValidationError(`${label}.boardPort: unknown trace "${traceId}"`);
       }
       if (hole && !isBoardHoleAvailable(board, hole)) {
         throw new CanonicalProjectValidationError(`${label}.boardPort: unavailable hole`);
@@ -1285,7 +1301,9 @@ function validateV2Board(board) {
     }
     holeKeys.add(key);
     if (!isHoleInBounds(board, hole)) {
-      throw new CanonicalProjectValidationError(`${label}.holes: "${key}" is outside the board grid`);
+      throw new CanonicalProjectValidationError(
+        `${label}.holes: "${key}" is outside the board grid`,
+      );
     }
   }
 
@@ -1297,7 +1315,9 @@ function validateV2Board(board) {
     }
     traceIds.add(trace.id);
     if (trace.segments.length === 0) {
-      throw new CanonicalProjectValidationError(`${label}.traces "${trace.id}": requires a segment`);
+      throw new CanonicalProjectValidationError(
+        `${label}.traces "${trace.id}": requires a segment`,
+      );
     }
     trace.segments.forEach((segment, segmentIndex) => {
       if (segment.from.row !== segment.to.row && segment.from.col !== segment.to.col) {
@@ -1407,7 +1427,9 @@ function validateV2PhysicalBinding(
   }
   const expectedId = physicalBindingConductorId(pin.componentId, pin.pinId);
   if (conductor.id !== expectedId) {
-    throw new CanonicalProjectValidationError(`${label}: expected deterministic id "${expectedId}"`);
+    throw new CanonicalProjectValidationError(
+      `${label}: expected deterministic id "${expectedId}"`,
+    );
   }
   const componentLayout = componentLayouts.find(
     (candidate) => candidate.componentId === pin.componentId,
@@ -1436,12 +1458,12 @@ function validateV2PhysicalBinding(
   }
   const boardPort = boardPortsByJunction.get(junction.junctionId);
   if (!boardPort || boardPort.portId !== expectedPort) {
-    throw new CanonicalProjectValidationError(`${label}: junction has no matching boardPort layout`);
+    throw new CanonicalProjectValidationError(
+      `${label}: junction has no matching boardPort layout`,
+    );
   }
   const expectedTap = trace
-    ? traceHoles(trace).findIndex(
-        (hole) => hole.row === pinHole.row && hole.col === pinHole.col,
-      )
+    ? traceHoles(trace).findIndex((hole) => hole.row === pinHole.row && hole.col === pinHole.col)
     : undefined;
   const actualTap = conductor.from.kind === 'junction' ? layout.fromTap : layout.toTap;
   if (actualTap !== expectedTap) {
@@ -1513,7 +1535,9 @@ function traceHoles(trace) {
 }
 
 function traceForHole(board, hole) {
-  return board.traces?.find((trace) => traceHoles(trace).some((candidate) => holesEqual(candidate, hole)));
+  return board.traces?.find((trace) =>
+    traceHoles(trace).some((candidate) => holesEqual(candidate, hole)),
+  );
 }
 
 function rotateCell(cell, rotation, footprint) {
@@ -1709,7 +1733,7 @@ function validateHoleBounds(hole, component, boardsById, label) {
   }
 }
 
-function parseBoard(raw, label) {
+function parseBoard(raw, label, currentFormat = false, fallbackVisualPlane) {
   const obj = expectRecord(raw, label);
   return {
     id: expectNonEmptyString(obj['id'], `${label}.id`),
@@ -1774,6 +1798,15 @@ function parseBoard(raw, label) {
             parseBoardTrace(trace, `${label}.traces[${index}]`),
           ),
     position: expectPoint(obj['position'], `${label}.position`),
+    ...(currentFormat
+      ? {
+          visualPlane: parseVisualPlane(
+            obj['visualPlane'],
+            `${label}.visualPlane`,
+            fallbackVisualPlane,
+          ),
+        }
+      : {}),
   };
 }
 
@@ -2171,6 +2204,21 @@ function expectFiniteNumber(raw, label) {
     );
   }
   return raw;
+}
+
+function parseVisualPlane(raw, label, fallback) {
+  const value =
+    raw === undefined && fallback !== undefined ? fallback : expectFiniteNumber(raw, label);
+  if (
+    !Number.isSafeInteger(value) ||
+    value < -OPERATIONAL_LIMITS.maxVisualPlane ||
+    value > OPERATIONAL_LIMITS.maxVisualPlane
+  ) {
+    throw new CanonicalProjectValidationError(
+      `${label}: expected an integer between ${-OPERATIONAL_LIMITS.maxVisualPlane} and ${OPERATIONAL_LIMITS.maxVisualPlane}`,
+    );
+  }
+  return value;
 }
 
 function expectPositiveFiniteNumber(raw, label) {

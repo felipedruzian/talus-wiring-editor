@@ -34,7 +34,7 @@ import {
   type CanonicalPin,
   type CanonicalPinPlacement,
   type CanonicalPoint,
-  type CanonicalProjectV2,
+  type CanonicalProjectV3,
   type CanonicalRoutingMode,
 } from './canonical-project';
 import {
@@ -72,9 +72,10 @@ import {
   WIREVIZ_CONNECTOR_CANONICAL_KEYS,
 } from './wireviz-schema-keys';
 import { isWireColorPairCoherent } from './wire-colors';
+import { defaultVisualPlane, isValidVisualPlane } from './visual-planes';
 
 /**
- * Untrusted JSON (disk, network) -> `CanonicalProjectV2`.
+ * Untrusted JSON (disk, network) -> the current canonical project.
  *
  * Every field is checked explicitly, every failure throws a labeled
  * `CanonicalProjectError`, no blind casts -- the same discipline as
@@ -106,23 +107,24 @@ const ALLOWED_FOOTPRINT_PAINTS: readonly FootprintPaint[] = [
 ];
 const ALLOWED_TEXT_ANCHORS = ['start', 'middle', 'end'] as const;
 
-export function parseCanonicalProject(raw: unknown): CanonicalProjectV2 {
+export function parseCanonicalProject(raw: unknown): CanonicalProjectV3 {
   const root = expectRecord(raw, 'project');
   const version = root['formatVersion'];
 
   if (version === 1) return migrateV1(parseV1(root));
-  if (version === CANONICAL_FORMAT_VERSION) return parseV2(root);
+  if (version === 2) return parseV2(root, true);
+  if (version === CANONICAL_FORMAT_VERSION) return parseV2(root, false);
 
   throw new CanonicalProjectError(
-    `project.formatVersion: expected 1 or ${CANONICAL_FORMAT_VERSION}, got ${JSON.stringify(version)}`,
+    `project.formatVersion: expected 1, 2 or ${CANONICAL_FORMAT_VERSION}, got ${JSON.stringify(version)}`,
   );
 }
 
 // ---------------------------------------------------------------------------
-// v2
+// v2/v3 shared structure
 // ---------------------------------------------------------------------------
 
-function parseV2(root: Record<string, unknown>): CanonicalProjectV2 {
+function parseV2(root: Record<string, unknown>, migrateVisualPlanes: boolean): CanonicalProjectV3 {
   const electricalRaw = expectRecord(root['electrical'], 'project.electrical');
   const layoutRaw = expectRecord(root['layout'], 'project.layout');
   preflightV2(electricalRaw, layoutRaw);
@@ -141,19 +143,38 @@ function parseV2(root: Record<string, unknown>): CanonicalProjectV2 {
   );
 
   const boards = expectArray(layoutRaw['boards'], 'project.layout.boards').map((value, i) =>
-    parseBoard(value, `project.layout.boards[${i}]`),
+    parseBoard(
+      value,
+      `project.layout.boards[${i}]`,
+      migrateVisualPlanes ? defaultVisualPlane('board') : undefined,
+    ),
   );
   const componentLayouts = expectArray(layoutRaw['components'], 'project.layout.components').map(
-    (value, i) => parseComponentLayout(value, `project.layout.components[${i}]`),
+    (value, i) =>
+      parseComponentLayout(
+        value,
+        `project.layout.components[${i}]`,
+        migrateVisualPlanes ? defaultVisualPlane('component') : undefined,
+      ),
   );
   const junctionLayouts = expectArray(layoutRaw['junctions'], 'project.layout.junctions').map(
-    (value, i) => parseJunctionLayout(value, `project.layout.junctions[${i}]`),
+    (value, i) =>
+      parseJunctionLayout(
+        value,
+        `project.layout.junctions[${i}]`,
+        migrateVisualPlanes ? defaultVisualPlane('junction') : undefined,
+      ),
   );
   const conductorLayouts = expectArray(layoutRaw['conductors'], 'project.layout.conductors').map(
-    (value, i) => parseConductorLayout(value, `project.layout.conductors[${i}]`),
+    (value, i) =>
+      parseConductorLayout(
+        value,
+        `project.layout.conductors[${i}]`,
+        migrateVisualPlanes ? defaultVisualPlane('conductor') : undefined,
+      ),
   );
 
-  const project: CanonicalProjectV2 = {
+  const project: CanonicalProjectV3 = {
     formatVersion: CANONICAL_FORMAT_VERSION,
     electrical: { components, junctions, cables, nets },
     layout: {
@@ -353,7 +374,7 @@ function preflightV2(
  * on -- that each declared net really is one connected group and that no
  * endpoint belongs to two nets at once.
  */
-function validateProject(project: CanonicalProjectV2): void {
+function validateProject(project: CanonicalProjectV3): void {
   const { components, junctions, cables, nets } = project.electrical;
   const { boards } = project.layout;
 
@@ -525,7 +546,7 @@ function validateProject(project: CanonicalProjectV2): void {
 }
 
 function validateLayout(
-  project: CanonicalProjectV2,
+  project: CanonicalProjectV3,
   boardsById: ReadonlyMap<string, CanonicalBoard>,
   componentsById: ReadonlyMap<string, CanonicalComponent>,
   junctionsById: ReadonlyMap<string, CanonicalJunction>,
@@ -807,7 +828,7 @@ interface ResolvedBoardPort {
  * missing entirely.
  */
 function validateInternalCopperTaps(
-  project: CanonicalProjectV2,
+  project: CanonicalProjectV3,
   boardPortsByJunction: ReadonlyMap<string, ResolvedBoardPort>,
 ): void {
   const layoutsByConductor = new Map(
@@ -844,7 +865,7 @@ function requireInternalCopperTap(
 }
 
 function validateCopperNetLabels(
-  project: CanonicalProjectV2,
+  project: CanonicalProjectV3,
   boardPortsByJunction: ReadonlyMap<string, { netLabel?: string }>,
 ): void {
   for (const net of project.electrical.nets) {
@@ -1047,7 +1068,7 @@ function validatePhysicalBinding(
   }
 }
 
-function validatePhysicalBindingCoverage(project: CanonicalProjectV2): void {
+function validatePhysicalBindingCoverage(project: CanonicalProjectV3): void {
   const bound = new Set(
     project.layout.conductors
       .filter((layout) => layout.physicalBinding)
@@ -1333,7 +1354,7 @@ function parseConductor(raw: unknown, label: string): CanonicalConductor {
   };
 }
 
-function parseBoard(raw: unknown, label: string): CanonicalBoard {
+function parseBoard(raw: unknown, label: string, fallbackVisualPlane?: number): CanonicalBoard {
   const obj = expectRecord(raw, label);
   return {
     id: expectNonEmptyString(obj['id'], `${label}.id`),
@@ -1398,6 +1419,7 @@ function parseBoard(raw: unknown, label: string): CanonicalBoard {
             parseBoardTrace(trace, `${label}.traces[${index}]`),
           ),
     position: expectPoint(obj['position'], `${label}.position`),
+    visualPlane: parseVisualPlane(obj['visualPlane'], `${label}.visualPlane`, fallbackVisualPlane),
   };
 }
 
@@ -1422,11 +1444,16 @@ function parseBoardTraceSegment(raw: unknown, label: string): BoardTraceSegment 
   };
 }
 
-function parseComponentLayout(raw: unknown, label: string): CanonicalComponentLayout {
+function parseComponentLayout(
+  raw: unknown,
+  label: string,
+  fallbackVisualPlane?: number,
+): CanonicalComponentLayout {
   const obj = expectRecord(raw, label);
   return {
     componentId: expectNonEmptyString(obj['componentId'], `${label}.componentId`),
     position: expectPoint(obj['position'], `${label}.position`),
+    visualPlane: parseVisualPlane(obj['visualPlane'], `${label}.visualPlane`, fallbackVisualPlane),
     boardId: expectOptionalString(obj['boardId'], `${label}.boardId`),
     footprintId: expectOptionalString(obj['footprintId'], `${label}.footprintId`),
     footprint:
@@ -1639,11 +1666,16 @@ function parsePinPlacement(raw: unknown, label: string): CanonicalPinPlacement {
   };
 }
 
-function parseJunctionLayout(raw: unknown, label: string): CanonicalJunctionLayout {
+function parseJunctionLayout(
+  raw: unknown,
+  label: string,
+  fallbackVisualPlane?: number,
+): CanonicalJunctionLayout {
   const obj = expectRecord(raw, label);
   return {
     junctionId: expectNonEmptyString(obj['junctionId'], `${label}.junctionId`),
     position: expectPoint(obj['position'], `${label}.position`),
+    visualPlane: parseVisualPlane(obj['visualPlane'], `${label}.visualPlane`, fallbackVisualPlane),
     taps: expectBoundedPositiveInteger(
       obj['taps'],
       `${label}.taps`,
@@ -1656,7 +1688,11 @@ function parseJunctionLayout(raw: unknown, label: string): CanonicalJunctionLayo
   };
 }
 
-function parseConductorLayout(raw: unknown, label: string): CanonicalConductorLayout {
+function parseConductorLayout(
+  raw: unknown,
+  label: string,
+  fallbackVisualPlane?: number,
+): CanonicalConductorLayout {
   const obj = expectRecord(raw, label);
   const routingMode =
     obj['routingMode'] === undefined
@@ -1672,6 +1708,7 @@ function parseConductorLayout(raw: unknown, label: string): CanonicalConductorLa
 
   return {
     conductorId: expectNonEmptyString(obj['conductorId'], `${label}.conductorId`),
+    visualPlane: parseVisualPlane(obj['visualPlane'], `${label}.visualPlane`, fallbackVisualPlane),
     routingMode,
     points,
     fromTap:
@@ -1708,7 +1745,7 @@ function validateManualRoute(
 }
 
 // ---------------------------------------------------------------------------
-// v1 -> v2 migration
+// v1 -> current migration
 // ---------------------------------------------------------------------------
 
 interface LegacyPin extends CanonicalPin {
@@ -1753,7 +1790,7 @@ function parseV1(root: Record<string, unknown>): LegacyProject {
   preflightV1(root);
   return {
     boards: expectArray(root['boards'], 'project.boards').map((b, i) =>
-      parseBoard(b, `project.boards[${i}]`),
+      parseBoard(b, `project.boards[${i}]`, defaultVisualPlane('board')),
     ),
     components: expectArray(root['components'], 'project.components').map((c, i) =>
       parseLegacyComponent(c, `project.components[${i}]`),
@@ -1913,7 +1950,7 @@ function parseLegacyNet(raw: unknown, label: string): LegacyNet {
 }
 
 /**
- * Rewrites a v1 project into v2 without losing anything it could express.
+ * Rewrites a v1 project into the current format without losing anything it could express.
  *
  * The interesting part is what it *gains*: v1 stored one record per wire, so
  * a pin shared by several records was a multi-drop net the format had no way
@@ -1921,7 +1958,7 @@ function parseLegacyNet(raw: unknown, label: string): LegacyNet {
  * nets, which is why an old saved project opens with its rails already
  * correct instead of as a pile of unrelated two-pin wires.
  */
-function migrateV1(legacy: LegacyProject): CanonicalProjectV2 {
+function migrateV1(legacy: LegacyProject): CanonicalProjectV3 {
   const components: CanonicalComponent[] = legacy.components.map((component) => ({
     id: component.id,
     deviceId: component.deviceId,
@@ -1945,6 +1982,7 @@ function migrateV1(legacy: LegacyProject): CanonicalProjectV2 {
     return {
       componentId: component.id,
       position: component.position,
+      visualPlane: defaultVisualPlane('component'),
       boardId: component.boardId,
       pinHoles: pinHoles.length > 0 ? pinHoles : undefined,
     };
@@ -1972,6 +2010,7 @@ function migrateV1(legacy: LegacyProject): CanonicalProjectV2 {
     const points = normalized && normalized.length >= 2 ? normalized : undefined;
     return {
       conductorId: net.id,
+      visualPlane: defaultVisualPlane('conductor'),
       routingMode: points ? 'manual' : undefined,
       points,
     };
@@ -2007,7 +2046,7 @@ function migrateV1(legacy: LegacyProject): CanonicalProjectV2 {
     if (net.netId) nameHints.set(net.id, net.netId);
   }
 
-  const project: CanonicalProjectV2 = {
+  const project: CanonicalProjectV3 = {
     formatVersion: CANONICAL_FORMAT_VERSION,
     electrical: {
       components,
@@ -2045,6 +2084,17 @@ function expectPoint(raw: unknown, label: string): CanonicalPoint {
     x: expectFiniteNumber(obj['x'], `${label}.x`),
     y: expectFiniteNumber(obj['y'], `${label}.y`),
   };
+}
+
+function parseVisualPlane(raw: unknown, label: string, fallback?: number): number {
+  const value =
+    raw === undefined && fallback !== undefined ? fallback : expectFiniteNumber(raw, label);
+  if (!isValidVisualPlane(value)) {
+    throw new CanonicalProjectError(
+      `${label}: expected an integer between ${-OPERATIONAL_LIMITS.maxVisualPlane} and ${OPERATIONAL_LIMITS.maxVisualPlane}`,
+    );
+  }
+  return value;
 }
 
 function expectRecord(raw: unknown, label: string): Record<string, unknown> {

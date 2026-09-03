@@ -39,12 +39,13 @@ import {
 import { endpointKeysOf, groupConductorsIntoNets } from './net-grouping';
 import { normalizeOrthogonalPersistedRoute } from './persisted-wire-route.mjs';
 import { canonicalColorValue, isWireColorPairCoherent, resolveWireColor } from './wire-colors';
+import { applyVisualZOrder, defaultVisualPlane, visualPlaneOf } from './visual-planes';
 
 /**
- * Canonical, serializable project format (v2).
+ * Canonical, serializable project format (v3). Visual planes were added in
+ * v3 without entering the electrical section or the DXF layer vocabulary.
  *
- * Two things changed relative to the v1 format the issue #1 tracer wrote,
- * both required by issue #2:
+ * Two structural changes relative to v1 were required by issue #2:
  *
  * 1. **A net is no longer a wire.** v1's `nets[]` was really a list of
  *    two-endpoint edges, so a net touching three pins could only be
@@ -65,14 +66,20 @@ import { canonicalColorValue, isWireColorPairCoherent, resolveWireColor } from '
  * `formatVersion` identifies the contract; `canonical-project-parse.ts`
  * accepts a stored v1 file and migrates it, so the format can keep moving
  * without orphaning saved projects.
+ *
+ * v3 adds `visualPlane` only to layout records. It is deliberately absent
+ * from electrical records and independent from the semantic DXF layers.
  */
-export const CANONICAL_FORMAT_VERSION = 2;
+export const CANONICAL_FORMAT_VERSION = 3;
 
-export interface CanonicalProjectV2 {
-  formatVersion: 2;
+export interface CanonicalProjectV3 {
+  formatVersion: 3;
   electrical: CanonicalElectrical;
   layout: CanonicalLayout;
 }
+
+/** Compatibility alias kept for consumers while the v3 name propagates. */
+export type CanonicalProjectV2 = CanonicalProjectV3;
 
 // ---------------------------------------------------------------------------
 // Electrical section -- everything WireViz can express
@@ -264,6 +271,7 @@ export interface CanonicalBoard {
   /** Copper traces. A board with no traces is a plain perfboard. */
   traces?: BoardTrace[];
   position: CanonicalPoint;
+  visualPlane: number;
 }
 
 export interface CanonicalPinPlacement {
@@ -274,6 +282,7 @@ export interface CanonicalPinPlacement {
 export interface CanonicalComponentLayout {
   componentId: string;
   position: CanonicalPoint;
+  visualPlane: number;
   /** See `DeviceNodeData.boardId` -- required iff any `pinHoles` entry is present. */
   boardId?: string;
   /**
@@ -296,6 +305,7 @@ export interface CanonicalComponentLayout {
 export interface CanonicalJunctionLayout {
   junctionId: string;
   position: CanonicalPoint;
+  visualPlane: number;
   /** Visual tap positions to draw (>= 1). Electrically they are all one point. */
   taps: number;
   boardId?: string;
@@ -322,6 +332,7 @@ export type CanonicalRoutingMode = 'manual';
 
 export interface CanonicalConductorLayout {
   conductorId: string;
+  visualPlane: number;
   routingMode?: CanonicalRoutingMode;
   points?: CanonicalPoint[];
   /** 0-based visual tap each end lands on, when that end is a junction. */
@@ -474,7 +485,7 @@ export function toCanonicalProject(
   nodes: readonly Node[],
   edges: readonly Edge[],
   cableInventory: readonly CanonicalCable[] = [],
-): CanonicalProjectV2 {
+): CanonicalProjectV3 {
   const deviceNodes = nodes.filter(isDeviceNode);
   const junctionNodes = nodes.filter(isJunctionNode);
   const boardNodes = nodes.filter(isBoardNode);
@@ -615,6 +626,7 @@ class BoardCopperJunctions {
       layout: {
         junctionId,
         position: { x: board.position.x + local.x, y: board.position.y + local.y },
+        visualPlane: defaultVisualPlane('junction'),
         // A trace uses its holes as visual taps. Conductor layout keeps the
         // exact landing hole while electrical identity stays one junction.
         taps: traceHoleList.length,
@@ -680,6 +692,7 @@ function physicalBindingDrafts(
           conductorId,
           toTap: resolved.tap,
           physicalBinding: true,
+          visualPlane: defaultVisualPlane('conductor'),
         },
         copperNetNameHint: resolved.netLabel,
       });
@@ -742,6 +755,7 @@ function toConductorDraft(
   const points = manual ? normalizeManualRoute(edge.id, edge.points) : undefined;
   const layout: CanonicalConductorLayout = {
     conductorId: edge.id,
+    visualPlane: visualPlaneOf(edge),
     // Only 'manual' is a meaningful persisted state; anything else (e.g. the
     // 'auto' ng-diagram sometimes sets explicitly) canonicalizes to absence.
     routingMode: manual ? 'manual' : undefined,
@@ -1117,6 +1131,7 @@ function toComponentLayout(node: Node<DeviceNodeData>): CanonicalComponentLayout
   return {
     componentId: node.id,
     position: toCanonicalPoint(node.position),
+    visualPlane: visualPlaneOf(node),
     boardId: node.data.boardId,
     footprintId: node.data.footprintId,
     footprint: footprint ? cloneFootprint(footprint) : undefined,
@@ -1167,6 +1182,7 @@ function toJunctionLayout(node: Node<JunctionNodeData>): CanonicalJunctionLayout
   return {
     junctionId: node.id,
     position: toCanonicalPoint(node.position),
+    visualPlane: visualPlaneOf(node),
     taps: node.data.taps,
     boardId: node.data.boardId,
     hole: node.data.hole,
@@ -1196,6 +1212,7 @@ function toCanonicalBoard(node: Node<BoardNodeData>): CanonicalBoard {
     holeDiameter: node.data.holeDiameter,
     traces: node.data.traces?.map(cloneBoardTrace),
     position: toCanonicalPoint(node.position),
+    visualPlane: visualPlaneOf(node),
   };
 }
 
@@ -1218,11 +1235,10 @@ const DEFAULT_POSITION: CanonicalPoint = { x: 0, y: 0 };
  * project that was just imported from WireViz has electrical content and no
  * geometry yet -- it falls back to the origin with a single tap.
  *
- * Node order is boards, then components, then junctions, so boards render
- * behind everything and junction markers sit on top (nodes stack in array
- * order, see `NgDiagramConfig.zIndex` in diagram.component.ts).
+ * Persistent visual planes are mapped to explicit ng-diagram z-order values.
+ * Type and id are deterministic tie breakers inside each plane.
  */
-export function fromCanonicalProject(project: CanonicalProjectV2): {
+export function fromCanonicalProject(project: CanonicalProjectV3): {
   nodes: Node<AvSchematicNodeData>[];
   edges: Edge<WireEdgeData>[];
   /** Cable records that have no standalone ng-diagram element. */
@@ -1287,9 +1303,10 @@ export function fromCanonicalProject(project: CanonicalProjectV2): {
     }),
   );
 
+  const ordered = applyVisualZOrder([...boardNodes, ...componentNodes, ...junctionNodes], edges);
   return {
-    nodes: [...boardNodes, ...componentNodes, ...junctionNodes],
-    edges,
+    nodes: ordered.nodes,
+    edges: ordered.edges,
     cableInventory: project.electrical.cables.map(cloneCable),
   };
 }
@@ -1299,6 +1316,7 @@ function fromCanonicalBoard(board: CanonicalBoard): Node<BoardNodeData> {
     id: board.id,
     type: NodeTemplateType.BoardNode,
     position: board.position,
+    zOrder: board.visualPlane,
     data: {
       type: 'board',
       boardId: board.id,
@@ -1313,6 +1331,7 @@ function fromCanonicalBoard(board: CanonicalBoard): Node<BoardNodeData> {
       holes: board.holes?.map((hole) => ({ ...hole })),
       holeDiameter: board.holeDiameter,
       traces: board.traces?.map(cloneBoardTrace),
+      visualPlane: board.visualPlane,
     },
   };
 }
@@ -1330,6 +1349,7 @@ function fromCanonicalComponent(
   const board = placement ? boardsById.get(placement.boardId) : undefined;
   const data: DeviceNodeData = {
     type: 'device',
+    visualPlane: layout?.visualPlane ?? defaultVisualPlane('component'),
     footprintId: layout?.footprintId,
     footprint,
     placement,
@@ -1371,6 +1391,7 @@ function fromCanonicalComponent(
       physical && board && placement
         ? placementNodePosition({ board: board.data, position: board.position }, placement)
         : (layout?.position ?? DEFAULT_POSITION),
+    zOrder: data.visualPlane,
     data: physical && placement ? syncPortHolesToPlacement(data) : data,
   };
 }
@@ -1384,8 +1405,10 @@ function fromCanonicalJunction(
     id: junction.id,
     type: NodeTemplateType.JunctionNode,
     position: layout?.position ?? DEFAULT_POSITION,
+    zOrder: layout?.visualPlane ?? defaultVisualPlane('junction'),
     data: {
       type: 'junction',
+      visualPlane: layout?.visualPlane ?? defaultVisualPlane('junction'),
       junctionId: junction.id,
       label: junction.label,
       kind: junction.kind,
@@ -1436,8 +1459,10 @@ function fromCanonicalConductor(
     targetPort: endpointPortId(conductor.to, layout?.toTap, copperPorts),
     routingMode: manualPoints ? 'manual' : undefined,
     points: manualPoints,
+    zOrder: layout?.visualPlane ?? defaultVisualPlane('conductor'),
     data: {
       type: 'wire',
+      visualPlane: layout?.visualPlane ?? defaultVisualPlane('conductor'),
       wireId: conductor.cable?.name ?? '',
       wireIndex: conductor.cable?.wireIndex,
       cableWireCount: cable?.wireCount,

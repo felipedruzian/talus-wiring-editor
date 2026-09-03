@@ -253,17 +253,21 @@ describe('wirevizToElectrical', () => {
     const electrical = importMultidrop().electrical;
     const net = electrical.nets[0];
     const project: CanonicalProjectV2 = {
-      formatVersion: 2,
+      formatVersion: 3,
       electrical,
       layout: {
         boards: [],
         components: electrical.components.map((component, index) => ({
           componentId: component.id,
           position: { x: index * 120, y: 0 },
+          visualPlane: 10,
         })),
-        junctions: [{ junctionId: 'rail-5v', position: { x: 180, y: 100 }, taps: 3 }],
+        junctions: [
+          { junctionId: 'rail-5v', position: { x: 180, y: 100 }, visualPlane: 30, taps: 3 },
+        ],
         conductors: net.conductors.map((conductor, index) => ({
           conductorId: conductor.id,
+          visualPlane: 20,
           fromTap: conductor.from.kind === 'junction' ? index : undefined,
           toTap: conductor.to.kind === 'junction' ? index : undefined,
         })),

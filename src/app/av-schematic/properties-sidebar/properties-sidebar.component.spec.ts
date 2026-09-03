@@ -18,9 +18,11 @@ describe('PropertiesSidebarComponent selected-wire actions', () => {
             isExpanded: signal(true),
             sidebarState: signal('single-edge'),
             selectedNode: signal(undefined),
+            selectedBoard: signal(undefined),
             selectedJunction: signal(undefined),
             selectedEdge,
             selectedWireDetails: signal(null),
+            selectedVisualElement: signal(null),
             toggleSidebarVisibility: vi.fn(),
           },
         },
@@ -38,5 +40,47 @@ describe('PropertiesSidebarComponent selected-wire actions', () => {
 
     expect(resetEdgeRouting).toHaveBeenCalledOnce();
     expect(resetEdgeRouting).toHaveBeenCalledWith('wire-selected');
+  });
+
+  it('updates the persisted plane of the selected element', () => {
+    const setVisualPlane = vi.fn();
+    const selectedVisualElement = signal({
+      id: 'wire-selected',
+      modelKind: 'edge' as const,
+      elementKind: 'conductor' as const,
+      visualPlane: 20,
+    });
+    TestBed.configureTestingModule({
+      imports: [PropertiesSidebarComponent],
+      providers: [
+        {
+          provide: PropertiesSidebarService,
+          useValue: {
+            isExpanded: signal(true),
+            sidebarState: signal('single-edge'),
+            selectedNode: signal(undefined),
+            selectedBoard: signal(undefined),
+            selectedJunction: signal(undefined),
+            selectedEdge: signal({ id: 'wire-selected' }),
+            selectedWireDetails: signal(null),
+            selectedVisualElement,
+            toggleSidebarVisibility: vi.fn(),
+          },
+        },
+        { provide: ElementMutationService, useValue: { setVisualPlane } },
+      ],
+    });
+    TestBed.overrideComponent(PropertiesSidebarComponent, { set: { template: '' } });
+    const component = TestBed.createComponent(PropertiesSidebarComponent).componentInstance;
+    const input = document.createElement('input');
+    input.value = '25';
+
+    (
+      component as unknown as {
+        onVisualPlaneChange(event: Event): void;
+      }
+    ).onVisualPlaneChange({ target: input } as unknown as Event);
+
+    expect(setVisualPlane).toHaveBeenCalledWith('edge', 'conductor', 'wire-selected', 25);
   });
 });

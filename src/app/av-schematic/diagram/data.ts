@@ -20,6 +20,7 @@ import {
   type BoardNodeData,
   type DeviceNodeData,
 } from './model/interfaces';
+import { applyVisualZOrder } from './model/visual-planes';
 
 /**
  * Tracer bullet seed (issue #1 / talus-wiring-editor): board A (6 x 11
@@ -52,10 +53,8 @@ const boardA: Node<BoardNodeData> = {
 // Nano and TB6612FNG are positioned so their illustrated cards overlap board
 // A's own footprint (x: 60..292, y: 60..192 for rows=6/cols=11/pitch=20 - see
 // board-geometry.ts::boardSize) in the visual plane. `nodes` below keeps the
-// board first so it renders behind both components (see NgDiagramConfig's
-// `zIndex.elevateOnSelection: false` in diagram.component.ts - nodes stack
-// in array order). Still just one ng-diagram canvas: the board is an
-// ordinary node, not a background layer.
+// persistent default keeps the board behind components and wires. Still just
+// one ng-diagram canvas: the board is an ordinary node, not a background layer.
 const nano: Node<DeviceNodeData> = {
   id: 'nano-1',
   type: NodeTemplateType.DeviceNode,
@@ -172,7 +171,9 @@ const edges: Edge<AvSchematicEdgeData>[] = [
   ...PHYSICAL_WIRE_EDGES,
 ];
 
+const orderedModel = applyVisualZOrder(nodes, edges);
+
 export const diagramModel: {
   nodes: Node<AvSchematicNodeData>[];
   edges: Edge<AvSchematicEdgeData>[];
-} = { nodes, edges };
+} = orderedModel;

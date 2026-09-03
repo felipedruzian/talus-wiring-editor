@@ -1,8 +1,8 @@
-# Round-trip WireViz e projeto canônico v2
+# Round-trip WireViz e projeto canônico v3
 
 ## Contrato persistido
 
-`CanonicalProjectV2` possui `formatVersion: 2` e duas seções independentes:
+`CanonicalProjectV3` possui `formatVersion: 3` e duas seções independentes:
 
 - `electrical`: componentes, junções, cabos e nets com seus endpoints e
   condutores, inclusive cor e metadados próprios de cada ligação;
@@ -50,7 +50,7 @@ severidade, código, caminho e mensagem. Ele registra:
 Uma cor WireViz RGB com exatamente seis dígitos, como `"#a1b2c3"`, é
 preservada e reemitida com a mesma grafia. Uma forma CSS diferente, como
 um valor com alfa ou uma cor nomeada, nunca é aproximada: ela continua no
-projeto v2, o YAML deixa a posição sem cor e o relatório contém
+projeto canônico, o YAML deixa a posição sem cor e o relatório contém
 `color-not-representable`.
 
 Bitola, comprimento e observação pertencem a cada condutor no editor. Como o
@@ -77,8 +77,8 @@ altera o resultado, enquanto perder um atributo elétrico altera.
 
 - `import-wireviz.ts`: texto YAML para documento, elétrica e relatório.
 - `export-wireviz.ts`: elétrica para YAML e relatório.
-- `canonical-project.ts`: modelo v2 e conversão para/de `Node`/`Edge`.
-- `canonical-project-parse.ts`: validação v2 e migração v1.
+- `canonical-project.ts`: modelo v3 e conversão para/de `Node`/`Edge`.
+- `canonical-project-parse.ts`: validação v3 e migração de snapshots v1/v2.
 - `net-grouping.ts`: agrupamento determinístico por conectividade.
 - `electrical-equivalence.ts`: comparação independente de ordem textual.
 

@@ -21,11 +21,12 @@ um build da aplicação modifique serviços compartilhados por conta própria.
 O `package.json` não tem, hoje, nenhuma dependência de lado servidor.
 Express/Fastify/etc. seriam a primeira dependência de runtime não-Angular
 do repositório para algo que, funcionalmente, é "servir arquivos estáticos
-+ quatro endpoints JSON pequenos" — bem dentro do que os módulos nativos
-`http`/`fs`/`path` do Node cobrem diretamente. Escrito como `ESM` puro
-(`.mjs`) para rodar em qualquer versão do Node que este repositório já
-exige (v20.19+ / v22.12+) sem passo de build nem mudança no `"type"` do
-`package.json`.
+
+- quatro endpoints JSON pequenos" — bem dentro do que os módulos nativos
+  `http`/`fs`/`path` do Node cobrem diretamente. Escrito como `ESM` puro
+  (`.mjs`) para rodar em qualquer versão do Node que este repositório já
+  exige (v20.19+ / v22.12+) sem passo de build nem mudança no `"type"` do
+  `package.json`.
 
 ## Rodando manualmente
 
@@ -36,13 +37,13 @@ node server/wiring-editor-server.mjs
 
 ## Configuração (variáveis de ambiente)
 
-| Variável | Padrão | Notas |
-|---|---|---|
-| `WIRING_EDITOR_HOST` | `127.0.0.1` | **Loopback por padrão**, conforme a arquitetura aprovada na issue #1: listener local e HTTPS publicado separadamente via Tailscale Serve. Nunca definir como `0.0.0.0` ou um endereço de LAN sem revisar deliberadamente a política de exposição do host. |
-| `WIRING_EDITOR_PORT` | `4173` | Porta local reservada pela integração operacional do Talus após conferência do inventário; não é exposta diretamente na LAN. |
-| `WIRING_EDITOR_STATIC_DIR` | `dist/ng-diagram-av-schematic/browser` (relativo à raiz do repositório) | Caminho de saída padrão do `ng build` para este nome de projeto. Precisa existir e conter `index.html`; o servidor não faz o build. |
-| `WIRING_EDITOR_STORAGE_DIR` | `~/.local/share/talus-wiring-editor/projects` | Armazenamento central — o mesmo diretório independentemente de qual navegador/dispositivo salvou o projeto, o que é o que torna possível reabrir a partir de outro cliente da Tailnet. Criado na primeira gravação, se não existir. |
-| `WIRING_EDITOR_ALLOWED_HOSTS` | (vazio) | Lista separada por vírgulas de valores `host:porta` adicionais aceitos no cabeçalho `Host` da requisição (por exemplo, um nome MagicDNS do Tailscale), somados aos padrões de loopback abaixo — nunca os substitui. |
+| Variável                      | Padrão                                                                  | Notas                                                                                                                                                                                                                                                     |
+| ----------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WIRING_EDITOR_HOST`          | `127.0.0.1`                                                             | **Loopback por padrão**, conforme a arquitetura aprovada na issue #1: listener local e HTTPS publicado separadamente via Tailscale Serve. Nunca definir como `0.0.0.0` ou um endereço de LAN sem revisar deliberadamente a política de exposição do host. |
+| `WIRING_EDITOR_PORT`          | `4173`                                                                  | Porta local reservada pela integração operacional do Talus após conferência do inventário; não é exposta diretamente na LAN.                                                                                                                              |
+| `WIRING_EDITOR_STATIC_DIR`    | `dist/ng-diagram-av-schematic/browser` (relativo à raiz do repositório) | Caminho de saída padrão do `ng build` para este nome de projeto. Precisa existir e conter `index.html`; o servidor não faz o build.                                                                                                                       |
+| `WIRING_EDITOR_STORAGE_DIR`   | `~/.local/share/talus-wiring-editor/projects`                           | Armazenamento central — o mesmo diretório independentemente de qual navegador/dispositivo salvou o projeto, o que é o que torna possível reabrir a partir de outro cliente da Tailnet. Criado na primeira gravação, se não existir.                       |
+| `WIRING_EDITOR_ALLOWED_HOSTS` | (vazio)                                                                 | Lista separada por vírgulas de valores `host:porta` adicionais aceitos no cabeçalho `Host` da requisição (por exemplo, um nome MagicDNS do Tailscale), somados aos padrões de loopback abaixo — nunca os substitui.                                       |
 
 ## Segurança do servidor
 
@@ -74,13 +75,13 @@ abaixo é implementada explicitamente no próprio `wiring-editor-server.mjs`
   uma reimplementação em JavaScript puro (sem build/bundler ligando o
   servidor ao TypeScript do Angular) das mesmas regras de
   `diagram/model/canonical-project-parse.ts::parseCanonicalProject`. Um corpo
-  que não seja um projeto canônico v1 ou v2 válido (tipos errados, ids
+  que não seja um projeto canônico v1, v2 ou v3 válido (tipos errados, ids
   duplicados, referências inexistentes, nets desconectadas, furos ou taps
   fora dos limites, endpoints v1 iguais, conflitos de cor v1, loops inválidos
   ou extras capazes de sobrescrever campos canônicos etc.) é rejeitado com
   `400 invalid_project` antes de
   qualquer gravação. O servidor mantém snapshots v1 na versão v1, após
-  normalizar somente os campos reconhecidos; o frontend os migra para v2 ao
+  normalizar somente os campos reconhecidos; o frontend os migra para v3 ao
   abrir. As implementações de validação permanecem separadas, mas importam a
   mesma fonte auditável de limites operacionais em
   `diagram/model/operational-limits.mjs`; `canonical-project.spec.ts`
@@ -105,12 +106,12 @@ configuração de CORS — deliberadamente, já que acesso entre origens nunca
 foi um requisito e adicioná-lo só ampliaria a superfície de ataque sem
 benefício).
 
-| Método | Caminho | Corpo | Resposta |
-|---|---|---|---|
-| `GET` | `/api/projects` | — | `{ projects: [{ id, name, updatedAt }] }` |
-| `GET` | `/api/projects/:id` | — | O projeto canônico v1 ou v2 normalizado e armazenado em JSON, ou `404` |
-| `PUT` | `/api/projects/:id` | Um objeto JSON canônico v1 ou v2 validado (ver "Validação" acima) | `{ id, saved: true }`, ou `400 invalid_project` se a validação falhar |
-| `DELETE` | `/api/projects/:id` | — | `{ id, deleted: true }`, ou `404` |
+| Método   | Caminho             | Corpo                                                                 | Resposta                                                                   |
+| -------- | ------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `GET`    | `/api/projects`     | —                                                                     | `{ projects: [{ id, name, updatedAt }] }`                                  |
+| `GET`    | `/api/projects/:id` | —                                                                     | O projeto canônico v1, v2 ou v3 normalizado e armazenado em JSON, ou `404` |
+| `PUT`    | `/api/projects/:id` | Um objeto JSON canônico v1, v2 ou v3 validado (ver "Validação" acima) | `{ id, saved: true }`, ou `400 invalid_project` se a validação falhar      |
+| `DELETE` | `/api/projects/:id` | —                                                                     | `{ id, deleted: true }`, ou `404`                                          |
 
 Gravações são atômicas: o corpo é escrito em um arquivo de rascunho no
 mesmo diretório e depois `rename()`ado sobre o alvo, então um leitor

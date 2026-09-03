@@ -18,6 +18,7 @@ import {
   ON_JUNCTION_FIELD_CHANGE,
   type JunctionFieldChange,
 } from './components/junction-form/junction-form.mappers';
+import { MAX_VISUAL_PLANE, MIN_VISUAL_PLANE } from '../diagram/model/visual-planes';
 
 @Component({
   selector: 'app-properties-sidebar',
@@ -72,11 +73,16 @@ export class PropertiesSidebarComponent {
   protected readonly isExpanded = this.sidebarService.isExpanded;
   protected readonly state = this.sidebarService.sidebarState;
   protected readonly selectedNode = this.sidebarService.selectedNode;
+  protected readonly selectedBoard = this.sidebarService.selectedBoard;
   protected readonly selectedJunction = this.sidebarService.selectedJunction;
   protected readonly selectedWireDetails = this.sidebarService.selectedWireDetails;
+  protected readonly selectedVisualElement = this.sidebarService.selectedVisualElement;
+  protected readonly minVisualPlane = MIN_VISUAL_PLANE;
+  protected readonly maxVisualPlane = MAX_VISUAL_PLANE;
 
   protected readonly headerSubtitle = computed(() => {
     if (this.state() === 'single-node') return this.selectedNode()?.data.deviceId ?? '';
+    if (this.state() === 'single-board') return this.selectedBoard()?.data.label ?? '';
     if (this.state() === 'single-junction') return this.selectedJunction()?.data.label ?? '';
     return '';
   });
@@ -90,6 +96,25 @@ export class PropertiesSidebarComponent {
     if (nodeId) {
       void this.elementMutationService.removeNode(nodeId);
     }
+  }
+
+  protected onRemoveBoard(): void {
+    const nodeId = this.sidebarService.selectedBoard()?.id;
+    if (nodeId) void this.elementMutationService.removeNode(nodeId);
+  }
+
+  protected onVisualPlaneChange(event: Event): void {
+    const selected = this.selectedVisualElement();
+    const input = event.target as HTMLInputElement | null;
+    if (!selected || !input) return;
+    const value = Number(input.value);
+    if (!Number.isSafeInteger(value)) return;
+    void this.elementMutationService.setVisualPlane(
+      selected.modelKind,
+      selected.elementKind,
+      selected.id,
+      value,
+    );
   }
 
   protected onRemoveJunction(): void {

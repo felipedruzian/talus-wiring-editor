@@ -10,7 +10,7 @@ Há duas formas de roteamento:
 
 - automático: o `ng-diagram` calcula o traçado e o projeto não persiste pontos;
 - manual: a ligação possui `routingMode: 'manual'` e uma lista explícita de
-  `points` em `layout.conductors` do `CanonicalProjectV2`.
+  `points` em `layout.conductors` do `CanonicalProjectV3`.
 
 A rota pertence ao condutor selecionado. Restaurar o roteamento automático
 remove apenas `routingMode` e `points` desse condutor; cor, metadados,

@@ -33,5 +33,9 @@ conectividade persistidos em `electrical`.
 **Geometria visual** — Placas, posições, furos, taps e rotas persistidos em
 `layout`, sem alterar a equivalência elétrica.
 
+**Plano visual** — Ordem persistente de composição de placas, componentes,
+junções e condutores. Não representa conectividade elétrica nem layer semântico
+de exportação CAD.
+
 **Relatório de compatibilidade** — Lista explícita de informações preservadas,
 normalizadas ou sem representação no sentido da importação/exportação.

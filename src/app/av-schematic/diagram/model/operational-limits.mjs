@@ -18,5 +18,6 @@ export const OPERATIONAL_LIMITS = Object.freeze({
   maxFootprintRows: 64,
   maxFootprintCols: 64,
   maxFootprintShapes: 512,
+  maxVisualPlane: 1000,
   maxTotalEntities: 10_000,
 });

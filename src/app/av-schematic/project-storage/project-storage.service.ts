@@ -7,7 +7,7 @@ import {
   fromCanonicalProject,
   toCanonicalProject,
   type CanonicalCable,
-  type CanonicalProjectV2,
+  type CanonicalProjectV3,
 } from '../diagram/model/canonical-project';
 import { parseCanonicalProject } from '../diagram/model/canonical-project-parse';
 import {
@@ -124,8 +124,8 @@ export class ProjectStorageService {
     }
   }
 
-  /** Captures the complete v2 project, including cables with zero connected conductors. */
-  snapshotProject(): CanonicalProjectV2 {
+  /** Captures the current project, including disconnected cables and visual planes. */
+  snapshotProject(): CanonicalProjectV3 {
     const committedModel = this.modelService.getModel();
     this.refreshPhysicalDiagnostics();
     const project = parseCanonicalProject(
@@ -140,7 +140,7 @@ export class ProjectStorageService {
    * Existing edges and cable inventory are deliberately discarded, so a
    * dangling draft edge cannot prevent a valid replacement from loading.
    */
-  snapshotImportSkeleton(): CanonicalProjectV2 {
+  snapshotImportSkeleton(): CanonicalProjectV3 {
     const committedModel = this.modelService.getModel();
     return toCanonicalProject(committedModel.getNodes(), [], []);
   }
@@ -167,7 +167,7 @@ export class ProjectStorageService {
   }
 
   /** Replaces the live canvas and its non-visual cable inventory atomically from one project. */
-  async replaceProject(project: CanonicalProjectV2): Promise<void> {
+  async replaceProject(project: CanonicalProjectV3): Promise<void> {
     const parsed = parseCanonicalProject(project);
     const { nodes, edges } = fromCanonicalProject(parsed);
     await this.replaceModel(nodes, edges);
