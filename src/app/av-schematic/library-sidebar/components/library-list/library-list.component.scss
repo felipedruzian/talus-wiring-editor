@@ -127,3 +127,22 @@
     background: var(--ngd-button-primary-bg-active);
   }
 }
+.library-storage-error {
+  display: grid;
+  gap: 6px;
+  margin: 8px;
+  padding: 8px;
+  border: 1px solid var(--av-color-error, #d92d20);
+  border-radius: 6px;
+  color: var(--av-color-error, #d92d20);
+}
+
+.library-storage-error button {
+  justify-self: start;
+  padding: 3px 6px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}

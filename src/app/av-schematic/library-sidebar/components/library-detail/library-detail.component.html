@@ -1,27 +1,57 @@
-<div class="detail-toolbar">
-  <span class="detail-title h10">{{ title() }}</span>
-  <button
-    class="close-button"
-    type="button"
-    (click)="onBack()"
-    aria-label="Fechar"
-    appTooltip="Fechar"
+<div
+  class="editor-backdrop"
+  tabindex="-1"
+  (click)="onBackdropClick($event)"
+  (keydown.escape)="onEscape($event)"
+>
+  <section
+    class="editor-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="component-editor-title"
   >
-    <span class="icon icon-close" aria-hidden="true"></span>
-  </button>
-</div>
+    <header class="detail-toolbar">
+      <div>
+        <span id="component-editor-title" class="detail-title h10">{{ title() }}</span>
+        <p>Configure a identidade, a imagem e a geometria física do componente.</p>
+      </div>
+      <button
+        class="close-button"
+        type="button"
+        (click)="onBack()"
+        aria-label="Fechar editor"
+        appTooltip="Fechar editor"
+      >
+        <span class="icon icon-close" aria-hidden="true"></span>
+      </button>
+    </header>
 
-<div class="detail-form">
-  <app-device-form [entityId]="libraryId()" [nodeData]="initialTemplate()" />
-</div>
+    <div class="editor-content">
+      <aside class="detail-form" aria-label="Dados do componente">
+        <app-device-form [entityId]="libraryId()" [nodeData]="initialTemplate()" />
+      </aside>
+      <main class="physical-form">
+        <app-physical-component-editor [libraryId]="libraryId()" />
+      </main>
+    </div>
 
-<div class="detail-actions">
-  <button class="save-button p10" type="button" (click)="onSave()" [disabled]="!canSave()">
-    Salvar
-  </button>
-  @if (mode() === 'edit') {
-    <button class="remove-button p10" type="button" (click)="onRemove()">
-      Remover do catálogo
-    </button>
-  }
+    <footer class="detail-actions">
+      @if (storageError(); as message) {
+        <div class="storage-error" role="alert">
+          <span>{{ message }}</span>
+          <button type="button" (click)="dismissStorageError()">Dispensar</button>
+        </div>
+      }
+      @if (mode() === 'edit') {
+        <button class="remove-button p10" type="button" (click)="onRemove()">
+          Remover do catálogo
+        </button>
+      }
+      <span class="action-spacer"></span>
+      <button class="cancel-button p10" type="button" (click)="onBack()">Cancelar</button>
+      <button class="save-button p10" type="button" (click)="onSave()" [disabled]="!canSave()">
+        Salvar no catálogo
+      </button>
+    </footer>
+  </section>
 </div>

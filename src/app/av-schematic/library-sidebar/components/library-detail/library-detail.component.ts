@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  HostListener,
   computed,
   effect,
   inject,
@@ -20,10 +21,14 @@ import { TooltipDirective } from '../../../shared/directives/tooltip/tooltip.dir
 import { LibraryDraftService } from '../../library-draft.service';
 import { LibraryService } from '../../library.service';
 import { createBlankTemplate } from '../../seed-library';
+import {
+  PhysicalComponentEditorComponent,
+  validatePhysicalDraft,
+} from '../physical-component-editor/physical-component-editor.component';
 
 @Component({
   selector: 'app-library-detail',
-  imports: [DeviceFormComponent, TooltipDirective],
+  imports: [DeviceFormComponent, PhysicalComponentEditorComponent, TooltipDirective],
   templateUrl: './library-detail.component.html',
   styleUrl: './library-detail.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -45,10 +50,12 @@ import { createBlankTemplate } from '../../seed-library';
 export class LibraryDetailComponent {
   private readonly libraryService = inject(LibraryService);
   private readonly draftService = inject(LibraryDraftService);
+  private readonly formService = inject(DeviceFormService);
 
   readonly libraryId = input.required<string>();
 
   protected readonly mode = this.libraryService.editingMode;
+  protected readonly storageError = this.libraryService.storageError;
 
   // Stable per editing session — only changes when libraryId/mode flip,
   // not on every keystroke. Bound to the form's `[nodeData]` so re-syncing
@@ -61,7 +68,10 @@ export class LibraryDetailComponent {
 
   protected readonly canSave = computed(() => {
     const draft = this.draftService.draft();
-    return draft.manufacturer.trim() !== '' || draft.model.trim() !== '';
+    return (
+      (draft.manufacturer.trim() !== '' || draft.model.trim() !== '') &&
+      validatePhysicalDraft(draft) === null
+    );
   });
 
   constructor() {
@@ -81,8 +91,13 @@ export class LibraryDetailComponent {
   }
 
   protected onSave(): void {
+    this.formService.commitPendingEdits();
     if (!this.canSave()) return;
-    this.libraryService.commitDraft(this.libraryId(), this.draftService.draft());
+    this.libraryService.commitDraft(
+      this.libraryId(),
+      this.draftService.draft(),
+      this.draftService.pendingAssets(),
+    );
   }
 
   protected onBack(): void {
@@ -91,5 +106,19 @@ export class LibraryDetailComponent {
 
   protected onRemove(): void {
     this.libraryService.removeDevice(this.libraryId());
+  }
+
+  protected onBackdropClick(event: MouseEvent): void {
+    if (event.target === event.currentTarget) this.onBack();
+  }
+
+  protected dismissStorageError(): void {
+    this.libraryService.dismissStorageError();
+  }
+
+  @HostListener('document:keydown.escape', ['$event'])
+  protected onEscape(event: Event): void {
+    event.preventDefault();
+    this.onBack();
   }
 }

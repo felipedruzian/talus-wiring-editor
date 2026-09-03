@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { deviceCategoryLabel } from '../diagram/model/device-categories';
+import { NodeTemplateType } from '../diagram/model/interfaces';
 import { CONNECTOR_TYPES } from '../shared/ui/ports-editor/connector-types';
 import { resolveDeviceIllustration } from '../shared/ui/device-illustration/device-illustration';
 import { asDevicePaletteItem } from './components/library-list-item/palette-item-cast';
@@ -115,5 +116,36 @@ describe('Talus-Droid library catalog', () => {
 
     expect(paletteItem.data).toEqual(template);
     expect(paletteItem.data).not.toBe(template);
+  });
+
+  it('creates physical palette entries as detached FootprintNode instances', () => {
+    const footprint = {
+      id: 'custom-module',
+      label: 'Módulo',
+      rows: 1,
+      cols: 2,
+      pins: [{ id: 'signal', label: 'SIGNAL', cell: { row: 0, col: 0 } }],
+      shapes: [],
+      bodyCells: [{ row: 0, col: 0 }],
+    };
+    const template = {
+      ...seed('lib-mpu6050-gy521').template,
+      footprintId: footprint.id,
+      footprint,
+    };
+
+    const paletteItem = asDevicePaletteItem(template) as unknown as {
+      type: NodeTemplateType;
+      data: typeof template & { footprintPitch?: number; footprintRotation?: number };
+    };
+
+    expect(paletteItem.type).toBe(NodeTemplateType.FootprintNode);
+    expect(paletteItem.data.footprint).toEqual(footprint);
+    expect(paletteItem.data.footprint).not.toBe(footprint);
+    expect(paletteItem.data.footprint.pins).not.toBe(footprint.pins);
+    expect(paletteItem.data.footprintRotation).toBe(0);
+    expect(paletteItem.data.footprintPitch).toBe(20);
+    expect(paletteItem.data.boardId).toBeUndefined();
+    expect(paletteItem.data.placement).toBeUndefined();
   });
 });

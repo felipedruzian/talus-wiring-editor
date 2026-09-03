@@ -116,10 +116,12 @@ export class BoardPlacementService {
       if (!placement || !movedBoardIds.has(placement.boardId)) continue;
       const board = boardsById.get(placement.boardId);
       if (!board) continue;
+      const footprint = resolveFootprint(node.data);
 
       const position = placementNodePosition(
         { board: board.data, position: board.position },
         placement,
+        footprint,
       );
       if (position.x === node.position.x && position.y === node.position.y) continue;
       await this.modelService.updateNode(node.id, { position });
@@ -238,6 +240,8 @@ export class BoardPlacementService {
       { board: board.data, position: board.position },
       node.position,
       visualPitch,
+      footprint,
+      rotation,
     );
     if (!anchor) {
       this._conflict.set({
@@ -311,7 +315,11 @@ export class BoardPlacementService {
       node.id,
       {
         type: NodeTemplateType.FootprintNode,
-        position: placementNodePosition({ board: board.data, position: board.position }, placement),
+        position: placementNodePosition(
+          { board: board.data, position: board.position },
+          placement,
+          footprint,
+        ),
         data,
       },
       { waitForMeasurements: true },
@@ -363,7 +371,11 @@ export class BoardPlacementService {
       return;
     }
     await this.modelService.updateNode(node.id, {
-      position: placementNodePosition({ board: board.data, position: board.position }, placement),
+      position: placementNodePosition(
+        { board: board.data, position: board.position },
+        placement,
+        resolveFootprint(node.data),
+      ),
     });
   }
 

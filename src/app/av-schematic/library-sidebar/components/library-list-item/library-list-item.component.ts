@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { NgDiagramPaletteItemComponent, NgDiagramPaletteItemPreviewComponent } from 'ng-diagram';
+import { ArtworkAssetStore } from '../../../diagram/artwork/artwork-asset.store';
 import { deviceCategoryLabel } from '../../../diagram/model/device-categories';
 import { HighlightSegmentsPipe } from '../../../shared/ui/highlight-segments/highlight-segments.pipe';
 import { DeviceIllustrationComponent } from '../../../shared/ui/device-illustration/device-illustration.component';
@@ -21,12 +22,17 @@ import { asDevicePaletteItem } from './palette-item-cast';
 })
 export class LibraryListItemComponent {
   private readonly libraryService = inject(LibraryService);
+  private readonly artworkAssets = inject(ArtworkAssetStore);
 
   readonly device = input.required<LibraryDevice>();
 
   protected readonly paletteItem = computed(() => asDevicePaletteItem(this.device().template));
 
   protected readonly searchQuery = this.libraryService.searchQuery;
+  protected readonly artworkUrl = computed(() => {
+    const hash = this.device().template.footprint?.artwork?.assetHash;
+    return this.artworkAssets.asset(hash)?.dataUrl ?? null;
+  });
 
   protected readonly categoryLabel = computed(() => {
     const c = this.device().template.category?.trim();

@@ -1,8 +1,11 @@
+import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LibraryService } from './library.service';
 import {
+  LEGACY_LIBRARY_STORAGE_KEY,
   LIBRARY_STORAGE_KEY,
   LIBRARY_STORAGE_VERSION,
+  loadLibraryCatalog,
   loadLibraryDevices,
 } from './library-storage';
 import { createBlankTemplate, SEED_LIBRARY } from './seed-library';
@@ -38,11 +41,12 @@ class MemoryStorage implements Storage {
 describe('LibraryService', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    TestBed.resetTestingModule();
   });
 
   it('searches manufacturer, model, category and port labels', () => {
     vi.stubGlobal('localStorage', new MemoryStorage());
-    const service = new LibraryService();
+    const service = createLibraryService();
 
     service.searchQuery.set('Texas Instruments');
     expect(service.filteredDevices().map((device) => device.libraryId)).toEqual(['lib-lm2596s']);
@@ -66,7 +70,7 @@ describe('LibraryService', () => {
 
   it('treats a query containing only combining marks as empty', () => {
     vi.stubGlobal('localStorage', new MemoryStorage());
-    const service = new LibraryService();
+    const service = createLibraryService();
 
     service.searchQuery.set('\u0301');
 
@@ -76,7 +80,7 @@ describe('LibraryService', () => {
   it('persists manual create, edit and remove operations in a versioned schema', () => {
     const storage = new MemoryStorage();
     vi.stubGlobal('localStorage', storage);
-    const service = new LibraryService();
+    const service = createLibraryService();
     const custom = {
       ...createBlankTemplate(),
       manufacturer: 'Talus',
@@ -95,16 +99,18 @@ describe('LibraryService', () => {
     const serialized = storage.getItem(LIBRARY_STORAGE_KEY);
     if (!serialized) throw new Error('Expected a persisted library payload');
     expect(JSON.parse(serialized)).toMatchObject({ version: LIBRARY_STORAGE_VERSION });
-    expect(new LibraryService().devices().at(-1)?.template.model).toBe('Componente de teste');
+    expect(createLibraryService().devices().at(-1)?.template.model).toBe('Componente de teste');
 
     service.beginEdit(libraryId);
     service.commitDraft(libraryId, { ...custom, model: 'Componente editado' });
-    expect(new LibraryService().devices().at(-1)?.template.model).toBe('Componente editado');
+    expect(createLibraryService().devices().at(-1)?.template.model).toBe('Componente editado');
 
     service.removeDevice(libraryId);
-    expect(new LibraryService().devices().some((device) => device.libraryId === libraryId)).toBe(
-      false,
-    );
+    expect(
+      createLibraryService()
+        .devices()
+        .some((device) => device.libraryId === libraryId),
+    ).toBe(false);
   });
 
   it('falls back to the seed catalog for invalid JSON, unknown versions or unsafe shapes', () => {
@@ -118,13 +124,18 @@ describe('LibraryService', () => {
     expect(loadLibraryDevices(storage)).not.toBe(SEED_LIBRARY);
     storage.setItem(
       LIBRARY_STORAGE_KEY,
-      JSON.stringify({ version: LIBRARY_STORAGE_VERSION, devices: [{ libraryId: 'bad' }] }),
+      JSON.stringify({
+        version: LIBRARY_STORAGE_VERSION,
+        devices: [{ libraryId: 'bad' }],
+        assets: {},
+      }),
     );
     expect(loadLibraryDevices(storage)).toEqual(SEED_LIBRARY);
     expect(loadLibraryDevices(storage)).not.toBe(SEED_LIBRARY);
     expect(JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}')).toEqual({
       version: LIBRARY_STORAGE_VERSION,
       devices: SEED_LIBRARY,
+      assets: {},
     });
   });
 
@@ -143,6 +154,7 @@ describe('LibraryService', () => {
       JSON.stringify({
         version: LIBRARY_STORAGE_VERSION,
         devices: [valid, { libraryId: 'broken', template: { type: 'nope' } }, valid],
+        assets: {},
       }),
     );
 
@@ -150,6 +162,7 @@ describe('LibraryService', () => {
     expect(JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}')).toEqual({
       version: LIBRARY_STORAGE_VERSION,
       devices: [valid],
+      assets: {},
     });
   });
 
@@ -157,7 +170,7 @@ describe('LibraryService', () => {
     const storage = new MemoryStorage();
     storage.setItem(
       LIBRARY_STORAGE_KEY,
-      JSON.stringify({ version: LIBRARY_STORAGE_VERSION, devices: [] }),
+      JSON.stringify({ version: LIBRARY_STORAGE_VERSION, devices: [], assets: {} }),
     );
 
     expect(loadLibraryDevices(storage)).toEqual([]);
@@ -190,16 +203,106 @@ describe('LibraryService', () => {
       JSON.stringify({
         version: LIBRARY_STORAGE_VERSION,
         devices: [overriddenSeed, custom, legacy],
+        assets: {},
       }),
     );
     vi.stubGlobal('localStorage', storage);
-    const service = new LibraryService();
+    const service = createLibraryService();
 
     service.restoreDefaults();
 
     expect(service.devices()).toEqual([...SEED_LIBRARY, custom]);
     expect(service.devices().some((device) => device.libraryId === legacy.libraryId)).toBe(false);
     expect(service.devices()).not.toBe(SEED_LIBRARY);
-    expect(new LibraryService().devices()).toEqual([...SEED_LIBRARY, custom]);
+    expect(createLibraryService().devices()).toEqual([...SEED_LIBRARY, custom]);
+  });
+
+  it('migrates a legacy v1 device catalog to v2 without losing custom entries', () => {
+    const storage = new MemoryStorage();
+    const custom = {
+      libraryId: 'lib-custom-legacy',
+      template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Legado' },
+    };
+    storage.setItem(LEGACY_LIBRARY_STORAGE_KEY, JSON.stringify({ version: 1, devices: [custom] }));
+
+    expect(loadLibraryCatalog(storage)).toEqual({ devices: [custom], assets: [] });
+    expect(JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}')).toEqual({
+      version: LIBRARY_STORAGE_VERSION,
+      devices: [custom],
+      assets: {},
+    });
+  });
+
+  it('deduplicates artwork by hash and restores a physical custom component', () => {
+    const storage = new MemoryStorage();
+    vi.stubGlobal('localStorage', storage);
+    const service = createLibraryService();
+    const hash = 'a'.repeat(64);
+    const asset = {
+      hash,
+      mimeType: 'image/png' as const,
+      width: 1,
+      height: 1,
+      byteLength: 1,
+      dataUrl: 'data:image/png;base64,AA==',
+    };
+    const footprint = {
+      id: 'custom-physical',
+      label: 'Sensor físico',
+      rows: 1,
+      cols: 2,
+      pins: [{ id: 'signal', label: 'Sinal', cell: { row: 0, col: 0 } }],
+      shapes: [],
+      artwork: { assetHash: hash, x: -0.5, y: -0.25, width: 2.5, height: 1.5 },
+    };
+    const template = {
+      ...createBlankTemplate(),
+      manufacturer: 'Talus',
+      model: 'Sensor físico',
+      footprintId: footprint.id,
+      footprint,
+      footprintRotation: 0 as const,
+      footprintPitch: 20,
+      ports: [{ id: 'signal', label: 'Sinal', direction: 'output' as const }],
+    };
+
+    service.beginCreate();
+    const libraryId = service.editingDeviceId();
+    if (!libraryId) throw new Error('Expected library id');
+    expect(service.commitDraft(libraryId, template, [asset, structuredClone(asset)])).toBe(true);
+
+    const restored = createLibraryService();
+    expect(restored.devices().at(-1)?.template).toEqual(template);
+    expect(restored.artworkAsset(hash)).toEqual(asset);
+    const payload = JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}') as {
+      assets: Record<string, unknown>;
+    };
+    expect(Object.keys(payload.assets)).toEqual([hash]);
+  });
+
+  it('reports localStorage quota failures instead of silently claiming persistence', () => {
+    const storage = new MemoryStorage();
+    storage.setItem = () => {
+      throw new DOMException('quota', 'QuotaExceededError');
+    };
+    vi.stubGlobal('localStorage', storage);
+    const service = createLibraryService();
+    service.beginCreate();
+    const libraryId = service.editingDeviceId();
+    if (!libraryId) throw new Error('Expected library id');
+
+    expect(
+      service.commitDraft(libraryId, {
+        ...createBlankTemplate(),
+        manufacturer: 'Talus',
+        model: 'Sem espaço',
+      }),
+    ).toBe(false);
+    expect(service.storageError()).toMatch(/sem espaço/);
+    expect(service.editingDeviceId()).toBe(libraryId);
   });
 });
+
+function createLibraryService(): LibraryService {
+  return TestBed.runInInjectionContext(() => new LibraryService());
+}

@@ -1,4 +1,5 @@
 import { Injectable, signal } from '@angular/core';
+import { type RasterArtworkAsset } from '../diagram/artwork/artwork-asset.store';
 import { type DeviceNodeData } from '../diagram/model/interfaces';
 import { formDataToDeviceData, type DeviceFieldChange } from '../device-form/device-form.mappers';
 import { createBlankTemplate } from './seed-library';
@@ -11,12 +12,24 @@ import { createBlankTemplate } from './seed-library';
 @Injectable()
 export class LibraryDraftService {
   readonly draft = signal<DeviceNodeData>(createBlankTemplate());
+  readonly pendingAssets = signal<RasterArtworkAsset[]>([]);
 
   reset(template: DeviceNodeData): void {
-    this.draft.set(template);
+    this.draft.set(structuredClone(template));
+    this.pendingAssets.set([]);
   }
 
   applyChange(change: DeviceFieldChange): void {
     this.draft.update((current) => formDataToDeviceData(change.formData, current));
+  }
+
+  update(update: (current: DeviceNodeData) => DeviceNodeData): void {
+    this.draft.update((current) => update(structuredClone(current)));
+  }
+
+  addAsset(asset: RasterArtworkAsset): void {
+    this.pendingAssets.update((assets) =>
+      assets.some((candidate) => candidate.hash === asset.hash) ? assets : [...assets, asset],
+    );
   }
 }
