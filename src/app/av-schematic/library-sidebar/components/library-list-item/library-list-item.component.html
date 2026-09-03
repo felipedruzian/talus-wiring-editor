@@ -7,7 +7,9 @@
     (keydown.enter)="onOpenDetail()"
     (keydown.space)="onOpenDetail(); $event.preventDefault()"
   >
-    @if (artworkUrl(); as imageUrl) {
+    @if (trustedFootprint(); as footprint) {
+      <app-footprint-illustration class="device-row__illustration" [footprint]="footprint" />
+    } @else if (artworkUrl(); as imageUrl) {
       <img class="device-row__illustration" [src]="imageUrl" alt="" />
     } @else {
       <app-device-illustration
@@ -50,12 +52,12 @@
   </div>
 
   <ng-diagram-palette-item-preview>
-    @if (trustedArtwork(); as trusted) {
+    @if (trustedFootprint(); as footprint) {
       <div class="physical-device-preview">
-        <img
+        <app-footprint-illustration
           class="physical-device-preview__illustration"
-          [src]="trusted.href"
-          [alt]="device().template.model"
+          [footprint]="footprint"
+          [label]="device().template.model"
         />
       </div>
     } @else {

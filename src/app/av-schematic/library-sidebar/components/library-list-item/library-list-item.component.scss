@@ -38,6 +38,9 @@
   width: 42px;
   height: 28px;
   flex: 0 0 42px;
+}
+
+img.device-row__illustration {
   object-fit: contain;
 }
 
@@ -133,7 +136,7 @@
 .physical-device-preview__illustration {
   display: block;
   width: 240px;
+  height: 150px;
   max-height: 150px;
-  object-fit: contain;
   filter: drop-shadow(0 4px 5px rgb(0 0 0 / 22%));
 }

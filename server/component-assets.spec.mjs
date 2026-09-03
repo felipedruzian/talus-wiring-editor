@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -71,6 +71,111 @@ const ASSETS = [
       ]),
     ],
   },
+  {
+    file: 'buzzer-active-12mm.svg',
+    artworkId: 'buzzer-active-12mm',
+    viewBox: '-0.86 -2.36 4.72 4.72',
+    size: ['4.72', '4.72'],
+    primaryPin: 'plus',
+    pins: [
+      ['plus', 0, 0],
+      ['minus', 3, 0],
+    ],
+    rootAttributes: {
+      'data-body-diameter-pitch': '4.72',
+      'data-terminal-span-pitch': '3',
+      'data-polarized': 'true',
+    },
+  },
+  {
+    file: 'capacitor-electrolytic-470uf-25v.svg',
+    artworkId: 'capacitor-electrolytic-470uf-25v',
+    viewBox: '-0.97 -1.97 3.94 3.94',
+    size: ['3.94', '3.94'],
+    primaryPin: 'plus',
+    pins: [
+      ['plus', 0, 0],
+      ['minus', 2, 0],
+    ],
+    rootAttributes: {
+      'data-body-diameter-pitch': '3.94',
+      'data-terminal-span-pitch': '2',
+      'data-polarized': 'true',
+    },
+  },
+  {
+    file: 'capacitor-electrolytic-470uf-16v-lead-formed.svg',
+    artworkId: 'capacitor-electrolytic-470uf-16v-lead-formed',
+    viewBox: '-0.575 -1.575 3.15 3.15',
+    size: ['3.15', '3.15'],
+    primaryPin: 'plus',
+    pins: [
+      ['plus', 0, 0],
+      ['minus', 2, 0],
+    ],
+    rootAttributes: {
+      'data-body-diameter-pitch': '3.15',
+      'data-body-dimension-status': 'provisional',
+      'data-native-terminal-pitch': '1.38',
+      'data-terminal-span-pitch': '2',
+      'data-lead-form': 'manual',
+      'data-polarized': 'true',
+    },
+  },
+  {
+    file: 'capacitor-ceramic-100nf.svg',
+    artworkId: 'capacitor-ceramic-100nf',
+    viewBox: '-0.25 -0.85 2.5 1.7',
+    size: ['2.5', '1.7'],
+    primaryPin: null,
+    pins: [
+      ['a', 0, 0],
+      ['b', 2, 0],
+    ],
+    rootAttributes: {
+      'data-body-width-pitch': '1.57',
+      'data-body-height-pitch': '1.57',
+      'data-terminal-span-pitch': '2',
+      'data-polarized': 'false',
+    },
+    bodyRect: ['0.215', '-0.785', '1.57', '1.57'],
+  },
+  {
+    file: 'resistor-axial-1k.svg',
+    artworkId: 'resistor-axial-1k',
+    viewBox: '-1.38 -0.59 2.76 1.18',
+    size: ['2.76', '1.18'],
+    primaryPin: null,
+    pins: [],
+    rootAttributes: {
+      'data-body-width-pitch': '2.56',
+      'data-body-height-pitch': '0.98',
+      'data-body-anchor': 'midpoint',
+      'data-terminal-axis': 'x',
+      'data-terminal-model': 'renderer-adjustable',
+      'data-band-code': 'brown-black-red-gold',
+    },
+    bodyRect: ['-1.28', '-0.49', '2.56', '0.98'],
+    bandColors: ['brown', 'black', 'red', 'gold'],
+  },
+  {
+    file: 'resistor-axial-1k8.svg',
+    artworkId: 'resistor-axial-1k8',
+    viewBox: '-1.38 -0.59 2.76 1.18',
+    size: ['2.76', '1.18'],
+    primaryPin: null,
+    pins: [],
+    rootAttributes: {
+      'data-body-width-pitch': '2.56',
+      'data-body-height-pitch': '0.98',
+      'data-body-anchor': 'midpoint',
+      'data-terminal-axis': 'x',
+      'data-terminal-model': 'renderer-adjustable',
+      'data-band-code': 'brown-gray-red-gold',
+    },
+    bodyRect: ['-1.28', '-0.49', '2.56', '0.98'],
+    bandColors: ['brown', 'gray', 'red', 'gold'],
+  },
 ];
 
 function attribute(source, name) {
@@ -89,7 +194,23 @@ function pinMarkers(svg) {
   });
 }
 
+function markedBodyRect(svg) {
+  const attributes = svg.match(/<rect\b([^>]*\bdata-body-shape="true"[^>]*)>/)?.[1] ?? '';
+  return ['x', 'y', 'width', 'height'].map((name) => attribute(attributes, name));
+}
+
+function bandColors(svg) {
+  return [...svg.matchAll(/\bdata-band-color="([^"]+)"/g)].map((match) => match[1]);
+}
+
 describe('built-in physical component SVG assets', () => {
+  it('keeps every component SVG covered by the integrity contract', async () => {
+    const files = (await readdir(COMPONENT_ASSET_DIR))
+      .filter((file) => file.endsWith('.svg'))
+      .sort();
+    expect(files).toEqual(ASSETS.map(({ file }) => file).sort());
+  });
+
   for (const asset of ASSETS) {
     it(`${asset.file} is inert, transparent and calibrated in pitch units`, async () => {
       const path = fileURLToPath(new URL(asset.file, COMPONENT_ASSET_DIR));
@@ -108,6 +229,9 @@ describe('built-in physical component SVG assets', () => {
       expect(attribute(rootAttributes, 'data-asset-revision')).toBe('2026-09-03');
       expect(attribute(rootAttributes, 'data-asset-license')).toBe('MIT');
       expect(attribute(rootAttributes, 'data-pitch-unit')).toBe('1');
+      for (const [name, value] of Object.entries(asset.rootAttributes ?? {})) {
+        expect(attribute(rootAttributes, name)).toBe(value);
+      }
 
       expect(svg).not.toMatch(
         /<\/?(?:script|foreignObject|iframe|object|embed|image|use|style)\b|\s(?:href|xlink:href)\s*=|\son[a-z]+\s*=|url\s*\(|@import|<!DOCTYPE|<!ENTITY|<\?xml-stylesheet/i,
@@ -116,9 +240,11 @@ describe('built-in physical component SVG assets', () => {
       const markers = pinMarkers(svg);
       expect(markers.map(({ id, x, y }) => [id, x, y])).toEqual(asset.pins);
       expect(new Set(markers.map(({ id }) => id)).size).toBe(asset.pins.length);
-      expect(markers.filter(({ primary }) => primary).map(({ id }) => id)).toEqual([
-        asset.primaryPin,
-      ]);
+      expect(markers.filter(({ primary }) => primary).map(({ id }) => id)).toEqual(
+        asset.primaryPin === null ? [] : [asset.primaryPin],
+      );
+      if (asset.bodyRect) expect(markedBodyRect(svg)).toEqual(asset.bodyRect);
+      if (asset.bandColors) expect(bandColors(svg)).toEqual(asset.bandColors);
     });
   }
 });

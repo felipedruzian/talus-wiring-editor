@@ -1,0 +1,84 @@
+@if (artwork(); as artwork) {
+  <svg
+    class="footprint-illustration"
+    [attr.viewBox]="viewBox()"
+    [attr.role]="label() ? 'img' : null"
+    [attr.aria-label]="label() || null"
+    [attr.aria-hidden]="label() ? null : 'true'"
+    preserveAspectRatio="xMidYMid meet"
+  >
+    @for (shape of shapes(); track $index) {
+      @switch (shape.kind) {
+        @case ('rect') {
+          <rect
+            [attr.x]="shape.x"
+            [attr.y]="shape.y"
+            [attr.width]="shape.width"
+            [attr.height]="shape.height"
+            [attr.rx]="shape.rx"
+            [attr.fill]="shape.fill"
+            [attr.stroke]="shape.stroke"
+            vector-effect="non-scaling-stroke"
+          />
+        }
+        @case ('circle') {
+          <circle
+            [attr.cx]="shape.cx"
+            [attr.cy]="shape.cy"
+            [attr.r]="shape.r"
+            [attr.fill]="shape.fill"
+            [attr.stroke]="shape.stroke"
+            vector-effect="non-scaling-stroke"
+          />
+        }
+        @case ('line') {
+          <line
+            [attr.x1]="shape.x1"
+            [attr.y1]="shape.y1"
+            [attr.x2]="shape.x2"
+            [attr.y2]="shape.y2"
+            [attr.stroke]="shape.stroke"
+            [attr.stroke-width]="shape.width"
+            stroke-linecap="round"
+          />
+        }
+        @case ('text') {
+          <text
+            [attr.x]="shape.x"
+            [attr.y]="shape.y"
+            [attr.font-size]="shape.size"
+            [attr.text-anchor]="shape.anchor"
+            [attr.fill]="shape.fill"
+          >
+            {{ shape.text }}
+          </text>
+        }
+      }
+    }
+
+    <image
+      class="footprint-illustration__artwork"
+      x="0"
+      y="0"
+      [attr.width]="artwork.bounds.width"
+      [attr.height]="artwork.bounds.height"
+      [attr.href]="artwork.href"
+      [attr.transform]="artwork.transform"
+      [attr.preserveAspectRatio]="artwork.preserveAspectRatio"
+      [attr.data-artwork-kind]="artwork.kind"
+      [attr.data-artwork-id]="artwork.id"
+      [attr.data-asset-revision]="artwork.revision"
+      [attr.data-terminal-model]="artwork.terminalModel"
+    />
+
+    @for (pad of pads(); track pad.id) {
+      <circle
+        class="footprint-illustration__pin-pad"
+        [class.footprint-illustration__pin-pad--primary]="pad.primary"
+        [attr.cx]="pad.cx"
+        [attr.cy]="pad.cy"
+        r="0.19"
+      />
+    }
+  </svg>
+}

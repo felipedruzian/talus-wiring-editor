@@ -4,6 +4,7 @@ import {
 } from '../diagram/artwork/artwork-asset.store';
 import { type DeviceNodeData, type DevicePort } from '../diagram/model/interfaces';
 import {
+  isCoherentAxialFootprint,
   type Footprint,
   type FootprintArtwork,
   type FootprintCell,
@@ -19,6 +20,7 @@ import { SEED_LIBRARY, type LibraryDevice } from './seed-library';
 export const LIBRARY_STORAGE_KEY = 'talus-wiring-editor.library.v2';
 export const LEGACY_LIBRARY_STORAGE_KEY = 'talus-wiring-editor.library.v1';
 export const LIBRARY_STORAGE_VERSION = 2;
+export const LIBRARY_SEED_REVISION = 3;
 export const MAX_LIBRARY_ASSETS = 128;
 export const MAX_LIBRARY_DEVICES = 4096;
 export const MAX_LIBRARY_STORAGE_BYTES = 16 * 1024 * 1024;
@@ -31,6 +33,7 @@ export interface LibraryCatalog {
 
 export interface PersistedLibraryV2 {
   version: typeof LIBRARY_STORAGE_VERSION;
+  seedRevision: typeof LIBRARY_SEED_REVISION;
   devices: LibraryDevice[];
   assets: Record<string, Omit<RasterArtworkAsset, 'hash'>>;
 }
@@ -176,6 +179,7 @@ export function prepareLibraryCatalog(catalog: LibraryCatalog): PreparedLibraryC
   ) as PersistedLibraryV2['assets'];
   const payload: PersistedLibraryV2 = {
     version: LIBRARY_STORAGE_VERSION,
+    seedRevision: LIBRARY_SEED_REVISION,
     devices: structuredClone(catalog.devices),
     assets,
   };
@@ -233,17 +237,89 @@ function recoverPersistedLibrary(
   const availableHashes = new Set(assets.map((asset) => asset.hash));
   const recoveredDevices = recoverDevices(value['devices'], availableHashes);
   wasRepaired ||= recoveredDevices.wasRepaired;
+  const seedRevision = recoverSeedRevision(value['seedRevision'], recoveredDevices.devices);
+  wasRepaired ||= seedRevision.wasRepaired;
+  const devices =
+    seedRevision.revision < LIBRARY_SEED_REVISION
+      ? appendMissingPassiveSeeds(recoveredDevices.devices, seedRevision.revision)
+      : recoveredDevices.devices;
+  const wasMigrated = recoveredDevices.wasMigrated || seedRevision.revision < LIBRARY_SEED_REVISION;
   return {
     catalog: {
-      devices: recoveredDevices.devices,
+      devices,
       // Loading must not garbage-collect valid assets. An unreferenced upload may
       // still be a user's pending library resource, and deterministic seed
       // migrations must preserve the complete validated catalog verbatim.
       assets: assets.map((asset) => structuredClone(asset)),
     },
     wasRepaired,
-    wasMigrated: recoveredDevices.wasMigrated,
+    wasMigrated,
   };
+}
+
+const PASSIVE_LIBRARY_IDS = new Set([
+  'lib-buzzer-active-12mm',
+  'lib-resistor-1k',
+  'lib-resistor-1k8',
+  'lib-capacitor-electrolytic-470uf',
+  'lib-capacitor-electrolytic-470uf-16v',
+  'lib-capacitor-ceramic-100nf',
+]);
+
+const PASSIVE_SEED_REVISION_BY_ID = new Map<string, number>([
+  ['lib-buzzer-active-12mm', 2],
+  ['lib-resistor-1k', 2],
+  ['lib-resistor-1k8', 2],
+  ['lib-capacitor-electrolytic-470uf', 2],
+  ['lib-capacitor-ceramic-100nf', 2],
+  ['lib-capacitor-electrolytic-470uf-16v', 3],
+]);
+
+const PRE_PASSIVE_LIBRARY_IDS = new Set([
+  'lib-arduino-nano',
+  'lib-raspberry-pi-4',
+  'lib-mpu6050-gy521',
+  'lib-tb6612fng',
+  'lib-lm2596s',
+  'lib-hall-a3144-lm393',
+]);
+
+function recoverSeedRevision(
+  raw: unknown,
+  devices: readonly LibraryDevice[],
+): { revision: number; wasRepaired: boolean } {
+  if (raw !== undefined) {
+    return typeof raw === 'number' &&
+      Number.isSafeInteger(raw) &&
+      raw >= 0 &&
+      raw <= LIBRARY_SEED_REVISION
+      ? { revision: raw, wasRepaired: false }
+      : { revision: LIBRARY_SEED_REVISION, wasRepaired: true };
+  }
+  const ids = new Set(devices.map((device) => device.libraryId));
+  const hasOldSeed = [...ids].some((id) => PRE_PASSIVE_LIBRARY_IDS.has(id));
+  const inferredPassiveRevision = Math.max(
+    1,
+    ...[...ids].map((id) => PASSIVE_SEED_REVISION_BY_ID.get(id) ?? 1),
+  );
+  return {
+    revision: hasOldSeed ? inferredPassiveRevision : LIBRARY_SEED_REVISION,
+    wasRepaired: false,
+  };
+}
+
+function appendMissingPassiveSeeds(
+  devices: readonly LibraryDevice[],
+  fromRevision: number,
+): LibraryDevice[] {
+  const ids = new Set(devices.map((device) => device.libraryId));
+  const additions = SEED_LIBRARY.filter(
+    (device) =>
+      PASSIVE_LIBRARY_IDS.has(device.libraryId) &&
+      (PASSIVE_SEED_REVISION_BY_ID.get(device.libraryId) ?? LIBRARY_SEED_REVISION) > fromRevision &&
+      !ids.has(device.libraryId),
+  );
+  return [...devices, ...structuredClone(additions)];
 }
 
 function recoverLegacyLibrary(
@@ -472,6 +548,18 @@ function isFootprint(value: unknown): value is Footprint {
     value['bodyCells'] !== undefined &&
     (!Array.isArray(value['bodyCells']) ||
       !value['bodyCells'].every((cell) => isFootprintCell(cell, rows, cols)))
+  ) {
+    return false;
+  }
+  if (
+    value['axialSpan'] !== undefined &&
+    (!isPositiveInteger(value['axialSpan']) ||
+      !isCoherentAxialFootprint({
+        rows,
+        cols,
+        pins: value['pins'] as Footprint['pins'],
+        axialSpan: value['axialSpan'],
+      }))
   ) {
     return false;
   }

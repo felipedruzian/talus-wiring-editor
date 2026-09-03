@@ -1,0 +1,57 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="-0.86 -2.36 4.72 4.72"
+  width="4.72"
+  height="4.72"
+  fill="none"
+  role="img"
+  aria-labelledby="buzzer-title buzzer-description"
+  preserveAspectRatio="xMidYMid meet"
+  data-artwork-id="buzzer-active-12mm"
+  data-asset-revision="2026-09-03"
+  data-asset-license="MIT"
+  data-pitch-unit="1"
+  data-body-diameter-pitch="4.72"
+  data-terminal-span-pitch="3"
+  data-polarized="true"
+>
+  <title id="buzzer-title">Buzzer ativo de 12 mm em escala de pitch</title>
+  <desc id="buzzer-description">
+    Ilustração original de um buzzer polarizado, com corpo de 4,72 pitches e terminais positivo e
+    negativo separados por 3 pitches.
+  </desc>
+
+  <circle cx="1.5" cy="0" r="2.31" fill="#202a32" stroke="#0b1116" stroke-width="0.1" />
+  <circle cx="1.5" cy="0" r="1.74" fill="#303c45" stroke="#667782" stroke-width="0.08" />
+  <circle cx="1.5" cy="0" r="0.56" fill="#10171c" stroke="#6f7e87" stroke-width="0.08" />
+  <circle cx="1.5" cy="0" r="0.25" fill="#05080a" />
+
+  <g data-pin-id="plus" data-pin-x="0" data-pin-y="0" data-primary="true">
+    <rect
+      x="-0.29"
+      y="-0.29"
+      width="0.58"
+      height="0.58"
+      rx="0.05"
+      fill="#d7b24a"
+      stroke="#ffffff"
+      stroke-width="0.08"
+    />
+    <circle cx="0" cy="0" r="0.14" fill="#202a32" />
+  </g>
+  <g data-pin-id="minus" data-pin-x="3" data-pin-y="0">
+    <circle cx="3" cy="0" r="0.29" fill="#d7b24a" />
+    <circle cx="3" cy="0" r="0.14" fill="#202a32" />
+  </g>
+
+  <g fill="#f4f7f8" font-family="ui-sans-serif, sans-serif" text-anchor="middle">
+    <text x="0" y="-0.54" font-size="0.62" font-weight="700">+</text>
+    <text x="3" y="-0.54" font-size="0.62" font-weight="700">-</text>
+    <text x="1.5" y="1.15" font-size="0.38" font-weight="700">ACTIVE</text>
+    <text x="1.5" y="1.56" font-size="0.29">12 mm</text>
+  </g>
+  <g stroke="#aab7be" stroke-width="0.09" stroke-linecap="round">
+    <path d="M0.76 -1.2A1.42 1.42 0 0 1 2.24 -1.2" />
+    <path d="M0.48 -1.51A1.85 1.85 0 0 1 2.52 -1.51" />
+  </g>
+</svg>

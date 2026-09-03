@@ -22,7 +22,16 @@ import {
   syncPortHolesToPlacement,
   validatePlacement,
 } from './footprint-geometry';
-import { ARDUINO_NANO_FOOTPRINT, TB6612FNG_FOOTPRINT, type Footprint } from './footprint';
+import {
+  ARDUINO_NANO_FOOTPRINT,
+  BUZZER_ACTIVE_12MM_FOOTPRINT,
+  CAP_100N_FOOTPRINT,
+  CAP_470U_25V_FOOTPRINT,
+  RESISTOR_1K_FOOTPRINT,
+  TB6612FNG_FOOTPRINT,
+  resizeAxialFootprintSpan,
+  type Footprint,
+} from './footprint';
 import { type BoardNodeData, type DeviceNodeData, type DevicePlacement } from './interfaces';
 import { footprintPinViews } from '../node/footprint-node.component';
 
@@ -188,6 +197,52 @@ describe('bounds and occupancy', () => {
     expect(
       footprintPinHoles(ARDUINO_NANO_FOOTPRINT, placement).find((pin) => pin.pinId === 'd1'),
     ).toMatchObject({ hole: { row: 16, col: 3 } });
+  });
+
+  it('maps every passive terminal to integer holes through rotation', () => {
+    const passiveBoard: BoardNodeData = { ...board, rows: 20, cols: 20 };
+    const passives = [
+      BUZZER_ACTIVE_12MM_FOOTPRINT,
+      RESISTOR_1K_FOOTPRINT,
+      CAP_470U_25V_FOOTPRINT,
+      CAP_100N_FOOTPRINT,
+    ];
+    for (const passive of passives) {
+      const placement: DevicePlacement = {
+        boardId: passiveBoard.boardId,
+        anchor: { row: 2, col: 3 },
+        rotation: 90,
+      };
+      expect(validatePlacement(passive.id, passiveBoard, passive, placement, [])).toBeNull();
+      expect(footprintPinHoles(passive, placement)).toHaveLength(2);
+      expect(
+        footprintPinHoles(passive, placement).every(
+          (pin) => Number.isInteger(pin.hole.row) && Number.isInteger(pin.hole.col),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it('claims the complete selected resistor span and reports a collision on it', () => {
+    const maximum = resizeAxialFootprintSpan(RESISTOR_1K_FOOTPRINT, 10);
+    if (!maximum.ok) throw new Error(maximum.message);
+    const placement: DevicePlacement = {
+      boardId: board.boardId,
+      anchor: { row: 1, col: 0 },
+      rotation: 0,
+    };
+    const wideBoard = { ...board, cols: 12 };
+
+    expect(footprintOccupiedHoles(maximum.footprint, placement)).toHaveLength(11);
+    expect(
+      validatePlacement('resistor', wideBoard, maximum.footprint, placement, [
+        { boardId: board.boardId, ownerId: 'capacitor', hole: { row: 1, col: 6 } },
+      ]),
+    ).toMatchObject({
+      kind: 'occupied',
+      holes: [{ row: 1, col: 6 }],
+      blockedBy: ['capacitor'],
+    });
   });
 
   it('unites negative fractional artwork with node bounds without stretching it across a channel', () => {

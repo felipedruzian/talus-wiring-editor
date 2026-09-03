@@ -1,10 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { sha256HexSync } from './artwork-import';
 import { loadSharedLibrary, saveSharedLibrary } from './library-api';
-import { type PersistedLibraryV2 } from './library-storage';
+import { LIBRARY_SEED_REVISION, type PersistedLibraryV2 } from './library-storage';
 import { createBlankTemplate } from './seed-library';
 
-const catalog: PersistedLibraryV2 = { version: 2, devices: [], assets: {} };
+const catalog: PersistedLibraryV2 = {
+  version: 2,
+  seedRevision: LIBRARY_SEED_REVISION,
+  devices: [],
+  assets: {},
+};
 
 function responseFor(value: unknown, headers: Record<string, string> = {}): Response {
   const body = typeof value === 'string' ? value : JSON.stringify(value);
@@ -31,7 +36,7 @@ describe('shared library API client', () => {
     expect(fetcher).toHaveBeenCalledWith('/api/library', { method: 'GET' });
   });
 
-  it('reports a deterministic physical seed migration without classifying it as corruption', async () => {
+  it('accepts known physical and passive seed migrations from an older central catalog', async () => {
     const oldNano = {
       libraryId: 'lib-arduino-nano',
       template: {
@@ -57,6 +62,15 @@ describe('shared library API client', () => {
 
     expect(result).toMatchObject({ kind: 'loaded', initialized: true, needsUpgrade: true });
     if (result.kind !== 'loaded') throw new Error('Expected a migrated central catalog');
+    expect(result.catalog.devices.map((device) => device.libraryId)).toEqual([
+      'lib-arduino-nano',
+      'lib-buzzer-active-12mm',
+      'lib-resistor-1k',
+      'lib-resistor-1k8',
+      'lib-capacitor-electrolytic-470uf',
+      'lib-capacitor-electrolytic-470uf-16v',
+      'lib-capacitor-ceramic-100nf',
+    ]);
     expect(result.catalog.devices[0]?.template).toMatchObject({
       model: 'Nano local',
       footprintId: 'arduino-nano',

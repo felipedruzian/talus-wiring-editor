@@ -135,6 +135,37 @@ function baseDetachedFootprintProject() {
   return raw;
 }
 
+function baseAxialFootprintProject() {
+  const raw = baseDetachedFootprintProject();
+  const layout = raw.layout.components[0];
+  layout.footprintId = 'resistor-1k';
+  layout.footprint = {
+    id: 'resistor-1k',
+    label: '1 kOhm',
+    rows: 1,
+    cols: 5,
+    axialSpan: 4,
+    pins: [
+      {
+        id: 'a',
+        label: '1',
+        cell: { row: 0, col: 0 },
+        artworkPoint: { x: 0, y: 0 },
+        primary: true,
+      },
+      {
+        id: 'b',
+        label: '2',
+        cell: { row: 0, col: 4 },
+        artworkPoint: { x: 4, y: 0 },
+      },
+    ],
+    shapes: [{ kind: 'line', x1: 0, y1: 0, x2: 4, y2: 0, stroke: 'lead' }],
+    physicalBounds: { x: 0.62, y: -0.59, width: 2.76, height: 1.18 },
+  };
+  return raw;
+}
+
 function changed(name, change) {
   const raw = basePhysicalProject();
   change(raw);
@@ -274,6 +305,12 @@ function legacyArtworkGapProject() {
     },
   };
   return raw;
+}
+
+function changedAxial(name, change) {
+  const raw = baseAxialFootprintProject();
+  change(raw);
+  return { name, accepted: false, raw };
 }
 
 const completeGridWithoutHoleList = basePhysicalProject();
@@ -588,6 +625,11 @@ export const canonicalValidationCorpus = [
       return raw;
     })(),
   },
+  {
+    name: 'accepts and preserves an adjustable axial resistor span',
+    accepted: true,
+    raw: baseAxialFootprintProject(),
+  },
   changed('rejects footprintId without an embedded footprint', (raw) => {
     delete raw.layout.components[0].footprint;
   }),
@@ -608,6 +650,21 @@ export const canonicalValidationCorpus = [
   }),
   changedDetached('rejects a detached footprint pitch above the operational limit', (raw) => {
     raw.layout.components[0].footprintPitch = OPERATIONAL_LIMITS.maxBoardPitch + 1;
+  }),
+  changedAxial('rejects an axial resistor span below its minimum', (raw) => {
+    raw.layout.components[0].footprint.axialSpan = 3;
+  }),
+  changedAxial('rejects an axial resistor span above its maximum', (raw) => {
+    raw.layout.components[0].footprint.axialSpan = 11;
+  }),
+  changedAxial('rejects a fractional axial resistor span', (raw) => {
+    raw.layout.components[0].footprint.axialSpan = 4.5;
+  }),
+  changedAxial('rejects axial dimensions that disagree with the selected span', (raw) => {
+    raw.layout.components[0].footprint.cols = 6;
+  }),
+  changedAxial('rejects axial terminals that do not occupy both span endpoints', (raw) => {
+    raw.layout.components[0].footprint.pins[1].cell.col = 3;
   }),
   changed('rejects footprint rotation together with placement', (raw) => {
     raw.layout.components[0].footprintRotation = 90;

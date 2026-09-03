@@ -5,7 +5,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ArtworkAssetStore, type RasterArtworkAsset } from '../artwork/artwork-asset.store';
 import {
   ARDUINO_NANO_ARTWORK,
+  BUZZER_ACTIVE_12MM_ARTWORK,
+  CAPACITOR_CERAMIC_100NF_ARTWORK,
+  CAPACITOR_ELECTROLYTIC_470UF_25V_ARTWORK,
   GY_521_MPU6050_ARTWORK,
+  RESISTOR_AXIAL_1K_ARTWORK,
   TB6612FNG_ARTWORK,
 } from '../artwork/trusted-component-artwork';
 import { holeLocalPoint } from '../model/board-geometry';
@@ -16,7 +20,12 @@ import {
   placementNodePosition,
   resolveFootprintPinHoles,
 } from '../model/footprint-geometry';
-import { ARDUINO_NANO_FOOTPRINT, RESISTOR_1K_FOOTPRINT, type Footprint } from '../model/footprint';
+import {
+  ARDUINO_NANO_FOOTPRINT,
+  RESISTOR_1K_FOOTPRINT,
+  resizeAxialFootprintSpan,
+  type Footprint,
+} from '../model/footprint';
 import {
   NodeTemplateType,
   type BoardNodeData,
@@ -389,7 +398,7 @@ describe('FootprintNodeComponent raster artwork', () => {
   });
 });
 
-describe('FootprintNodeComponent bundled physical modules', () => {
+describe('FootprintNodeComponent bundled physical figures', () => {
   const cases = [
     {
       libraryId: 'lib-arduino-nano',
@@ -408,6 +417,24 @@ describe('FootprintNodeComponent bundled physical modules', () => {
       artwork: TB6612FNG_ARTWORK,
       viewBox: '-0.75 -0.75 8.5 7.5',
       ports: 16,
+    },
+    {
+      libraryId: 'lib-buzzer-active-12mm',
+      artwork: BUZZER_ACTIVE_12MM_ARTWORK,
+      viewBox: '-0.86 -2.36 4.72 4.72',
+      ports: 2,
+    },
+    {
+      libraryId: 'lib-capacitor-electrolytic-470uf',
+      artwork: CAPACITOR_ELECTROLYTIC_470UF_25V_ARTWORK,
+      viewBox: '-0.97 -1.97 3.94 3.94',
+      ports: 2,
+    },
+    {
+      libraryId: 'lib-capacitor-ceramic-100nf',
+      artwork: CAPACITOR_CERAMIC_100NF_ARTWORK,
+      viewBox: '-0.75 -0.85 3.5 1.7',
+      ports: 2,
     },
   ] as const;
 
@@ -430,7 +457,12 @@ describe('FootprintNodeComponent bundled physical modules', () => {
     const image = svg?.querySelector('image');
 
     expect(box?.classList.contains('footprint-node--integral')).toBe(true);
-    expect(svg?.getAttribute('viewBox')).toBe(testCase.viewBox);
+    const actualViewBox = svg?.getAttribute('viewBox')?.split(' ').map(Number);
+    const expectedViewBox = testCase.viewBox.split(' ').map(Number);
+    expect(actualViewBox).toHaveLength(expectedViewBox.length);
+    expectedViewBox.forEach((value, index) => {
+      expect(actualViewBox?.[index]).toBeCloseTo(value);
+    });
     expect(image?.getAttribute('href')).toBe(testCase.artwork.href);
     expect(image?.getAttribute('width')).toBe(String(testCase.artwork.bounds.width));
     expect(image?.getAttribute('height')).toBe(String(testCase.artwork.bounds.height));
@@ -490,5 +522,48 @@ describe('FootprintNodeComponent bundled physical modules', () => {
         breadboard.position.y + target.y,
       );
     }
+  });
+
+  it.each([4, 10])('keeps the axial resistor body rigid while rendering span %s', (span) => {
+    const resized = resizeAxialFootprintSpan(RESISTOR_1K_FOOTPRINT, span);
+    if (!resized.ok) throw new Error(resized.message);
+    const node: Node<DeviceNodeData> = {
+      id: `resistor-${span}`,
+      type: NodeTemplateType.FootprintNode,
+      position: { x: 0, y: 0 },
+      data: {
+        type: 'device',
+        deviceId: `R${span}`,
+        manufacturer: 'Generic',
+        model: 'Resistor axial 1 kOhm',
+        footprintId: resized.footprint.id,
+        footprint: resized.footprint,
+        footprintRotation: 0,
+        footprintPitch: PITCH,
+        ports: [
+          { id: 'a', label: '1', direction: 'input' },
+          { id: 'b', label: '2', direction: 'output' },
+        ],
+      },
+    };
+
+    const { host } = render(node);
+    const svg = host.querySelector('svg');
+    const image = svg?.querySelector('image');
+    const lead = svg?.querySelector('line');
+
+    expect(
+      host.querySelector('.footprint-node')?.classList.contains('footprint-node--integral'),
+    ).toBe(true);
+    expect(image?.getAttribute('href')).toBe(RESISTOR_AXIAL_1K_ARTWORK.href);
+    expect(image?.getAttribute('width')).toBe('2.76');
+    expect(image?.getAttribute('height')).toBe('1.18');
+    expect(Number(image?.getAttribute('transform')?.split(' ').at(-2))).toBeCloseTo(
+      span / 2 - 1.38,
+    );
+    expect(lead?.getAttribute('x1')).toBe('0');
+    expect(lead?.getAttribute('x2')).toBe(String(span));
+    expect(svg?.querySelectorAll('.footprint-node__pin-pad')).toHaveLength(2);
+    expect(host.querySelectorAll('.footprint-node__port')).toHaveLength(2);
   });
 });

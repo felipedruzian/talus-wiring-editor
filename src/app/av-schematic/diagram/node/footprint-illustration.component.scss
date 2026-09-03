@@ -1,0 +1,39 @@
+:host {
+  display: block;
+
+  --footprint-body: #286f8f;
+  --footprint-body-alt: #162d3a;
+  --footprint-accent: #f2c94c;
+  --footprint-lead: #b9c0c7;
+  --footprint-silk: #f8fafc;
+  --footprint-polarity: #d9e2ec;
+}
+
+.footprint-illustration {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+
+  rect,
+  circle,
+  line {
+    stroke-width: 1px;
+  }
+
+  text {
+    font-family: inherit;
+    font-weight: 700;
+    dominant-baseline: middle;
+  }
+}
+
+.footprint-illustration__pin-pad {
+  fill: var(--footprint-lead);
+  stroke: #454c54;
+  stroke-width: 0.06;
+}
+
+.footprint-illustration__pin-pad--primary {
+  fill: var(--footprint-accent);
+}

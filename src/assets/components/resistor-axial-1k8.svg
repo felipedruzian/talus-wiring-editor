@@ -1,0 +1,82 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="-1.38 -0.59 2.76 1.18"
+  width="2.76"
+  height="1.18"
+  fill="none"
+  role="img"
+  aria-labelledby="resistor1k8-title resistor1k8-description"
+  preserveAspectRatio="xMidYMid meet"
+  data-artwork-id="resistor-axial-1k8"
+  data-asset-revision="2026-09-03"
+  data-asset-license="MIT"
+  data-pitch-unit="1"
+  data-body-width-pitch="2.56"
+  data-body-height-pitch="0.98"
+  data-body-anchor="midpoint"
+  data-terminal-axis="x"
+  data-terminal-model="renderer-adjustable"
+  data-band-code="brown-gray-red-gold"
+>
+  <title id="resistor1k8-title">Corpo de resistor axial de 1,8 kOhm em escala de pitch</title>
+  <desc id="resistor1k8-description">
+    Ilustração original apenas do corpo rígido de 2,56 por 0,98 pitches. Os leads e o vão entre
+    furos pertencem ao renderer para que o corpo e as bandas não sejam deformados.
+  </desc>
+
+  <rect
+    data-body-shape="true"
+    x="-1.28"
+    y="-0.49"
+    width="2.56"
+    height="0.98"
+    rx="0.45"
+    fill="#d7b47a"
+  />
+  <path d="M-1.08 -0.34V0.34M1.08 -0.34V0.34" stroke="#ad8146" stroke-width="0.14" />
+  <rect
+    data-band-color="brown"
+    x="-0.73"
+    y="-0.46"
+    width="0.18"
+    height="0.92"
+    rx="0.04"
+    fill="#6d3d1d"
+  />
+  <rect
+    data-band-color="gray"
+    x="-0.31"
+    y="-0.46"
+    width="0.18"
+    height="0.92"
+    rx="0.04"
+    fill="#73797d"
+  />
+  <rect
+    data-band-color="red"
+    x="0.11"
+    y="-0.46"
+    width="0.18"
+    height="0.92"
+    rx="0.04"
+    fill="#c93632"
+  />
+  <rect
+    data-band-color="gold"
+    x="0.73"
+    y="-0.46"
+    width="0.18"
+    height="0.92"
+    rx="0.04"
+    fill="#c9a227"
+  />
+  <rect
+    x="-1.28"
+    y="-0.49"
+    width="2.56"
+    height="0.98"
+    rx="0.45"
+    stroke="#76542c"
+    stroke-width="0.08"
+  />
+</svg>

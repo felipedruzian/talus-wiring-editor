@@ -1,7 +1,10 @@
 import { type Edge, type Node } from 'ng-diagram';
 import { describe, expect, it } from 'vitest';
 import { diagramModel } from '../data';
-import { trustedArtworkForFootprint } from '../artwork/trusted-component-artwork';
+import {
+  trustedArtworkForFootprint,
+  trustedArtworkForFootprintDefinition,
+} from '../artwork/trusted-component-artwork';
 import { SEED_LIBRARY } from '../../library-sidebar/seed-library';
 import {
   CanonicalProjectError,
@@ -701,19 +704,22 @@ describe('canonical project round-trip', () => {
     expect(toCanonicalProject(reopened.nodes, reopened.edges)).toEqual(saved);
   });
 
-  it('round-trips every bundled physical module with its trusted definition and rotation', () => {
-    const modules = SEED_LIBRARY.filter((candidate) =>
-      ['lib-arduino-nano', 'lib-mpu6050-gy521', 'lib-tb6612fng'].includes(candidate.libraryId),
+  it('round-trips every bundled physical figure with its trusted definition and rotation', () => {
+    const figures = SEED_LIBRARY.filter((candidate) =>
+      candidate.template.footprint
+        ? trustedArtworkForFootprintDefinition(candidate.template.footprint) !== undefined
+        : false,
     );
 
-    for (const [index, module] of modules.entries()) {
+    expect(figures).toHaveLength(9);
+    for (const [index, figure] of figures.entries()) {
       const node: Node<DeviceNodeData> = {
-        id: `module-${index}`,
+        id: `figure-${index}`,
         type: NodeTemplateType.FootprintNode,
         position: { x: 100 + index * 25.5, y: 200 - index * 13.25 },
         data: {
-          ...clone(module.template),
-          deviceId: `MODULE-${index}`,
+          ...clone(figure.template),
+          deviceId: `FIGURE-${index}`,
           footprintRotation: 90,
           footprintPitch: 17,
         },
@@ -728,6 +734,10 @@ describe('canonical project round-trip', () => {
       expect(rebuilt.data.footprintPitch).toBe(17);
       expect(rebuilt.data.footprint).toEqual(node.data.footprint);
       expect(trustedArtworkForFootprint(rebuilt.data.footprint?.id)).toBeDefined();
+      expect(trustedArtworkForFootprintDefinition(must(rebuilt.data.footprint))).toBeDefined();
+      if (figure.libraryId.startsWith('lib-resistor-')) {
+        expect(rebuilt.data.footprint?.axialSpan).toBe(4);
+      }
       expect(toCanonicalProject(reopened.nodes, reopened.edges)).toEqual(saved);
     }
   });

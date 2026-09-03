@@ -51,6 +51,7 @@ import {
   rigidArtworkFitsBoard,
 } from './footprint-geometry';
 import {
+  isCoherentAxialFootprint,
   type Footprint,
   type FootprintCell,
   type FootprintPaint,
@@ -1157,6 +1158,11 @@ function validateBoard(board: CanonicalBoard): void {
 }
 
 function validateFootprint(footprint: Footprint, label: string): void {
+  if (footprint.axialSpan !== undefined && !isCoherentAxialFootprint(footprint)) {
+    throw new CanonicalProjectError(
+      `${label}.axialSpan: expected an integer from 4 to 10 with pins at both endpoints`,
+    );
+  }
   const pinIds = new Set<string>();
   const occupiedPinCells = new Set<string>();
   const occupiedPhysicalPoints = new Map<string, string>();
@@ -1781,6 +1787,10 @@ function parseFootprint(raw: unknown, label: string): Footprint {
       OPERATIONAL_LIMITS.maxFootprintCols,
       'column count',
     ),
+    axialSpan:
+      obj['axialSpan'] === undefined
+        ? undefined
+        : expectPositiveInteger(obj['axialSpan'], `${label}.axialSpan`),
     pins: expectArray(obj['pins'], `${label}.pins`).map((pin, index) =>
       parseFootprintPin(pin, `${label}.pins[${index}]`),
     ),

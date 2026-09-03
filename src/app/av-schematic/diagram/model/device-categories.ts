@@ -14,6 +14,9 @@ export const DEVICE_CATEGORY_PREFIXES: Readonly<Record<string, string>> = {
   'motor-driver': 'DRV',
   'voltage-regulator': 'REG',
   'hall-sensor': 'HALL',
+  buzzer: 'BZ',
+  resistor: 'R',
+  capacitor: 'C',
 };
 
 export const DEVICE_CATEGORIES: readonly string[] = Object.keys(DEVICE_CATEGORY_PREFIXES);
@@ -34,6 +37,9 @@ export const DEVICE_CATEGORY_LABELS: Readonly<Record<string, string>> = {
   'motor-driver': 'Drivers de motor',
   'voltage-regulator': 'Reguladores de tensão',
   'hall-sensor': 'Sensores Hall',
+  buzzer: 'Buzzers',
+  resistor: 'Resistores',
+  capacitor: 'Capacitores',
 };
 
 export const deviceCategoryLabel = (category: string): string =>

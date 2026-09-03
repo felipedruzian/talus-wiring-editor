@@ -9,9 +9,14 @@ import {
   viewChild,
 } from '@angular/core';
 import { ArtworkAssetStore } from '../../../diagram/artwork/artwork-asset.store';
-import { trustedArtworkForFootprintDefinition } from '../../../diagram/artwork/trusted-component-artwork';
+import {
+  trustedArtworkForFootprint,
+  trustedArtworkForFootprintDefinition,
+} from '../../../diagram/artwork/trusted-component-artwork';
 import { footprintDrawnExtent } from '../../../diagram/model/footprint-geometry';
 import {
+  isCoherentAxialFootprint,
+  resizeAxialFootprintSpan,
   type Footprint,
   type FootprintCell,
   type FootprintPin,
@@ -21,6 +26,7 @@ import {
   type DevicePort,
   type PortDirection,
 } from '../../../diagram/model/interfaces';
+import { FootprintIllustrationComponent } from '../../../diagram/node/footprint-illustration.component';
 import { DeviceFormService } from '../../../device-form/device-form.service';
 import { CONNECTOR_TYPES } from '../../../shared/ui/ports-editor/connector-types';
 import {
@@ -38,6 +44,7 @@ interface EditablePin {
 
 @Component({
   selector: 'app-physical-component-editor',
+  imports: [FootprintIllustrationComponent],
   templateUrl: './physical-component-editor.component.html',
   styleUrl: './physical-component-editor.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -53,6 +60,12 @@ export class PhysicalComponentEditorComponent {
   protected readonly draft = this.draftService.draft;
   protected readonly footprint = computed(() => this.draft().footprint ?? null);
   protected readonly isPhysical = computed(() => this.footprint() !== null);
+  protected readonly bundledArtwork = computed(() =>
+    trustedArtworkForFootprint(this.footprint()?.id),
+  );
+  protected readonly isAdjustableAxial = computed(
+    () => this.bundledArtwork()?.terminalModel === 'adjustable-axial',
+  );
   protected readonly connectorTypes = CONNECTOR_TYPES;
   protected readonly uploadBusy = signal(false);
   protected readonly uploadError = signal<string | null>(null);
@@ -81,8 +94,12 @@ export class PhysicalComponentEditorComponent {
     if (raster && rasterAsset) {
       return { source: rasterAsset.dataUrl, geometry: raster, trusted: false };
     }
-    const trusted = trustedArtworkForFootprintDefinition(footprint);
-    return trusted ? { source: trusted.href, geometry: trusted.bounds, trusted: true } : null;
+    return null;
+  });
+  protected readonly trustedPreviewFootprint = computed(() => {
+    const footprint = this.footprint();
+    if (!footprint || footprint.artwork) return null;
+    return trustedArtworkForFootprintDefinition(footprint) ? footprint : null;
   });
   protected readonly extent = computed(() => {
     const footprint = this.footprint();
@@ -168,6 +185,7 @@ export class PhysicalComponentEditorComponent {
   }
 
   protected disablePhysical(): void {
+    if (this.bundledArtwork()) return;
     this.formService.commitPendingEdits();
     this.draftService.update((draft) => ({
       ...draft,
@@ -188,10 +206,19 @@ export class PhysicalComponentEditorComponent {
   }
 
   protected updateDimension(field: 'rows' | 'cols', event: Event): void {
+    if (this.isAdjustableAxial()) return;
     const raw = Number(inputValue(event));
     const footprint = this.footprint();
     if (!Number.isFinite(raw) || !footprint) return;
     const result = resizeFootprintGrid(footprint, field, raw);
+    this.dimensionError.set(result.ok ? null : result.message);
+    if (result.ok) this.updateFootprint(() => result.footprint);
+  }
+
+  protected updateAxialSpan(event: Event): void {
+    const footprint = this.footprint();
+    if (!footprint) return;
+    const result = resizeAxialFootprintSpan(footprint, Number(inputValue(event)));
     this.dimensionError.set(result.ok ? null : result.message);
     if (result.ok) this.updateFootprint(() => result.footprint);
   }
@@ -387,6 +414,7 @@ export class PhysicalComponentEditorComponent {
   }
 
   protected addPin(): void {
+    if (this.isAdjustableAxial()) return;
     const footprint = this.footprint();
     if (!footprint) return;
     const id = nextPinId(footprint.pins.map((pin) => pin.id));
@@ -410,6 +438,7 @@ export class PhysicalComponentEditorComponent {
   }
 
   protected removePin(index: number): void {
+    if (this.isAdjustableAxial()) return;
     const oldId = this.footprint()?.pins[index]?.id;
     if (oldId === undefined) return;
     this.draftService.update((draft) => ({
@@ -425,6 +454,7 @@ export class PhysicalComponentEditorComponent {
   }
 
   protected updatePinText(index: number, field: 'id' | 'label', event: Event): void {
+    if (field === 'id' && this.isAdjustableAxial()) return;
     const value = inputValue(event);
     this.draftService.update((draft) => {
       const footprint = draft.footprint;
@@ -472,6 +502,7 @@ export class PhysicalComponentEditorComponent {
   }
 
   protected updatePrimary(index: number, event: Event): void {
+    if (this.isAdjustableAxial()) return;
     const checked = (event.target as HTMLInputElement).checked;
     this.updateFootprint((footprint) => ({
       ...footprint,
@@ -514,6 +545,7 @@ export class PhysicalComponentEditorComponent {
   }
 
   protected toggleBodyCell(cell: FootprintCell): void {
+    if (this.isAdjustableAxial()) return;
     this.updateFootprint((footprint) => {
       const current = footprint.bodyCells ?? allCells(footprint.rows, footprint.cols);
       const key = cellKey(cell);
@@ -528,10 +560,12 @@ export class PhysicalComponentEditorComponent {
   }
 
   protected occupyAllCells(): void {
+    if (this.isAdjustableAxial()) return;
     this.updateFootprint((footprint) => ({ ...footprint, bodyCells: undefined }));
   }
 
   protected occupyPinCells(): void {
+    if (this.isAdjustableAxial()) return;
     this.updateFootprint((footprint) => ({
       ...footprint,
       bodyCells: uniqueCells(footprint.pins.map((pin) => pin.cell)),
@@ -559,6 +593,7 @@ export class PhysicalComponentEditorComponent {
   }
 
   private setPinCell(index: number, cell: FootprintCell): void {
+    if (this.isAdjustableAxial()) return;
     this.updateFootprint((footprint) => ({
       ...footprint,
       pins: footprint.pins.map((pin, pinIndex) =>
@@ -609,6 +644,9 @@ export function validatePhysicalDraft(data: DeviceNodeData): string | null {
   if (!footprint) return null;
   if (data.footprintId !== footprint.id) return 'O ID do footprint está inconsistente.';
   if (!footprint.label.trim()) return 'Informe um nome para o footprint.';
+  if (footprint.axialSpan !== undefined && !isCoherentAxialFootprint(footprint)) {
+    return 'O vão axial deve ser inteiro entre 4 e 10 passos, com terminais nas extremidades.';
+  }
   const ids = footprint.pins.map((pin) => pin.id.trim());
   if (ids.some((id) => id === '')) return 'Todo terminal precisa de um ID.';
   if (new Set(ids).size !== ids.length) return 'Os IDs dos terminais precisam ser únicos.';
@@ -637,6 +675,12 @@ export function resizeFootprintGrid(
   field: 'rows' | 'cols',
   requestedValue: number,
 ): FootprintGridResizeResult {
+  if (footprint.axialSpan !== undefined) {
+    return {
+      ok: false,
+      message: 'Use o controle de vão axial para redimensionar este resistor.',
+    };
+  }
   const value = Math.max(1, Math.min(64, Math.round(requestedValue)));
   const rows = field === 'rows' ? value : footprint.rows;
   const cols = field === 'cols' ? value : footprint.cols;

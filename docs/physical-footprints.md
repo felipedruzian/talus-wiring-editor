@@ -185,11 +185,42 @@ As definições em `diagram/model/footprint.ts` usam unidades de furo, não
 pixels. Elas descrevem caixa, pinos e formas vetoriais originais. O tamanho em
 pixels é derivado do pitch da placa no momento da renderização.
 
-Nano, GY-521 e TB6612FNG usam ainda o registro vetorial confiável
+Nano, GY-521, TB6612FNG, buzzer ativo, resistores axiais de 1 kOhm e
+1,8 kOhm e capacitores de 470 uF e 100 nF usam o registro vetorial confiável
 `diagram/artwork/trusted-component-artwork.ts`. O mesmo contrato versionado
 declara o SVG local, o envelope e todos os terminais em pitch; canvas, paleta,
 pré-visualização, snap, ocupação e exportadores partem dessa definição. Ele não
 é armazenado como upload raster nem usa `dataUrl`/`assetHash`.
+
+### Passivos físicos
+
+Os cinco itens adicionados à biblioteca pela issue #33 são sempre
+`FootprintNode`: não possuem fallback para o card retangular. Buzzer e
+capacitor eletrolítico expõem os IDs `plus` e `minus`, e a polaridade permanece
+visível tanto na figura integral quanto nos terminais elétricos. O capacitor
+cerâmico é explicitamente não polarizado. Os passos físicos do catálogo são:
+
+| Componente | Distância entre terminais | Observação |
+| --- | ---: | --- |
+| Buzzer ativo 12 mm | 3 pitches | polarizado (`+` / `-`) |
+| Resistor axial 1 kOhm | 4 a 10 pitches | vão inteiro ajustável |
+| Resistor axial 1,8 kOhm | 4 a 10 pitches | vão inteiro ajustável |
+| Capacitor eletrolítico 470 uF / 25 V | 2 pitches | polarizado (`+` / `-`) |
+| Capacitor cerâmico 100 nF | 2 pitches | não polarizado |
+
+Nos resistores, `Footprint.axialSpan` é a fonte de verdade persistida. Alterar
+o vão move apenas o segundo terminal e estende os leads; o corpo de 2,56 × 0,98
+pitches e suas bandas permanecem rígidos e são recentralizados no ponto médio.
+Somente inteiros de 4 a 10 são aceitos pelo editor, pela biblioteca e pelos
+validadores canônicos do cliente e do serviço. A ilustração estática da paleta
+e do editor reutiliza os mesmos cálculos de formas, pads, envelope e origem do
+nó interativo; SVG/PNG capturam essa árvore e o DXF consome a mesma geometria
+em pitch.
+
+O asset alternativo de 470 uF / 16 V com leads conformados permanece registrado
+como provisório para uso futuro, mas a entrada padrão da biblioteca é a variante
+de 25 V. As dimensões provisórias não devem ser usadas como medida do hardware
+antes da conferência física registrada na matriz de licenças.
 
 O catálogo desse arquivo serve para criar itens da paleta e para nós legados
 que ainda vivem apenas em memória. Ao salvar um componente físico, sua
@@ -276,6 +307,8 @@ Os campos físicos opcionais são:
 - componentes físicos preservam `footprintId`, a definição `footprint` e
   `placement`; quando desencaixados, `footprintRotation` e `footprintPitch`
   mantêm a geometria visual sem fingir que ainda existe um encaixe;
+- resistores axiais preservam também `footprint.axialSpan`; os validadores
+  exigem que `cols`, os dois terminais e o intervalo de 4 a 10 concordem;
 - a junção de cobre usa `boardId` e `boardPort` no layout;
 - um jumper local usa `boardJumper: { boardId, bends? }`; os endpoints são
   derivados dos furos/taps e somente as dobras intermediárias usam coordenadas
@@ -370,7 +403,10 @@ normalizada.
 
 As antigas peças D e F e seus capacitores não fazem mais parte do seed: os dois
 bulk pertencem à placa de ensaio superior já montada. O seed preserva as peças
-E e G e seus resistores. O TB6612FNG agora aparece como footprint físico solto:
+E e G e seus resistores. Os dois resistores do divisor UART da peça E conservam
+o vão histórico de 2 pitches em footprints vetoriais internos separados; eles
+não são os resistores ajustáveis oferecidos ao usuário, cujo contrato começa em
+4 pitches. O TB6612FNG agora aparece como footprint físico solto:
 seu envelope provisório correto tem sete linhas e, portanto, não cabe na placa
 de origem de seis linhas sem produzir um encaixe falso. Os demais componentes
 externos continuam ligados diretamente a furos ou trilhas.

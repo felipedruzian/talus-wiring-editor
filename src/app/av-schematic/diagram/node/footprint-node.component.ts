@@ -357,6 +357,7 @@ export class FootprintNodeComponent implements NgDiagramNodeTemplate<DeviceNodeD
       if (!asset) return null;
       return {
         kind: 'uploaded-raster' as const,
+        terminalModel: null,
         href: asset.dataUrl,
         width: rasterDefinition.width,
         height: rasterDefinition.height,
@@ -369,6 +370,7 @@ export class FootprintNodeComponent implements NgDiagramNodeTemplate<DeviceNodeD
     if (!trusted) return null;
     return {
       kind: trusted.kind,
+      terminalModel: trusted.terminalModel,
       href: trusted.href,
       width: trusted.bounds.width,
       height: trusted.bounds.height,
@@ -380,6 +382,15 @@ export class FootprintNodeComponent implements NgDiagramNodeTemplate<DeviceNodeD
 
   protected readonly integralArtwork = computed(
     () => this.artwork()?.kind === 'trusted-component-svg',
+  );
+
+  protected readonly renderShapes = computed(() => {
+    const artwork = this.artwork();
+    return artwork === null || artwork.terminalModel === 'adjustable-axial';
+  });
+
+  protected readonly renderPads = computed(
+    () => this.artwork()?.terminalModel !== 'integral-fixed',
   );
 
   protected readonly pads = computed<FootprintPadView[]>(() => {

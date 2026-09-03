@@ -286,6 +286,25 @@ function detachedFootprintProject() {
   return project;
 }
 
+function detachedAxialResistorProject() {
+  const project = detachedFootprintProject();
+  const layout = project.layout.components[0];
+  layout.footprintId = 'resistor-1k';
+  layout.footprint = {
+    id: 'resistor-1k',
+    label: '1 kOhm',
+    rows: 1,
+    cols: 5,
+    axialSpan: 4,
+    pins: [
+      { id: 'a', label: '1', cell: { row: 0, col: 0 }, primary: true },
+      { id: 'b', label: '2', cell: { row: 0, col: 4 } },
+    ],
+    shapes: [{ kind: 'line', x1: 0, y1: 0, x2: 4, y2: 0, stroke: 'lead' }],
+  };
+  return project;
+}
+
 function canonicalCableBudgetPayload(total) {
   const project = emptyV2Payload();
   let remaining = total;
@@ -340,6 +359,7 @@ describe('wiring-editor-server', () => {
       const etag = initial.headers.get('etag');
       const catalog = {
         version: 2,
+        seedRevision: 3,
         devices: [
           {
             libraryId: 'lib-custom-test',
@@ -411,6 +431,78 @@ describe('wiring-editor-server', () => {
       expect(responses.map((response) => response.status).sort()).toEqual([200, 412]);
       const stored = await (await fetch(`${server.baseUrl}/api/library`)).json();
       expect(catalogs).toContainEqual(stored);
+    });
+
+    it('accepts only coherent adjustable axial footprints in the shared library', async () => {
+      const initial = await fetch(`${server.baseUrl}/api/library`);
+      const etag = initial.headers.get('etag');
+      const catalog = {
+        version: 2,
+        seedRevision: 3,
+        devices: [
+          {
+            libraryId: 'lib-resistor-1k',
+            template: {
+              type: 'device',
+              deviceId: '',
+              manufacturer: 'Talus',
+              model: 'Resistor 1 kOhm',
+              ports: [
+                { id: 'a', label: '1', direction: 'input' },
+                { id: 'b', label: '2', direction: 'output' },
+              ],
+              footprintId: 'resistor-1k',
+              footprint: {
+                id: 'resistor-1k',
+                label: '1 kOhm',
+                rows: 1,
+                cols: 5,
+                axialSpan: 4,
+                pins: [
+                  { id: 'a', label: '1', cell: { row: 0, col: 0 }, primary: true },
+                  { id: 'b', label: '2', cell: { row: 0, col: 4 } },
+                ],
+                shapes: [],
+              },
+            },
+          },
+        ],
+        assets: {},
+      };
+
+      const accepted = await fetch(`${server.baseUrl}/api/library`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'If-Match': etag },
+        body: JSON.stringify(catalog),
+      });
+      expect(accepted.status).toBe(200);
+      expect(await (await fetch(`${server.baseUrl}/api/library`)).json()).toEqual(catalog);
+
+      const invalid = structuredClone(catalog);
+      invalid.devices[0].template.footprint.cols = 6;
+      const rejected = await fetch(`${server.baseUrl}/api/library`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'If-Match': accepted.headers.get('etag'),
+        },
+        body: JSON.stringify(invalid),
+      });
+      expect(rejected.status).toBe(400);
+      expect(await (await fetch(`${server.baseUrl}/api/library`)).json()).toEqual(catalog);
+
+      const futureRevision = structuredClone(catalog);
+      futureRevision.seedRevision = 4;
+      const futureRejected = await fetch(`${server.baseUrl}/api/library`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'If-Match': accepted.headers.get('etag'),
+        },
+        body: JSON.stringify(futureRevision),
+      });
+      expect(futureRejected.status).toBe(400);
+      expect(await (await fetch(`${server.baseUrl}/api/library`)).json()).toEqual(catalog);
     });
 
     it('rejects forged artwork, SVG assets and dangling artwork references', async () => {
@@ -755,6 +847,28 @@ describe('wiring-editor-server', () => {
         pinHoles: [
           { pinId: 'a', hole: { row: 2, col: 1 } },
           { pinId: 'b', hole: { row: 2, col: 2 } },
+        ],
+      });
+    });
+
+    it('preserves an adjustable axial span through PUT and GET', async () => {
+      const project = detachedAxialResistorProject();
+      const putRes = await fetch(`${server.baseUrl}/api/projects/axial-resistor`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(putRes.status).toBe(200);
+
+      const saved = await (await fetch(`${server.baseUrl}/api/projects/axial-resistor`)).json();
+      expect(saved.layout.components[0].footprint).toMatchObject({
+        id: 'resistor-1k',
+        rows: 1,
+        cols: 5,
+        axialSpan: 4,
+        pins: [
+          { id: 'a', cell: { row: 0, col: 0 } },
+          { id: 'b', cell: { row: 0, col: 4 } },
         ],
       });
     });

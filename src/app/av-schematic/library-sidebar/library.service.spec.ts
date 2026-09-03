@@ -1,10 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { resizeAxialFootprintSpan } from '../diagram/model/footprint';
 import { sha256HexSync } from './artwork-import';
 import { LibraryService } from './library.service';
 import {
   LEGACY_LIBRARY_STORAGE_KEY,
   LIBRARY_STORAGE_KEY,
+  LIBRARY_SEED_REVISION,
   LIBRARY_STORAGE_VERSION,
   MAX_LIBRARY_ASSETS,
   loadLibraryCatalog,
@@ -117,6 +119,38 @@ describe('LibraryService', () => {
     ).toBe(false);
   });
 
+  it('preserves an edited axial resistor span when the library is reopened', async () => {
+    const storage = new MemoryStorage();
+    vi.stubGlobal('localStorage', storage);
+    const service = createLibraryService();
+    const resistor = service.devices().find((device) => device.libraryId === 'lib-resistor-1k');
+    if (!resistor?.template.footprint) throw new Error('Expected the physical resistor seed');
+    const resized = resizeAxialFootprintSpan(resistor.template.footprint, 10);
+    if (!resized.ok) throw new Error(resized.message);
+
+    await service.beginEdit(resistor.libraryId);
+    expect(
+      await service.commitDraft(resistor.libraryId, {
+        ...resistor.template,
+        footprint: resized.footprint,
+      }),
+    ).toBe(true);
+
+    const reopened = createLibraryService()
+      .devices()
+      .find((device) => device.libraryId === resistor.libraryId);
+    expect(reopened?.template.footprint).toMatchObject({
+      id: 'resistor-1k',
+      axialSpan: 10,
+      rows: 1,
+      cols: 11,
+      pins: [
+        { id: 'a', cell: { row: 0, col: 0 } },
+        { id: 'b', cell: { row: 0, col: 10 } },
+      ],
+    });
+  });
+
   it('falls back to seeds without rewriting invalid JSON, unknown versions or unsafe shapes', () => {
     const storage = new MemoryStorage();
 
@@ -128,6 +162,7 @@ describe('LibraryService', () => {
     expect(loadLibraryDevices(storage)).not.toBe(SEED_LIBRARY);
     const unsafe = JSON.stringify({
       version: LIBRARY_STORAGE_VERSION,
+      seedRevision: LIBRARY_SEED_REVISION,
       devices: [{ libraryId: 'bad' }],
       assets: {},
     });
@@ -149,6 +184,7 @@ describe('LibraryService', () => {
     };
     const serialized = JSON.stringify({
       version: LIBRARY_STORAGE_VERSION,
+      seedRevision: LIBRARY_SEED_REVISION,
       devices: [valid, { libraryId: 'broken', template: { type: 'nope' } }, valid],
       assets: {},
     });
@@ -314,6 +350,198 @@ describe('LibraryService', () => {
     });
     expect(nano?.ports).toHaveLength(30);
     expect(nano?.ports.find((port) => port.id === 'd9')?.label).toBe('D9 personalizado');
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
+  });
+
+  it('adds the passive seed revision once to a catalog saved before issue 33', () => {
+    const storage = new MemoryStorage();
+    const passiveIds = new Set([
+      'lib-buzzer-active-12mm',
+      'lib-resistor-1k',
+      'lib-resistor-1k8',
+      'lib-capacitor-electrolytic-470uf',
+      'lib-capacitor-electrolytic-470uf-16v',
+      'lib-capacitor-ceramic-100nf',
+    ]);
+    const oldSeeds = SEED_LIBRARY.filter((device) => !passiveIds.has(device.libraryId));
+    storage.setItem(
+      LIBRARY_STORAGE_KEY,
+      JSON.stringify({ version: LIBRARY_STORAGE_VERSION, devices: oldSeeds, assets: {} }),
+    );
+
+    const serialized = storage.getItem(LIBRARY_STORAGE_KEY);
+    const loaded = loadLibraryCatalog(storage);
+    expect(
+      loaded.catalog.devices.filter((device) => passiveIds.has(device.libraryId)),
+    ).toHaveLength(6);
+    expect(
+      loaded.catalog.devices
+        .filter((device) => passiveIds.has(device.libraryId))
+        .every((device) => device.template.footprint !== undefined),
+    ).toBe(true);
+    expect(loaded.needsUpgrade).toBe(true);
+    expect(loaded.needsRepair).toBe(false);
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
+  });
+
+  it('marks seed revision 1 for upgrade even when every passive is already present', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      LIBRARY_STORAGE_KEY,
+      JSON.stringify({
+        version: LIBRARY_STORAGE_VERSION,
+        seedRevision: 1,
+        devices: SEED_LIBRARY,
+        assets: {},
+      }),
+    );
+
+    const loaded = loadLibraryCatalog(storage);
+
+    expect(loaded.catalog.devices).toEqual(SEED_LIBRARY);
+    expect(loaded.needsUpgrade).toBe(true);
+    expect(loaded.needsRepair).toBe(false);
+  });
+
+  it('adds only the 16 V capacitor when upgrading a revision 2 catalog', () => {
+    const storage = new MemoryStorage();
+    const withoutBuzzerOr16V = SEED_LIBRARY.filter(
+      (device) =>
+        device.libraryId !== 'lib-buzzer-active-12mm' &&
+        device.libraryId !== 'lib-capacitor-electrolytic-470uf-16v',
+    );
+    storage.setItem(
+      LIBRARY_STORAGE_KEY,
+      JSON.stringify({
+        version: LIBRARY_STORAGE_VERSION,
+        seedRevision: 2,
+        devices: withoutBuzzerOr16V,
+        assets: {},
+      }),
+    );
+
+    const loaded = loadLibraryCatalog(storage);
+
+    expect(loaded.catalog.devices.map((device) => device.libraryId)).toEqual([
+      ...withoutBuzzerOr16V.map((device) => device.libraryId),
+      'lib-capacitor-electrolytic-470uf-16v',
+    ]);
+    expect(loaded.needsUpgrade).toBe(true);
+    expect(loaded.needsRepair).toBe(false);
+  });
+
+  it('preserves an intentional passive deletion from the current seed revision', () => {
+    const storage = new MemoryStorage();
+    const without16V = SEED_LIBRARY.filter(
+      (device) => device.libraryId !== 'lib-capacitor-electrolytic-470uf-16v',
+    );
+    storage.setItem(
+      LIBRARY_STORAGE_KEY,
+      JSON.stringify({
+        version: LIBRARY_STORAGE_VERSION,
+        seedRevision: LIBRARY_SEED_REVISION,
+        devices: without16V,
+        assets: {},
+      }),
+    );
+
+    const loaded = loadLibraryCatalog(storage);
+
+    expect(loaded.catalog.devices).toEqual(without16V);
+    expect(loaded.needsUpgrade).toBe(false);
+    expect(loaded.needsRepair).toBe(false);
+  });
+
+  it('does not PUT or restore a deleted passive in a current central catalog', async () => {
+    const storage = new MemoryStorage();
+    const without16V = SEED_LIBRARY.filter(
+      (device) => device.libraryId !== 'lib-capacitor-electrolytic-470uf-16v',
+    );
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      sharedCatalogResponse(
+        {
+          version: LIBRARY_STORAGE_VERSION,
+          seedRevision: LIBRARY_SEED_REVISION,
+          devices: without16V,
+          assets: {},
+        },
+        true,
+      ),
+    );
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const service = createLibraryService();
+    await vi.waitFor(() => {
+      expect(service.devices()).toEqual(without16V);
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledWith('/api/library', { method: 'GET' });
+  });
+
+  it('publishes only the new 16 V seed when migrating a central revision 2 catalog', async () => {
+    const storage = new MemoryStorage();
+    const withoutBuzzerOr16V = SEED_LIBRARY.filter(
+      (device) =>
+        device.libraryId !== 'lib-buzzer-active-12mm' &&
+        device.libraryId !== 'lib-capacitor-electrolytic-470uf-16v',
+    );
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        sharedCatalogResponse(
+          {
+            version: LIBRARY_STORAGE_VERSION,
+            seedRevision: 2,
+            devices: withoutBuzzerOr16V,
+            assets: {},
+          },
+          true,
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(null, { status: 200, headers: { ETag: `"${'b'.repeat(64)}"` } }),
+      );
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const service = createLibraryService();
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    const requestBody = fetchMock.mock.calls[1]?.[1]?.body;
+    if (typeof requestBody !== 'string') throw new Error('Expected a migration request body');
+    const migrated = JSON.parse(requestBody) as PersistedLibraryV2;
+    expect(migrated.seedRevision).toBe(LIBRARY_SEED_REVISION);
+    expect(migrated.devices.some((device) => device.libraryId === 'lib-buzzer-active-12mm')).toBe(
+      false,
+    );
+    expect(
+      migrated.devices.filter(
+        (device) => device.libraryId === 'lib-capacitor-electrolytic-470uf-16v',
+      ),
+    ).toHaveLength(1);
+    await vi.waitFor(() => {
+      expect(service.devices()).toEqual(migrated.devices);
+    });
+  });
+
+  it('reports a future seed revision as corruption instead of downgrading it', () => {
+    const storage = new MemoryStorage();
+    const serialized = JSON.stringify({
+      version: LIBRARY_STORAGE_VERSION,
+      seedRevision: LIBRARY_SEED_REVISION + 1,
+      devices: SEED_LIBRARY,
+      assets: {},
+    });
+    storage.setItem(LIBRARY_STORAGE_KEY, serialized);
+
+    const loaded = loadLibraryCatalog(storage);
+
+    expect(loaded.needsUpgrade).toBe(false);
+    expect(loaded.needsRepair).toBe(true);
     expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
   });
 
@@ -492,6 +720,7 @@ describe('LibraryService', () => {
     const { hash: unreferencedHash, ...persistedUnreferencedAsset } = unreferencedAsset;
     const remoteCatalog = {
       version: LIBRARY_STORAGE_VERSION,
+      seedRevision: LIBRARY_SEED_REVISION,
       devices: [oldNano, custom],
       assets: {
         [hash]: persistedAsset,

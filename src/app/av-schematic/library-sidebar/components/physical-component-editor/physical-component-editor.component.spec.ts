@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { cloneFootprint, RESISTOR_1K_FOOTPRINT } from '../../../diagram/model/footprint';
 import { type DeviceNodeData } from '../../../diagram/model/interfaces';
 import { resizeFootprintGrid, validatePhysicalDraft } from './physical-component-editor.component';
 
@@ -62,5 +63,30 @@ describe('physical component draft validation', () => {
       ok: true,
       footprint: { cols: 3 },
     });
+  });
+
+  it('accepts a coherent resistor span and rejects generic grid or invalid axial edits', () => {
+    const resistor: DeviceNodeData = {
+      type: 'device',
+      deviceId: '',
+      manufacturer: 'Generic',
+      model: 'Resistor axial 1 kOhm',
+      footprintId: RESISTOR_1K_FOOTPRINT.id,
+      footprint: cloneFootprint(RESISTOR_1K_FOOTPRINT),
+      ports: [
+        { id: 'a', label: '1', direction: 'input' },
+        { id: 'b', label: '2', direction: 'output' },
+      ],
+    };
+    const footprint = resistor.footprint;
+    const secondPin = footprint?.pins[1];
+    if (!footprint || !secondPin) throw new Error('Expected a complete resistor footprint');
+    expect(validatePhysicalDraft(resistor)).toBeNull();
+    expect(resizeFootprintGrid(footprint, 'cols', 8)).toMatchObject({ ok: false });
+
+    footprint.axialSpan = 3;
+    footprint.cols = 4;
+    secondPin.cell.col = 3;
+    expect(validatePhysicalDraft(resistor)).toMatch(/inteiro entre 4 e 10/);
   });
 });

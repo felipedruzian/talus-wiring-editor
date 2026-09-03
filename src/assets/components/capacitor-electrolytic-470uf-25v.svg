@@ -1,0 +1,56 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="-0.97 -1.97 3.94 3.94"
+  width="3.94"
+  height="3.94"
+  fill="none"
+  role="img"
+  aria-labelledby="cap25-title cap25-description"
+  preserveAspectRatio="xMidYMid meet"
+  data-artwork-id="capacitor-electrolytic-470uf-25v"
+  data-asset-revision="2026-09-03"
+  data-asset-license="MIT"
+  data-pitch-unit="1"
+  data-body-diameter-pitch="3.94"
+  data-terminal-span-pitch="2"
+  data-polarized="true"
+>
+  <title id="cap25-title">Capacitor eletrolítico de 470 uF e 25 V em escala de pitch</title>
+  <desc id="cap25-description">
+    Ilustração original com corpo de 3,94 pitches, terminais separados por 2 pitches e polaridade
+    visível.
+  </desc>
+
+  <circle cx="1" cy="0" r="1.92" fill="#263b4b" stroke="#101b23" stroke-width="0.1" />
+  <circle cx="1" cy="0" r="1.65" stroke="#5b7281" stroke-width="0.07" />
+  <path d="M2.2 -1.42A1.72 1.72 0 0 1 2.2 1.42" stroke="#c8d3d9" stroke-width="0.34" />
+  <g fill="#263b4b" font-family="ui-monospace, monospace" font-size="0.28" text-anchor="middle">
+    <text x="2.36" y="-0.78">-</text>
+    <text x="2.5" y="0.1">-</text>
+    <text x="2.36" y="0.98">-</text>
+  </g>
+
+  <g data-pin-id="plus" data-pin-x="0" data-pin-y="0" data-primary="true">
+    <rect
+      x="-0.28"
+      y="-0.28"
+      width="0.56"
+      height="0.56"
+      rx="0.04"
+      fill="#d7b24a"
+      stroke="#ffffff"
+      stroke-width="0.08"
+    />
+    <circle cx="0" cy="0" r="0.14" fill="#263b4b" />
+  </g>
+  <g data-pin-id="minus" data-pin-x="2" data-pin-y="0">
+    <circle cx="2" cy="0" r="0.28" fill="#d7b24a" />
+    <circle cx="2" cy="0" r="0.14" fill="#263b4b" />
+  </g>
+
+  <g fill="#f2f7f9" font-family="ui-sans-serif, sans-serif" text-anchor="middle">
+    <text x="1" y="-0.63" font-size="0.34" font-weight="700">470uF</text>
+    <text x="1" y="0.83" font-size="0.32">25 V</text>
+    <text x="-0.02" y="-0.45" font-size="0.58" font-weight="700">+</text>
+  </g>
+</svg>

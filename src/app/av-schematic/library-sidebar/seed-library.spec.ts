@@ -16,16 +16,78 @@ const seed = (libraryId: string) => {
 const portLabels = (libraryId: string) => seed(libraryId).template.ports.map((port) => port.label);
 
 describe('Talus-Droid library catalog', () => {
-  it('replaces the AV catalog with the six requested illustrated components', () => {
+  it('ships the requested module and passive catalog without generic physical cards', () => {
     expect(SEED_LIBRARY.map((device) => device.libraryId)).toEqual([
       'lib-arduino-nano',
       'lib-raspberry-pi-4',
       'lib-mpu6050-gy521',
       'lib-tb6612fng',
+      'lib-buzzer-active-12mm',
+      'lib-resistor-1k',
+      'lib-resistor-1k8',
+      'lib-capacitor-electrolytic-470uf',
+      'lib-capacitor-electrolytic-470uf-16v',
+      'lib-capacitor-ceramic-100nf',
       'lib-lm2596s',
       'lib-hall-a3144-lm393',
     ]);
-    expect(SEED_LIBRARY.every((device) => resolveDeviceIllustration(device.template))).toBe(true);
+    expect(
+      SEED_LIBRARY.filter((device) => !device.template.footprint).every((device) =>
+        resolveDeviceIllustration(device.template),
+      ),
+    ).toBe(true);
+  });
+
+  it('ships buzzer, resistors and capacitors as complete physical palette components', () => {
+    const expected = [
+      ['lib-buzzer-active-12mm', 1, 4, 2],
+      ['lib-resistor-1k', 1, 5, 2],
+      ['lib-resistor-1k8', 1, 5, 2],
+      ['lib-capacitor-electrolytic-470uf', 1, 3, 2],
+      ['lib-capacitor-electrolytic-470uf-16v', 1, 3, 2],
+      ['lib-capacitor-ceramic-100nf', 1, 3, 2],
+    ] as const;
+
+    for (const [libraryId, rows, cols, pinCount] of expected) {
+      const template = seed(libraryId).template;
+      expect(template.footprint).toMatchObject({
+        id: template.footprintId,
+        rows,
+        cols,
+      });
+      expect(template.footprint?.pins).toHaveLength(pinCount);
+      expect(template.footprint?.pins.map((pin) => pin.id)).toEqual(
+        template.ports.map((candidate) => candidate.id),
+      );
+      expect(trustedArtworkForFootprint(template.footprintId)).toBeDefined();
+      expect(asDevicePaletteItem(template).type).toBe(NodeTemplateType.FootprintNode);
+    }
+  });
+
+  it('keeps passive spans and polarities explicit in the seed', () => {
+    expect(seed('lib-resistor-1k').template.footprint).toMatchObject({ axialSpan: 4, cols: 5 });
+    expect(seed('lib-resistor-1k8').template.footprint).toMatchObject({ axialSpan: 4, cols: 5 });
+    expect(seed('lib-buzzer-active-12mm').template.footprint?.pins).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'plus', cell: { row: 0, col: 0 }, primary: true }),
+        expect.objectContaining({ id: 'minus', cell: { row: 0, col: 3 } }),
+      ]),
+    );
+    expect(seed('lib-capacitor-electrolytic-470uf').template.footprint?.pins).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'plus', cell: { row: 0, col: 0 }, primary: true }),
+        expect.objectContaining({ id: 'minus', cell: { row: 0, col: 2 } }),
+      ]),
+    );
+    expect(seed('lib-capacitor-electrolytic-470uf-16v').template.footprint?.pins).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'plus', cell: { row: 0, col: 0 }, primary: true }),
+        expect.objectContaining({ id: 'minus', cell: { row: 0, col: 2 } }),
+      ]),
+    );
+    expect(
+      seed('lib-capacitor-ceramic-100nf').template.footprint?.pins.some((pin) => pin.primary),
+    ).toBe(false);
   });
 
   it('keeps the firmware-facing Nano and TB6612FNG pin labels and roles', () => {
@@ -131,7 +193,7 @@ describe('Talus-Droid library catalog', () => {
 
   it('offers every requested connector type to manual components', () => {
     expect(CONNECTOR_TYPES).toEqual(
-      expect.arrayContaining(['Power', 'GPIO', 'I2C', 'PWM', 'UART', 'Motor']),
+      expect.arrayContaining(['Power', 'GPIO', 'I2C', 'PWM', 'UART', 'Motor', 'Lead']),
     );
     expect(CONNECTOR_TYPES.indexOf('TRS')).toBeLessThan(CONNECTOR_TYPES.indexOf('UART'));
     expect(CONNECTOR_TYPES.indexOf('UART')).toBeLessThan(CONNECTOR_TYPES.indexOf('USB'));
@@ -156,6 +218,9 @@ describe('Talus-Droid library catalog', () => {
     expect(deviceCategoryLabel('motor-driver')).toBe('Drivers de motor');
     expect(deviceCategoryLabel('voltage-regulator')).toBe('Reguladores de tensão');
     expect(deviceCategoryLabel('hall-sensor')).toBe('Sensores Hall');
+    expect(deviceCategoryLabel('buzzer')).toBe('Buzzers');
+    expect(deviceCategoryLabel('resistor')).toBe('Resistores');
+    expect(deviceCategoryLabel('capacitor')).toBe('Capacitores');
   });
 
   it('clones a catalog template into a draggable palette item', () => {

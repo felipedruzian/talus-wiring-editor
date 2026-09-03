@@ -23,28 +23,41 @@ esta fatia especificamente fez com cada uma.
 | `arduino-nano-classic.svg` | Este repositório, issue #32 | `2026-09-03` (revisão inicial) | MIT | **Sim — asset original.** | Desenho vetorial clean-room criado do zero para o projeto. O envelope usa 17 × 7 unidades de pitch e os 30 centros de pino formam dois headers de 15 posições separados por 6 pitches. A arte não contém o logotipo Arduino, silk-screen copiado, pixel nem path de terceiros; “Nano Classic” identifica a compatibilidade física. O pino `d1` é o marcador primário da orientação. |
 | `gy-521-mpu6050.svg` | Este repositório, issue #32 | `2026-09-03` (revisão inicial provisória) | MIT | **Sim — asset original.** | Desenho vetorial clean-room de um módulo genérico azul, criado do zero para o projeto. O envelope provisório usa 8 × 6,1 pitches e os oito centros do header seguem `VCC`, `GND`, `SCL`, `SDA`, `XDA`, `XCL`, `AD0`, `INT`. Placas vendidas como GY-521 variam; estas dimensões precisam ser confrontadas com o módulo físico do Talus-Droid antes de uso metrológico. |
 | `tb6612fng-talus.svg` | Este repositório, issue #32 | `2026-09-03` (revisão inicial provisória) | MIT | **Sim — asset original.** | Desenho vetorial clean-room de uma variante genérica vermelha, criado do zero para o projeto. O envelope provisório usa 8 × 7 pitches e dois headers de oito posições separados por 6 pitches, preservando os IDs já usados no Talus-Droid. Não reproduz logotipo, silk-screen nem layout gráfico de fabricante ou breakout de terceiros. A variante física precisa ser medida antes de tornar esse envelope definitivo. |
-| `pallab-js/PiForge`                             | `github.com/pallab-js/PiForge`                                          | `fba850a`                                                           | MIT                                          | **Não.**                                                     | Licença confirmada via `gh api repos/pallab-js/PiForge` em 2026-08-27 (o registro anterior deste documento listava a licença como "n/a"; corrigido aqui). Não é um baseline; nenhum código foi considerado para esta fatia.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `buzzer-active-12mm.svg` | Este repositório, issue #33 | `2026-09-03` (revisão inicial) | MIT | **Sim — asset original.** | Desenho vetorial clean-room de um buzzer ativo genérico, criado do zero para o projeto. O corpo tem diâmetro de 4,72 pitches (12 mm), os terminais estão separados por 3 pitches e os sinais `+` e `-` permanecem visíveis. Não reproduz marca ou aparência exclusiva de fabricante. |
+| `capacitor-electrolytic-470uf-25v.svg` | Este repositório, issue #33 | `2026-09-03` (revisão inicial) | MIT | **Sim — asset original.** | Desenho vetorial clean-room de um capacitor eletrolítico genérico de 470 uF e 25 V, criado do zero para o projeto. O corpo tem diâmetro de 3,94 pitches, os terminais estão separados por 2 pitches e a faixa negativa, o pad positivo e os dois sinais de polaridade são explícitos. |
+| `capacitor-electrolytic-470uf-16v-lead-formed.svg` | Este repositório, issue #33 | `2026-09-03` (revisão inicial provisória) | MIT | **Sim — asset original.** | Desenho vetorial clean-room de um capacitor eletrolítico genérico de 470 uF e 16 V com terminais conformados manualmente. O passo nativo documentado para esta variante é 1,38 pitch; a arte declara 2 pitches apenas para a montagem com leads dobrados. A silhueta provisória de 3,15 pitches não deve ser tratada como medida do componente real antes da conferência física. |
+| `capacitor-ceramic-100nf.svg` | Este repositório, issue #33 | `2026-09-03` (revisão inicial) | MIT | **Sim — asset original.** | Desenho vetorial clean-room de um capacitor cerâmico genérico não polarizado de 100 nF, criado do zero para o projeto. O corpo rígido mede 1,57 × 1,57 pitches e os terminais estão separados por 2 pitches. |
+| `resistor-axial-1k.svg` | Este repositório, issue #33 | `2026-09-03` (revisão inicial) | MIT | **Sim — asset original.** | Corpo vetorial clean-room de 2,56 × 0,98 pitches, criado do zero para o projeto, com bandas marrom, preta, vermelha e dourada para 1 kΩ. O arquivo não contém leads nem posições fixas de terminal: o renderer deve centralizar o corpo entre os furos e desenhar os leads ajustáveis sem deformá-lo. |
+| `resistor-axial-1k8.svg` | Este repositório, issue #33 | `2026-09-03` (revisão inicial) | MIT | **Sim — asset original.** | Corpo vetorial clean-room de 2,56 × 0,98 pitches, criado do zero para o projeto, com bandas marrom, cinza, vermelha e dourada para 1,8 kΩ. Assim como a variante de 1 kΩ, delega o vão e os leads ao renderer. |
+| `pallab-js/PiForge` | `github.com/pallab-js/PiForge` | `fba850a` | MIT | **Não.** | Licença confirmada via `gh api repos/pallab-js/PiForge` em 2026-08-27 (o registro anterior deste documento listava a licença como "n/a"; corrigido aqui). Não é um baseline; nenhum código foi considerado para esta fatia. |
 
 ## Assets
 
 Nenhum asset de imagem, ícone ou footprint de terceiros foi adicionado
-nesta fatia. Três arquivos SVG integrais e originais foram adicionados em
-`src/assets/components/`: Nano Classic, GY-521/MPU6050 genérico e TB6612FNG
-Talus genérico. Eles são ligados ao catálogo pelo registro confiável e versionado em
-`diagram/artwork/trusted-component-artwork.ts`, implementado na issue #32.
-Esse registro é código imutável do aplicativo: aponta apenas para SVGs locais
-empacotados, declara revisão, licença, envelope e pinos em pitch e não aceita
-`dataUrl` nem `assetHash`. Uploads PNG/WebP continuam exclusivamente no
+nesta fatia. Nove arquivos SVG integrais e originais existem em
+`src/assets/components/`. O primeiro lote contém Nano Classic,
+GY-521/MPU6050 genérico e TB6612FNG Talus genérico. O segundo contém buzzer
+ativo, os capacitores de 470 uF/25 V, 470 uF/16 V com leads conformados e
+100 nF, além dos corpos dos resistores de 1 kΩ e 1,8 kΩ. Eles são ligados ao
+catálogo pelo registro confiável e versionado em
+`diagram/artwork/trusted-component-artwork.ts`, implementado nas issues #32 e
+#33. Esse registro é código imutável do aplicativo: aponta apenas para SVGs
+locais empacotados, declara revisão, licença, envelope e pinos em pitch e não
+aceita `dataUrl` nem `assetHash`. Uploads PNG/WebP continuam exclusivamente no
 `ArtworkAssetStore`, com seu contrato raster endereçado por conteúdo; os dois
 canais não compartilham persistência nem payload.
 
-Os três arquivos SVG usam o próprio `viewBox` como sistema físico em pitches.
-Cada marcador `data-pin-id` declara também `data-pin-x` e `data-pin-y`; seu
-centro é uma coordenada inteira pronta para ser sobreposta ao furo
-correspondente. O fundo externo é transparente e não há script, referência
-externa, `href`, imagem embutida nem folha de estilo. O teste
+Todos os arquivos usam o próprio `viewBox` como sistema físico em pitches. Nos
+assets de terminais fixos, cada marcador `data-pin-id` declara também
+`data-pin-x` e `data-pin-y`; seu centro é uma coordenada pronta para ser
+sobreposta ao furo correspondente. Os corpos de resistor não declaram pinos de
+propósito: `data-terminal-model="renderer-adjustable"` transfere ao renderer o
+vão selecionável e o comprimento dos leads, enquanto a arte rígida fica
+ancorada no ponto médio. O fundo externo é transparente e não há script,
+referência externa, `href`, imagem embutida nem folha de estilo. O teste
 `npm run test:assets` verifica essas invariantes, os envelopes, a revisão, a
-licença, a unicidade dos IDs e as coordenadas dos pinos.
+licença, a unicidade dos IDs, as coordenadas dos pinos, as dimensões dos corpos
+e a sequência das bandas dos resistores.
 
 A placa de ensaio sem solda de 830 pontos é desenhada pelo próprio
 `BoardNodeComponent`, a partir da geometria descrita acima: círculos SVG para os
