@@ -39,12 +39,40 @@ compilação passou de `21.2.10` para `21.2.22`; `@angular/build` e
   `esbuild`, `fast-uri`, `immutable`, `nanoid` e `postcss`; a análise e eventual
   atualização dessas cadeias continuam na issue #22.
 
+## Atualização dos transitivos — issue #22
+
+A baseline após a issue #21 reproduziu 7 vulnerabilidades — 6 altas e 1 baixa
+— somente no toolchain de desenvolvimento. Os pacotes eram alcançados por
+`@angular/build`, `@angular/cli`, `eslint`, `angular-eslint`,
+`typescript-eslint` ou `vitest`; nenhum deles era importado pelo servidor de
+produção.
+
+O plano de correção foi inspecionado com `npm audit fix --dry-run` e depois
+aplicado sem `--force`, sem scripts e sem promover transitivos a dependências
+diretas. As faixas já declaradas pelos pais permitiram estas correções:
+
+| Pacote | Antes | Depois |
+| --- | --- | --- |
+| `brace-expansion` | `5.0.5` | `5.0.9` |
+| `browserslist` | `4.28.2` | `4.28.8` |
+| `esbuild` | `0.27.3` | `0.28.2` |
+| `fast-uri` | `3.1.0` | `3.1.7` |
+| `immutable` | `5.1.5` | `5.1.9` |
+| `nanoid` | `3.3.11` | `3.3.18` |
+| `postcss` | `8.5.10` | `8.5.26` |
+
+O diff final contém apenas o `package-lock.json`: 38 nós de versão, formados
+pelas 7 correções acima, 5 metadados auxiliares do `Browserslist` e 26 pacotes
+opcionais por plataforma do `esbuild`. O audit posterior reportou zero
+vulnerabilidades. Não houve `override`, semver-major, risco aceito ou follow-up
+de segurança pendente nesta rodada.
+
 ## Atualizações separadas
 
 1. Concluído na issue #21: atualizar os pacotes Angular diretos e o lockfile em
    uma linha de patch coerente.
-2. Pendente na issue #22: revisar apenas os transitivos de build/teste que
-   permaneceram no novo `npm audit`, evitando `overrides` sem evidência.
+2. Concluído na issue #22: revisar e corrigir os transitivos de build/teste que
+   permaneceram no novo `npm audit`, sem `overrides`.
 
 Cada PR deve executar a sequência completa de CI e registrar o resumo do audit
 antes/depois. A regeneração do lockfile deve ocorrer em ambiente controlado e
