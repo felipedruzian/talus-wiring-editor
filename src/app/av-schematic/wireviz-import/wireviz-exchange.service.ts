@@ -8,6 +8,7 @@ import {
   type CanonicalJunction,
   type CanonicalJunctionLayout,
   type CanonicalProjectV4,
+  type CanonicalResources,
 } from '../diagram/model/canonical-project';
 import { OPERATIONAL_LIMITS } from '../diagram/model/operational-limits.mjs';
 import { defaultVisualPlane } from '../diagram/model/visual-planes';
@@ -338,6 +339,24 @@ export function buildImportedProject(
       junctions,
       conductors,
     },
+    resources: resourcesReferencedBy(components, previous.resources),
+  };
+}
+
+function resourcesReferencedBy(
+  components: CanonicalProjectV4['layout']['components'],
+  previous: CanonicalResources,
+): CanonicalResources {
+  const hashes = new Set(
+    components.flatMap((component) => {
+      const hash = component.footprint?.artwork?.assetHash;
+      return hash ? [hash] : [];
+    }),
+  );
+  return {
+    artworkAssets: Object.fromEntries(
+      Object.entries(previous.artworkAssets).filter(([hash]) => hashes.has(hash)),
+    ),
   };
 }
 

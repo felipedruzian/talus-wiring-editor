@@ -255,9 +255,11 @@ aplicada a endpoints de placa ou footprint.
 
 ## Persistência
 
-O projeto usa o formato canônico v4, evolução compatível do v3 introduzido pela issue #29. A seção
+O projeto usa o formato canônico v5, evolução compatível do v4. A seção
 `electrical` continua contendo componentes, junções, cabos, nets multi-drop e
-condutores; a seção `layout` contém placas, footprints, placements e geometria.
+condutores; a seção `layout` contém placas, footprints, placements e geometria;
+e `resources.artworkAssets` transporta somente as imagens referenciadas pelos
+footprints, deduplicadas pelo SHA-256.
 Não existe `CanonicalNet` v1 paralelo. Snapshots v1 anteriores continuam sendo
 migrados pela fronteira de entrada existente.
 
@@ -322,12 +324,31 @@ ser omitido.
 
 ## Autoria nesta fatia
 
-O usuário pode mover, girar, encaixar e desencaixar footprints, editar os dados
-usuais do componente e conectar pinos, furos ou trilhas. Definições arbitrárias
-de placa e footprint são persistidas e validadas pelo JSON canônico e podem ser
-fornecidas por fixtures ou integrações. Esta entrega não inclui um desenhador
-gráfico geral para criar novos contornos, furos, trilhas e formas SVG do zero;
-esse limite é de interface de autoria, não do modelo nem da persistência.
+Além de mover, girar, encaixar e desencaixar footprints, o usuário pode criar um
+componente físico na própria biblioteca. O editor permite definir linhas e
+colunas, criar/remover/renomear terminais, arrastá-los para células do grid e
+marcar o terminal primário. A distância entre furos é a unidade comum da
+imagem, do footprint e do encaixe.
+
+O fundo aceita PNG, JPEG, WebP e SVG. SVG passa por uma lista estrita de
+elementos e atributos e é rasterizado; o catálogo persiste somente PNG/WebP
+inerte. A entrada é limitada a 5 MiB, 8192 px por eixo e 16 MP; a saída, a
+1024 px por eixo, 1 MP e 256 KiB. A escala pode ser ajustada numericamente ou
+calibrada marcando dois pontos conhecidos na imagem. Posições e dimensões da
+imagem aceitam valores fracionários e negativos para que o corpo possa avançar
+além da matriz de pinos sem deslocar os terminais.
+
+Ao salvar o componente, a definição e a imagem endereçada por SHA-256 entram na
+biblioteca central de mesma origem. O cache local continua sendo usado quando o
+serviço central não existe; quando ele existe, gravações usam ETag condicional e
+um conflito entre navegadores é mostrado ao usuário em vez de sobrescrito. O
+projeto v5 incorpora somente as imagens que seus próprios footprints usam, de
+modo que Salvar/Abrir entre hosts não dependa do estado prévio da biblioteca.
+
+O editor não é um desenhador vetorial geral de contornos e formas SVG. Formas
+vetoriais avançadas continuam sendo fornecidas por componentes confiáveis do
+catálogo ou pelo formato canônico; a autoria visual livre usa a imagem de fundo
+normalizada.
 
 ## Fixtures
 

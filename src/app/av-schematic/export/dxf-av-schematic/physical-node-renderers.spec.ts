@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { holeLocalPoint } from '../../diagram/model/board-geometry';
 import { breadboardRowIndex, createBreadboard830 } from '../../diagram/model/breadboard';
 import {
+  footprintDrawPoint,
+  footprintDrawnExtent,
   footprintNodeSize,
   footprintPinHoles,
   placementNodePosition,
@@ -255,6 +257,57 @@ describe('detached footprint DXF rendering', () => {
 
     expect(caption?.text).toBe('LINK-DETACHED vertical-link 90 deg');
   });
+});
+
+describe('illustrated footprint DXF origin', () => {
+  const illustrated: Footprint = {
+    ...footprint,
+    artwork: {
+      assetHash: 'a'.repeat(64),
+      x: -2,
+      y: -1,
+      width: 5,
+      height: 3,
+    },
+  };
+  const bounds = { x: 0, y: 0, width: 400, height: 400 };
+  const mapper = CoordinateMapper.fromScale(bounds, DXF_SCALE_MM_PER_PX, DIAGRAM_PADDING);
+
+  it.each([0, 90, 180, 270] as const)(
+    'keeps every pad aligned with the drawn extent at %s degrees',
+    (rotation) => {
+      const pitch = 17;
+      const extent = footprintDrawnExtent(illustrated, rotation, null);
+      const node: Node<DeviceNodeData> = {
+        ...detachedComponent,
+        id: `illustrated-${rotation}`,
+        position: { x: 210, y: 100 },
+        data: {
+          ...detachedComponent.data,
+          footprint: illustrated,
+          footprintId: illustrated.id,
+          footprintRotation: rotation,
+          footprintPitch: pitch,
+        },
+      };
+      const illustratedDoc = new DxfExporter(buildAvDxfConfig()).export([node], [], bounds);
+      const pads = illustratedDoc
+        .getEntities()
+        .filter(
+          (entity): entity is DxfCircle =>
+            entity instanceof DxfCircle && entity.layerName === LAYERS.FOOTPRINTS,
+        );
+      const expected = illustrated.pins.map((pin) => {
+        const point = footprintDrawPoint(pin.cell.col, pin.cell.row, illustrated, rotation, null);
+        return mapper.mapPoint(
+          node.position.x + (point.x - extent.left) * pitch,
+          node.position.y + (point.y - extent.top) * pitch,
+        );
+      });
+
+      expect(pads.map((pad) => ({ x: pad.x, y: pad.y }))).toEqual(expected);
+    },
+  );
 });
 
 /**

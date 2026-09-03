@@ -7,20 +7,26 @@ import {
 } from 'ng-diagram';
 import {
   DETACHED_FOOTPRINT_FALLBACK_PITCH,
-  FOOTPRINT_PADDING_CELLS,
   applyFootprintChannel,
   footprintChannel,
+  footprintArtworkPoints,
   footprintDrawPoint,
   footprintDrawnExtent,
   footprintNodeSize,
   footprintPinHoles,
   type FootprintChannel,
 } from '../model/footprint-geometry';
-import { resolveFootprint, type Footprint, type FootprintPaint } from '../model/footprint';
+import {
+  resolveFootprint,
+  type Footprint,
+  type FootprintArtwork,
+  type FootprintPaint,
+} from '../model/footprint';
 import { isBoardNode } from '../model/guards';
 import { type BoardRotation, type DeviceNodeData, type DevicePort } from '../model/interfaces';
 import { BoardPlacementService } from '../placement/board-placement.service';
 import { centerLeftPortBoxPosition } from '../edge-reshaping/logic/port-position';
+import { ArtworkAssetStore } from '../artwork/artwork-asset.store';
 
 export interface FootprintPinView {
   id: string;
@@ -51,12 +57,12 @@ export function footprintPinViews(
 ): FootprintPinView[] {
   const portIds = new Set(ports.map((port) => port.id));
   const pinsById = new Map(footprint.pins.map((pin) => [pin.id, pin]));
-  const pad = FOOTPRINT_PADDING_CELLS * pitch;
+  const extent = footprintDrawnExtent(footprint, rotation, channel);
   return footprintPinHoles(footprint, { anchor: { row: 0, col: 0 }, rotation }).map((pin) => ({
     id: pin.pinId,
     label: pin.label,
-    x: pad + pin.cell.col * pitch,
-    y: pad + applyFootprintChannel(pin.cell.row, channel) * pitch,
+    x: (pin.cell.col - extent.left) * pitch,
+    y: (applyFootprintChannel(pin.cell.row, channel) - extent.top) * pitch,
     port: portIds.has(pin.pinId),
     primary: pinsById.get(pin.pinId)?.primary ?? false,
   }));
@@ -138,6 +144,42 @@ export function footprintPaintValue(paint: FootprintPaint | undefined): string {
 
 export const FOOTPRINT_TEXT_SIZE_CELLS = 0.42;
 export const FOOTPRINT_LINE_WIDTH_CELLS = 0.08;
+
+export interface FootprintArtworkView {
+  transform: string;
+  preserveAspectRatio: 'xMidYMid meet' | 'none';
+}
+
+/** Affine image transform from artwork-local coordinates into the rotated footprint frame. */
+export function footprintArtworkView(
+  footprint: Footprint,
+  artwork: FootprintArtwork,
+  rotation: BoardRotation,
+  channel: FootprintChannel | null,
+): FootprintArtworkView {
+  const { origin, horizontal, vertical } = footprintArtworkPoints(
+    footprint,
+    artwork,
+    rotation,
+    channel,
+  );
+  const values = [
+    (horizontal.x - origin.x) / artwork.width,
+    (horizontal.y - origin.y) / artwork.width,
+    (vertical.x - origin.x) / artwork.height,
+    (vertical.y - origin.y) / artwork.height,
+    origin.x,
+    origin.y,
+  ].map(formatSvgNumber);
+  return {
+    transform: `matrix(${values.join(' ')})`,
+    preserveAspectRatio: artwork.preserveAspectRatio === false ? 'none' : 'xMidYMid meet',
+  };
+}
+
+function formatSvgNumber(value: number): string {
+  return String(Math.round(value * 1_000_000) / 1_000_000);
+}
 
 export function footprintShapeViews(
   footprint: Footprint,
@@ -223,6 +265,7 @@ export function footprintShapeViews(
 export class FootprintNodeComponent implements NgDiagramNodeTemplate<DeviceNodeData> {
   private readonly modelService = inject(NgDiagramModelService);
   private readonly placementService = inject(BoardPlacementService);
+  private readonly artworkAssets = inject(ArtworkAssetStore);
 
   node = input.required<Node<DeviceNodeData>>();
 
@@ -283,6 +326,20 @@ export class FootprintNodeComponent implements NgDiagramNodeTemplate<DeviceNodeD
     const footprint = this.footprint();
     if (!footprint) return [];
     return footprintShapeViews(footprint, this.rotation(), this.channel());
+  });
+
+  protected readonly artwork = computed(() => {
+    const footprint = this.footprint();
+    const definition = footprint?.artwork;
+    if (!footprint || !definition) return null;
+    const asset = this.artworkAssets.asset(definition.assetHash);
+    if (!asset) return null;
+    return {
+      href: asset.dataUrl,
+      width: definition.width,
+      height: definition.height,
+      ...footprintArtworkView(footprint, definition, this.rotation(), this.channel()),
+    };
   });
 
   protected readonly pads = computed<FootprintPadView[]>(() => {

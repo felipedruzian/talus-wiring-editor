@@ -38,6 +38,7 @@
   width: 42px;
   height: 28px;
   flex: 0 0 42px;
+  object-fit: contain;
 }
 
 .device-row__manufacturer {
@@ -109,6 +110,7 @@
   width: 54px;
   height: 34px;
   margin-bottom: 2px;
+  object-fit: contain;
 }
 
 .device-preview__id {

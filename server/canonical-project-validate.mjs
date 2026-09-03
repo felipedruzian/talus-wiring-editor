@@ -8,6 +8,10 @@
 
 import { OPERATIONAL_LIMITS } from '../src/app/av-schematic/diagram/model/operational-limits.mjs';
 import { normalizeOrthogonalPersistedRoute } from '../src/app/av-schematic/diagram/model/persisted-wire-route.mjs';
+import {
+  LibraryCatalogValidationError,
+  parseRasterArtworkResource,
+} from './library-catalog-validate.mjs';
 
 export class CanonicalProjectValidationError extends Error {
   constructor(message) {
@@ -53,6 +57,9 @@ const DEFAULT_VISUAL_PLANES = Object.freeze({
   conductor: 20,
   junction: 30,
 });
+const MAX_PROJECT_ARTWORK_ASSETS = 64;
+const MAX_PROJECT_ARTWORK_BYTES = 4 * 1024 * 1024;
+const ARTWORK_HASH_PATTERN = /^[a-f0-9]{64}$/;
 // Keep these geometry constants aligned with board-geometry.ts and
 // footprint-geometry.ts. The server stays dependency-free from Angular code.
 const BOARD_MARGIN = 16;
@@ -91,12 +98,13 @@ export function parseCanonicalProject(raw) {
   const version = root['formatVersion'];
 
   if (version === 1) return parseV1(root);
-  if (version === 2) return parseV2(root, true, false);
-  if (version === 3) return parseV2(root, false, false);
-  if (version === 4) return parseV2(root, false, true);
+  if (version === 2) return parseV2(root, true, false, false);
+  if (version === 3) return parseV2(root, false, false, false);
+  if (version === 4) return parseV2(root, false, true, false);
+  if (version === 5) return parseV2(root, false, true, true);
 
   throw new CanonicalProjectValidationError(
-    `project.formatVersion: expected 1, 2, 3 or 4, got ${JSON.stringify(version)}`,
+    `project.formatVersion: expected 1, 2, 3, 4 or 5, got ${JSON.stringify(version)}`,
   );
 }
 
@@ -183,7 +191,7 @@ function parseV1(root) {
   return { formatVersion: 1, boards, components, nets };
 }
 
-function parseV2(root, migrateVisualPlanes, readBoardJumpers) {
+function parseV2(root, migrateVisualPlanes, readBoardJumpers, readResources) {
   const electricalRaw = expectRecord(root['electrical'], 'project.electrical');
   const layoutRaw = expectRecord(root['layout'], 'project.layout');
   preflightV2(electricalRaw, layoutRaw);
@@ -238,9 +246,48 @@ function parseV2(root, migrateVisualPlanes, readBoardJumpers) {
     ),
   };
 
-  const project = { formatVersion: 4, electrical, layout };
+  const resources = readResources ? parseResources(root['resources']) : emptyResources();
+  const project = { formatVersion: 5, electrical, layout, resources };
   validateV2Project(project);
   return project;
+}
+
+function parseResources(raw) {
+  const resources = expectRecord(raw, 'project.resources');
+  const artwork = expectRecord(resources['artworkAssets'], 'project.resources.artworkAssets');
+  const entries = Object.entries(artwork);
+  if (entries.length > MAX_PROJECT_ARTWORK_ASSETS) {
+    throw new CanonicalProjectValidationError(
+      `project.resources.artworkAssets: accepts at most ${MAX_PROJECT_ARTWORK_ASSETS} assets`,
+    );
+  }
+
+  let decodedBytes = 0;
+  const artworkAssets = {};
+  for (const [hash, value] of entries) {
+    const label = `project.resources.artworkAssets.${hash}`;
+    try {
+      const asset = parseRasterArtworkResource(hash, value, label);
+      decodedBytes += asset.byteLength;
+      if (decodedBytes > MAX_PROJECT_ARTWORK_BYTES) {
+        throw new CanonicalProjectValidationError(
+          'project.resources.artworkAssets: decoded bytes exceed 4 MiB',
+        );
+      }
+      artworkAssets[hash] = asset;
+    } catch (error) {
+      if (error instanceof CanonicalProjectValidationError) throw error;
+      if (error instanceof LibraryCatalogValidationError) {
+        throw new CanonicalProjectValidationError(error.message);
+      }
+      throw error;
+    }
+  }
+  return { artworkAssets };
+}
+
+function emptyResources() {
+  return { artworkAssets: {} };
 }
 
 function preflightV1(root) {
@@ -1006,6 +1053,31 @@ function validateV2Project(project) {
     conductorIds,
     conductorsById,
   );
+  validateArtworkResourceReferences(project);
+}
+
+function validateArtworkResourceReferences(project) {
+  const referenced = new Set(
+    project.layout.components.flatMap((component) => {
+      const hash = component.footprint?.artwork?.assetHash;
+      return hash ? [hash] : [];
+    }),
+  );
+  const available = new Set(Object.keys(project.resources.artworkAssets));
+  for (const hash of referenced) {
+    if (!available.has(hash)) {
+      throw new CanonicalProjectValidationError(
+        `project.resources.artworkAssets: missing artwork "${hash}" referenced by a footprint`,
+      );
+    }
+  }
+  for (const hash of available) {
+    if (!referenced.has(hash)) {
+      throw new CanonicalProjectValidationError(
+        `project.resources.artworkAssets: unreferenced artwork "${hash}"`,
+      );
+    }
+  }
 }
 
 function validateV2Layout(
@@ -1099,7 +1171,7 @@ function validateV2Layout(
         );
       }
       layout.boardId = layout.placement.boardId;
-      layout.position = placementNodePosition(board, layout.placement);
+      layout.position = placementNodePosition(board, layout.placement, layout.footprint);
       const footprintHoles = new Map(
         footprintPinHoles(layout.footprint, layout.placement).map((pin) => [pin.pinId, pin.hole]),
       );
@@ -1698,13 +1770,147 @@ function footprintOccupiedHoles(footprint, placement) {
   return [...byKey.values()];
 }
 
-function placementNodePosition(board, placement) {
-  const pad = FOOTPRINT_PADDING_CELLS * board.pitch;
+function placementNodePosition(board, placement, footprint) {
   const anchor = holeLocalPoint(board, placement.anchor);
+  const channel = footprintChannel(board, footprint, placement);
+  const extent = footprintDrawnExtent(footprint, placement.rotation, channel);
   return {
-    x: board.position.x + anchor.x - pad,
-    y: board.position.y + anchor.y - pad,
+    x: board.position.x + anchor.x + extent.left * board.pitch,
+    y: board.position.y + anchor.y + extent.top * board.pitch,
   };
+}
+
+function rotatedFootprintBox(footprint, rotation) {
+  return rotation === 90 || rotation === 270
+    ? { rows: footprint.cols, cols: footprint.rows }
+    : { rows: footprint.rows, cols: footprint.cols };
+}
+
+function rotateFootprintPoint(x, y, footprint, rotation) {
+  switch (rotation) {
+    case 0:
+      return { x, y };
+    case 90:
+      return { x: footprint.rows - 1 - y, y: x };
+    case 180:
+      return { x: footprint.cols - 1 - x, y: footprint.rows - 1 - y };
+    case 270:
+      return { x: y, y: footprint.cols - 1 - x };
+    default:
+      throw new CanonicalProjectValidationError(`invalid board rotation ${rotation}`);
+  }
+}
+
+function footprintChannel(board, footprint, placement) {
+  const gap = board.centerGap ?? 0;
+  if (gap <= 0 || board.rows < 2 || board.pitch <= 0) return null;
+  const split = Math.ceil(board.rows / 2);
+  const box = rotatedFootprintBox(footprint, placement.rotation);
+  const firstRow = placement.anchor.row;
+  const lastRow = firstRow + box.rows - 1;
+  if (firstRow >= split || lastRow < split) return null;
+  return { cutY: split - firstRow - 0.5, gapCells: gap / board.pitch };
+}
+
+function applyFootprintChannel(y, channel) {
+  return channel && y > channel.cutY ? y + channel.gapCells : y;
+}
+
+function footprintDrawPoint(x, y, footprint, rotation, channel) {
+  const rotated = rotateFootprintPoint(x, y, footprint, rotation);
+  return { x: rotated.x, y: applyFootprintChannel(rotated.y, channel) };
+}
+
+function footprintArtworkPoints(footprint, artwork, rotation, channel) {
+  const center = rotateFootprintPoint(
+    artwork.x + artwork.width / 2,
+    artwork.y + artwork.height / 2,
+    footprint,
+    rotation,
+  );
+  const shift = channel && center.y > channel.cutY ? channel.gapCells : 0;
+  const at = (x, y) => {
+    const point = rotateFootprintPoint(x, y, footprint, rotation);
+    return { x: point.x, y: point.y + shift };
+  };
+  return [
+    at(artwork.x, artwork.y),
+    at(artwork.x + artwork.width, artwork.y),
+    at(artwork.x, artwork.y + artwork.height),
+    at(artwork.x + artwork.width, artwork.y + artwork.height),
+  ];
+}
+
+function footprintDrawnExtent(footprint, rotation, channel) {
+  const box = rotatedFootprintBox(footprint, rotation);
+  const extent = {
+    top: -FOOTPRINT_PADDING_CELLS,
+    bottom: applyFootprintChannel(box.rows - 1 + FOOTPRINT_PADDING_CELLS, channel),
+    left: -FOOTPRINT_PADDING_CELLS,
+    right: box.cols - 1 + FOOTPRINT_PADDING_CELLS,
+  };
+  const includePoints = (points, margin = 0) => {
+    extent.top = Math.min(extent.top, ...points.map((point) => point.y - margin));
+    extent.bottom = Math.max(extent.bottom, ...points.map((point) => point.y + margin));
+    extent.left = Math.min(extent.left, ...points.map((point) => point.x - margin));
+    extent.right = Math.max(extent.right, ...points.map((point) => point.x + margin));
+  };
+  for (const shape of footprint.shapes ?? []) {
+    if (shape.kind === 'rect') {
+      includePoints([
+        footprintDrawPoint(shape.x, shape.y, footprint, rotation, channel),
+        footprintDrawPoint(shape.x + shape.width, shape.y, footprint, rotation, channel),
+        footprintDrawPoint(
+          shape.x + shape.width,
+          shape.y + shape.height,
+          footprint,
+          rotation,
+          channel,
+        ),
+        footprintDrawPoint(shape.x, shape.y + shape.height, footprint, rotation, channel),
+      ]);
+    } else if (shape.kind === 'circle') {
+      includePoints(
+        [footprintDrawPoint(shape.cx, shape.cy, footprint, rotation, channel)],
+        shape.r,
+      );
+    } else if (shape.kind === 'line') {
+      includePoints(
+        [
+          footprintDrawPoint(shape.x1, shape.y1, footprint, rotation, channel),
+          footprintDrawPoint(shape.x2, shape.y2, footprint, rotation, channel),
+        ],
+        (shape.width ?? 0.08) / 2,
+      );
+    } else {
+      const size = shape.size ?? 0.42;
+      const width = Math.max(size * 0.5, shape.text.length * size * 0.6);
+      const left =
+        shape.anchor === 'end'
+          ? shape.x - width
+          : shape.anchor === 'middle'
+            ? shape.x - width / 2
+            : shape.x;
+      const rotatedAnchor = rotateFootprintPoint(shape.x, shape.y, footprint, rotation);
+      const mappedAnchor = footprintDrawPoint(shape.x, shape.y, footprint, rotation, channel);
+      const shiftY = mappedAnchor.y - rotatedAnchor.y;
+      includePoints(
+        [
+          { x: left, y: shape.y - size / 2 },
+          { x: left + width, y: shape.y - size / 2 },
+          { x: left + width, y: shape.y + size / 2 },
+          { x: left, y: shape.y + size / 2 },
+        ].map((corner) => {
+          const point = rotateFootprintPoint(corner.x, corner.y, footprint, rotation);
+          return { x: point.x, y: point.y + shiftY };
+        }),
+      );
+    }
+  }
+  if (footprint.artwork) {
+    includePoints(footprintArtworkPoints(footprint, footprint.artwork, rotation, channel));
+  }
+  return extent;
 }
 
 function holeLocalPoint(board, hole) {
@@ -2027,12 +2233,37 @@ function parseFootprint(raw, label) {
     shapes: expectArray(obj['shapes'], `${label}.shapes`).map((shape, index) =>
       parseFootprintShape(shape, `${label}.shapes[${index}]`),
     ),
+    artwork:
+      obj['artwork'] === undefined
+        ? undefined
+        : parseFootprintArtwork(obj['artwork'], `${label}.artwork`),
     bodyCells:
       obj['bodyCells'] === undefined
         ? undefined
         : expectArray(obj['bodyCells'], `${label}.bodyCells`).map((cell, index) =>
             expectHole(cell, `${label}.bodyCells[${index}]`),
           ),
+  };
+}
+
+function parseFootprintArtwork(raw, label) {
+  const obj = expectRecord(raw, label);
+  const assetHash = expectNonEmptyString(obj['assetHash'], `${label}.assetHash`);
+  if (!ARTWORK_HASH_PATTERN.test(assetHash)) {
+    throw new CanonicalProjectValidationError(
+      `${label}.assetHash: expected a lowercase SHA-256 hash`,
+    );
+  }
+  return {
+    assetHash,
+    x: expectFiniteNumber(obj['x'], `${label}.x`),
+    y: expectFiniteNumber(obj['y'], `${label}.y`),
+    width: expectPositiveFiniteNumber(obj['width'], `${label}.width`),
+    height: expectPositiveFiniteNumber(obj['height'], `${label}.height`),
+    preserveAspectRatio: expectOptionalBoolean(
+      obj['preserveAspectRatio'],
+      `${label}.preserveAspectRatio`,
+    ),
   };
 }
 

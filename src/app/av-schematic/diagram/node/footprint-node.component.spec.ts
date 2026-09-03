@@ -2,6 +2,7 @@ import { Component, input, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { NgDiagramModelService, NgDiagramPortComponent, type Node, type Point } from 'ng-diagram';
 import { afterEach, describe, expect, it } from 'vitest';
+import { ArtworkAssetStore, type RasterArtworkAsset } from '../artwork/artwork-asset.store';
 import { holeLocalPoint } from '../model/board-geometry';
 import { breadboardRowIndex, createBreadboard830 } from '../model/breadboard';
 import {
@@ -136,7 +137,10 @@ class PortStubComponent {
   readonly originPoint = input<string>();
 }
 
-function render(node: Node<DeviceNodeData>): {
+function render(
+  node: Node<DeviceNodeData>,
+  asset?: RasterArtworkAsset,
+): {
   fixture: ComponentFixture<FootprintNodeComponent>;
   host: HTMLElement;
 } {
@@ -152,6 +156,7 @@ function render(node: Node<DeviceNodeData>): {
     remove: { imports: [NgDiagramPortComponent] },
     add: { imports: [PortStubComponent] },
   });
+  if (asset) TestBed.inject(ArtworkAssetStore).register(asset);
   const fixture = TestBed.createComponent(FootprintNodeComponent);
   fixture.componentRef.setInput('node', node);
   fixture.detectChanges();
@@ -322,5 +327,56 @@ describe('FootprintNodeComponent wholly below a breadboard channel', () => {
       expect(Number.parseFloat(box?.style.width ?? '0')).toBeCloseTo(rigidSize.width);
       expect(Number.parseFloat(box?.style.height ?? '0')).toBeCloseTo(rigidSize.height);
     }
+  });
+});
+
+describe('FootprintNodeComponent raster artwork', () => {
+  it('renders a content-addressed image and includes its negative bounds in the node', () => {
+    const hash = 'a'.repeat(64);
+    const illustrated: Footprint = {
+      ...footprint,
+      artwork: { assetHash: hash, x: -1.5, y: -0.5, width: 4, height: 2 },
+    };
+    const node: Node<DeviceNodeData> = {
+      id: 'illustrated',
+      type: NodeTemplateType.FootprintNode,
+      position: { x: 0, y: 0 },
+      data: {
+        type: 'device',
+        deviceId: 'U1',
+        manufacturer: 'Talus',
+        model: 'Ilustrado',
+        footprintId: illustrated.id,
+        footprint: illustrated,
+        footprintRotation: 0,
+        footprintPitch: 20,
+        ports: [
+          { id: 'a', label: 'A', direction: 'input' },
+          { id: 'b', label: 'B', direction: 'output' },
+        ],
+      },
+    };
+    const asset = {
+      hash,
+      mimeType: 'image/png' as const,
+      width: 1,
+      height: 1,
+      byteLength: 1,
+      dataUrl: 'data:image/png;base64,AA==',
+    };
+
+    const { host } = render(node, asset);
+    const svg = host.querySelector('svg');
+    const image = svg?.querySelector('image');
+    const viewBox = (svg?.getAttribute('viewBox') ?? '').split(' ').map(Number);
+
+    expect(image?.getAttribute('href')).toBe(asset.dataUrl);
+    expect(image?.getAttribute('transform')).toBe('matrix(1 0 0 1 -1.5 -0.5)');
+    expect(svg?.querySelector('rect')).toBeNull();
+    expect(viewBox[0]).toBe(-1.5);
+    expect(viewBox[2]).toBe(4);
+    expect(
+      Number.parseFloat(host.querySelector<HTMLElement>('.footprint-node')?.style.width ?? '0'),
+    ).toBe(80);
   });
 });

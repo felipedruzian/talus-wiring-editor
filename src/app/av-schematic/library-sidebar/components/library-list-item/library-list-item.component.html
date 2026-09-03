@@ -7,11 +7,15 @@
     (keydown.enter)="onOpenDetail()"
     (keydown.space)="onOpenDetail(); $event.preventDefault()"
   >
-    <app-device-illustration
-      class="device-row__illustration"
-      [device]="device().template"
-      [decorative]="true"
-    />
+    @if (artworkUrl(); as imageUrl) {
+      <img class="device-row__illustration" [src]="imageUrl" alt="" />
+    } @else {
+      <app-device-illustration
+        class="device-row__illustration"
+        [device]="device().template"
+        [decorative]="true"
+      />
+    }
     <div class="device-row__main">
       @if (device().template.manufacturer) {
         <span class="device-row__manufacturer p10">
@@ -48,11 +52,15 @@
   <ng-diagram-palette-item-preview>
     <div class="device-preview">
       <div class="device-preview__header">
-        <app-device-illustration
-          class="device-preview__illustration"
-          [device]="device().template"
-          [decorative]="true"
-        />
+        @if (artworkUrl(); as imageUrl) {
+          <img class="device-preview__illustration" [src]="imageUrl" alt="" />
+        } @else {
+          <app-device-illustration
+            class="device-preview__illustration"
+            [device]="device().template"
+            [decorative]="true"
+          />
+        }
         <span class="device-preview__id">{{ device().template.deviceId || '—' }}</span>
         <span class="device-preview__info">{{ device().template.manufacturer }}</span>
         <span class="device-preview__info">{{ device().template.model }}</span>

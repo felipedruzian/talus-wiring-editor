@@ -121,6 +121,10 @@
   stroke-width: 0.06;
 }
 
+.footprint-node__artwork {
+  image-rendering: auto;
+}
+
 .footprint-node__pin-pad--primary {
   fill: var(--footprint-accent);
 }

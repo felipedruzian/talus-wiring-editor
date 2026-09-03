@@ -12,8 +12,9 @@
 // down in afterEach. A fresh temp directory backs storageDir per test file
 // run so tests never touch the real ~/.local/share/talus-wiring-editor path.
 
+import { createHash } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -81,6 +82,19 @@ function baseConfig(storageDir, staticDir) {
   };
 }
 
+const strongEtag = (body) => `"${createHash('sha256').update(body).digest('hex')}"`;
+const PNG_1X1_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+const PNG_1X1_BYTES = Buffer.from(PNG_1X1_BASE64, 'base64');
+const PNG_1X1_HASH = createHash('sha256').update(PNG_1X1_BYTES).digest('hex');
+const PNG_1X1_RESOURCE = Object.freeze({
+  mimeType: 'image/png',
+  width: 1,
+  height: 1,
+  byteLength: PNG_1X1_BYTES.length,
+  dataUrl: `data:image/png;base64,${PNG_1X1_BASE64}`,
+});
+
 /** Starts a fresh server on an ephemeral port and returns its base URL + close(). */
 async function startServer(cfg) {
   const server = createWiringEditorServer(cfg);
@@ -102,7 +116,7 @@ async function startServer(cfg) {
 
 function validProjectPayload() {
   return {
-    formatVersion: 4,
+    formatVersion: 5,
     electrical: {
       components: [
         {
@@ -191,6 +205,7 @@ function validProjectPayload() {
         { conductorId: 'branch-b', visualPlane: 20, fromTap: 2 },
       ],
     },
+    resources: { artworkAssets: {} },
   };
 }
 
@@ -274,13 +289,16 @@ function canonicalCableBudgetPayload(total) {
 describe('wiring-editor-server', () => {
   let storageDir;
   let staticDir;
+  let libraryDir;
   let cfg;
   let server;
 
   beforeEach(async () => {
     storageDir = await mkdtemp(join(tmpdir(), 'wiring-editor-storage-'));
     staticDir = await mkdtemp(join(tmpdir(), 'wiring-editor-static-'));
+    libraryDir = await mkdtemp(join(tmpdir(), 'wiring-editor-library-'));
     cfg = baseConfig(storageDir, staticDir);
+    cfg.libraryDir = libraryDir;
     server = await startServer(cfg);
   });
 
@@ -288,6 +306,170 @@ describe('wiring-editor-server', () => {
     await server.close();
     await rm(storageDir, { recursive: true, force: true });
     await rm(staticDir, { recursive: true, force: true });
+    await rm(libraryDir, { recursive: true, force: true });
+  });
+
+  describe('shared component library', () => {
+    it('returns an exact empty catalog with a strong body ETag before initialization', async () => {
+      const response = await fetch(`${server.baseUrl}/api/library`);
+      const body = await response.text();
+
+      expect(response.status).toBe(200);
+      expect(body).toBe('{"version":2,"devices":[],"assets":{}}');
+      expect(response.headers.get('etag')).toBe(strongEtag(body));
+      expect(response.headers.get('cache-control')).toBe('no-store');
+      expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+      expect(response.headers.get('x-wiring-library-initialized')).toBe('0');
+    });
+
+    it('requires If-Match, writes atomically with mode 0600 and advances the ETag', async () => {
+      const initial = await fetch(`${server.baseUrl}/api/library`);
+      const etag = initial.headers.get('etag');
+      const catalog = {
+        version: 2,
+        devices: [
+          {
+            libraryId: 'lib-custom-test',
+            template: {
+              type: 'device',
+              deviceId: '',
+              manufacturer: 'Talus',
+              model: 'Teste',
+              ports: [],
+            },
+          },
+        ],
+        assets: {},
+      };
+
+      const missing = await fetch(`${server.baseUrl}/api/library`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(catalog),
+      });
+      expect(missing.status).toBe(428);
+
+      const saved = await fetch(`${server.baseUrl}/api/library`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'If-Match': etag },
+        body: JSON.stringify(catalog),
+      });
+      expect(saved.status).toBe(200);
+      expect(saved.headers.get('etag')).not.toBe(etag);
+
+      const onDisk = await readFile(join(libraryDir, 'catalog.json'), 'utf8');
+      expect(JSON.parse(onDisk)).toEqual(catalog);
+      expect((await lstat(join(libraryDir, 'catalog.json'))).mode & 0o777).toBe(0o600);
+      expect((await fetch(`${server.baseUrl}/api/library`)).headers.get('etag')).toBe(
+        strongEtag(onDisk),
+      );
+    });
+
+    it('serializes competing writes and rejects the stale writer without overwriting', async () => {
+      const first = await fetch(`${server.baseUrl}/api/library`);
+      const etag = first.headers.get('etag');
+      const catalogs = ['A', 'B'].map((model) => ({
+        version: 2,
+        devices: [
+          {
+            libraryId: `lib-${model.toLowerCase()}`,
+            template: {
+              type: 'device',
+              deviceId: '',
+              manufacturer: 'Talus',
+              model,
+              ports: [],
+            },
+          },
+        ],
+        assets: {},
+      }));
+
+      const responses = await Promise.all(
+        catalogs.map((catalog) =>
+          fetch(`${server.baseUrl}/api/library`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'If-Match': etag },
+            body: JSON.stringify(catalog),
+          }),
+        ),
+      );
+
+      expect(responses.map((response) => response.status).sort()).toEqual([200, 412]);
+      const stored = await (await fetch(`${server.baseUrl}/api/library`)).json();
+      expect(catalogs).toContainEqual(stored);
+    });
+
+    it('rejects forged artwork, SVG assets and dangling artwork references', async () => {
+      const initial = await fetch(`${server.baseUrl}/api/library`);
+      const etag = initial.headers.get('etag');
+      const hash = '0'.repeat(64);
+      const base = {
+        version: 2,
+        devices: [
+          {
+            libraryId: 'lib-image',
+            template: {
+              type: 'device',
+              deviceId: '',
+              manufacturer: 'Talus',
+              model: 'Imagem',
+              ports: [{ id: 'p1', label: 'P1', direction: 'input' }],
+              footprintId: 'image',
+              footprint: {
+                id: 'image',
+                label: 'Imagem',
+                rows: 1,
+                cols: 1,
+                pins: [{ id: 'p1', label: 'P1', cell: { row: 0, col: 0 } }],
+                shapes: [],
+                artwork: { assetHash: hash, x: 0, y: 0, width: 1, height: 1 },
+              },
+            },
+          },
+        ],
+        assets: {},
+      };
+
+      const dangling = await fetch(`${server.baseUrl}/api/library`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'If-Match': etag },
+        body: JSON.stringify(base),
+      });
+      expect(dangling.status).toBe(400);
+
+      base.assets[hash] = {
+        mimeType: 'image/svg+xml',
+        width: 1,
+        height: 1,
+        byteLength: 6,
+        dataUrl: 'data:image/svg+xml;base64,PHN2Zy8+',
+      };
+      const svg = await fetch(`${server.baseUrl}/api/library`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'If-Match': etag },
+        body: JSON.stringify(base),
+      });
+      expect(svg.status).toBe(400);
+
+      base.assets[hash] = {
+        mimeType: 'image/png',
+        width: 1,
+        height: 1,
+        byteLength: 1,
+        dataUrl: 'data:image/png;base64,AA==',
+      };
+      const forged = await fetch(`${server.baseUrl}/api/library`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'If-Match': etag },
+        body: JSON.stringify(base),
+      });
+      expect(forged.status).toBe(400);
+    });
+
+    it('does not route nested library paths to the Angular index', async () => {
+      expect((await fetch(`${server.baseUrl}/api/library/extra`)).status).toBe(404);
+    });
   });
 
   describe('PUT/GET/list round trip', () => {
@@ -421,6 +603,96 @@ describe('wiring-editor-server', () => {
         position: { x: 812.5, y: 433.25 },
         footprintRotation: 90,
         footprintPitch: 17,
+      });
+    });
+
+    it('persists only valid content-addressed artwork referenced by a footprint', async () => {
+      const project = validProjectPayload();
+      project.layout.components[0].footprintId = 'source-artwork';
+      project.layout.components[0].footprint = {
+        id: 'source-artwork',
+        label: 'Source artwork',
+        rows: 1,
+        cols: 1,
+        pins: [{ id: 'out', label: 'OUT', cell: { row: 0, col: 0 } }],
+        shapes: [],
+        artwork: {
+          assetHash: PNG_1X1_HASH,
+          x: -0.25,
+          y: -0.5,
+          width: 1.5,
+          height: 2,
+          preserveAspectRatio: true,
+        },
+      };
+      project.resources.artworkAssets[PNG_1X1_HASH] = PNG_1X1_RESOURCE;
+
+      const accepted = await fetch(`${server.baseUrl}/api/projects/artwork`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(accepted.status).toBe(200);
+      expect(await (await fetch(`${server.baseUrl}/api/projects/artwork`)).json()).toEqual(project);
+
+      const missing = structuredClone(project);
+      missing.resources.artworkAssets = {};
+      expect(
+        await fetch(`${server.baseUrl}/api/projects/artwork-missing`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(missing),
+        }),
+      ).toMatchObject({ status: 400 });
+
+      const forged = structuredClone(project);
+      forged.resources.artworkAssets[PNG_1X1_HASH].dataUrl = 'data:image/png;base64,AA==';
+      expect(
+        await fetch(`${server.baseUrl}/api/projects/artwork-forged`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(forged),
+        }),
+      ).toMatchObject({ status: 400 });
+
+      const unreferenced = validProjectPayload();
+      unreferenced.resources.artworkAssets[PNG_1X1_HASH] = PNG_1X1_RESOURCE;
+      expect(
+        await fetch(`${server.baseUrl}/api/projects/artwork-unreferenced`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(unreferenced),
+        }),
+      ).toMatchObject({ status: 400 });
+    });
+
+    it('normalizes a seated illustrated component with the complete drawn extent', async () => {
+      const project = parseCanonicalProjectOnServer(basePhysicalProject());
+      project.layout.components[0].position = { x: 999, y: -999 };
+      project.layout.components[0].footprint.artwork = {
+        assetHash: PNG_1X1_HASH,
+        x: -2,
+        y: -2,
+        width: 4,
+        height: 4,
+        preserveAspectRatio: true,
+      };
+      project.resources.artworkAssets[PNG_1X1_HASH] = PNG_1X1_RESOURCE;
+
+      const putRes = await fetch(`${server.baseUrl}/api/projects/artwork-seated`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(putRes.status).toBe(200);
+
+      const saved = await (await fetch(`${server.baseUrl}/api/projects/artwork-seated`)).json();
+      expect(saved.layout.components[0]).toMatchObject({
+        position: { x: 9, y: 36 },
+        pinHoles: [
+          { pinId: 'a', hole: { row: 2, col: 1 } },
+          { pinId: 'b', hole: { row: 2, col: 2 } },
+        ],
       });
     });
 
@@ -621,7 +893,8 @@ describe('wiring-editor-server', () => {
       });
       expect(res.status).toBe(200);
       const stored = await (await fetch(`${server.baseUrl}/api/projects/migrated-planes`)).json();
-      expect(stored.formatVersion).toBe(4);
+      expect(stored.formatVersion).toBe(5);
+      expect(stored.resources).toEqual({ artworkAssets: {} });
       expect(stored.layout.components.every((item) => item.visualPlane === 10)).toBe(true);
       expect(stored.layout.junctions.every((item) => item.visualPlane === 30)).toBe(true);
       expect(stored.layout.conductors.every((item) => item.visualPlane === 20)).toBe(true);
@@ -908,8 +1181,8 @@ describe('wiring-editor-server', () => {
   });
 
   describe('oversized payload', () => {
-    it('returns 413 for a body over the 5 MB limit', async () => {
-      const hugeBody = JSON.stringify({ padding: 'x'.repeat(6 * 1024 * 1024) });
+    it('returns 413 for a body over the 8 MiB limit', async () => {
+      const hugeBody = JSON.stringify({ padding: 'x'.repeat(9 * 1024 * 1024) });
       const res = await fetch(`${server.baseUrl}/api/projects/too-big`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

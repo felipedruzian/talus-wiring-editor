@@ -1,9 +1,15 @@
+import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { sha256HexSync } from './artwork-import';
 import { LibraryService } from './library.service';
 import {
+  LEGACY_LIBRARY_STORAGE_KEY,
   LIBRARY_STORAGE_KEY,
   LIBRARY_STORAGE_VERSION,
+  MAX_LIBRARY_ASSETS,
+  loadLibraryCatalog,
   loadLibraryDevices,
+  persistLibraryCatalog,
 } from './library-storage';
 import { createBlankTemplate, SEED_LIBRARY } from './seed-library';
 
@@ -38,11 +44,12 @@ class MemoryStorage implements Storage {
 describe('LibraryService', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    TestBed.resetTestingModule();
   });
 
   it('searches manufacturer, model, category and port labels', () => {
     vi.stubGlobal('localStorage', new MemoryStorage());
-    const service = new LibraryService();
+    const service = createLibraryService();
 
     service.searchQuery.set('Texas Instruments');
     expect(service.filteredDevices().map((device) => device.libraryId)).toEqual(['lib-lm2596s']);
@@ -66,17 +73,17 @@ describe('LibraryService', () => {
 
   it('treats a query containing only combining marks as empty', () => {
     vi.stubGlobal('localStorage', new MemoryStorage());
-    const service = new LibraryService();
+    const service = createLibraryService();
 
     service.searchQuery.set('\u0301');
 
     expect(service.filteredDevices()).toEqual(SEED_LIBRARY);
   });
 
-  it('persists manual create, edit and remove operations in a versioned schema', () => {
+  it('persists manual create, edit and remove operations in a versioned schema', async () => {
     const storage = new MemoryStorage();
     vi.stubGlobal('localStorage', storage);
-    const service = new LibraryService();
+    const service = createLibraryService();
     const custom = {
       ...createBlankTemplate(),
       manufacturer: 'Talus',
@@ -90,21 +97,23 @@ describe('LibraryService', () => {
     service.beginCreate();
     const libraryId = service.editingDeviceId();
     if (!libraryId) throw new Error('Expected a generated library id');
-    service.commitDraft(libraryId, custom);
+    await service.commitDraft(libraryId, custom);
 
     const serialized = storage.getItem(LIBRARY_STORAGE_KEY);
     if (!serialized) throw new Error('Expected a persisted library payload');
     expect(JSON.parse(serialized)).toMatchObject({ version: LIBRARY_STORAGE_VERSION });
-    expect(new LibraryService().devices().at(-1)?.template.model).toBe('Componente de teste');
+    expect(createLibraryService().devices().at(-1)?.template.model).toBe('Componente de teste');
 
-    service.beginEdit(libraryId);
-    service.commitDraft(libraryId, { ...custom, model: 'Componente editado' });
-    expect(new LibraryService().devices().at(-1)?.template.model).toBe('Componente editado');
+    await service.beginEdit(libraryId);
+    await service.commitDraft(libraryId, { ...custom, model: 'Componente editado' });
+    expect(createLibraryService().devices().at(-1)?.template.model).toBe('Componente editado');
 
-    service.removeDevice(libraryId);
-    expect(new LibraryService().devices().some((device) => device.libraryId === libraryId)).toBe(
-      false,
-    );
+    await service.removeDevice(libraryId);
+    expect(
+      createLibraryService()
+        .devices()
+        .some((device) => device.libraryId === libraryId),
+    ).toBe(false);
   });
 
   it('falls back to the seed catalog for invalid JSON, unknown versions or unsafe shapes', () => {
@@ -118,13 +127,18 @@ describe('LibraryService', () => {
     expect(loadLibraryDevices(storage)).not.toBe(SEED_LIBRARY);
     storage.setItem(
       LIBRARY_STORAGE_KEY,
-      JSON.stringify({ version: LIBRARY_STORAGE_VERSION, devices: [{ libraryId: 'bad' }] }),
+      JSON.stringify({
+        version: LIBRARY_STORAGE_VERSION,
+        devices: [{ libraryId: 'bad' }],
+        assets: {},
+      }),
     );
     expect(loadLibraryDevices(storage)).toEqual(SEED_LIBRARY);
     expect(loadLibraryDevices(storage)).not.toBe(SEED_LIBRARY);
     expect(JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}')).toEqual({
       version: LIBRARY_STORAGE_VERSION,
       devices: SEED_LIBRARY,
+      assets: {},
     });
   });
 
@@ -143,6 +157,7 @@ describe('LibraryService', () => {
       JSON.stringify({
         version: LIBRARY_STORAGE_VERSION,
         devices: [valid, { libraryId: 'broken', template: { type: 'nope' } }, valid],
+        assets: {},
       }),
     );
 
@@ -150,6 +165,7 @@ describe('LibraryService', () => {
     expect(JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}')).toEqual({
       version: LIBRARY_STORAGE_VERSION,
       devices: [valid],
+      assets: {},
     });
   });
 
@@ -157,13 +173,13 @@ describe('LibraryService', () => {
     const storage = new MemoryStorage();
     storage.setItem(
       LIBRARY_STORAGE_KEY,
-      JSON.stringify({ version: LIBRARY_STORAGE_VERSION, devices: [] }),
+      JSON.stringify({ version: LIBRARY_STORAGE_VERSION, devices: [], assets: {} }),
     );
 
     expect(loadLibraryDevices(storage)).toEqual([]);
   });
 
-  it('restores current seeds while preserving custom components', () => {
+  it('restores current seeds while preserving custom components', async () => {
     const storage = new MemoryStorage();
     const custom = {
       libraryId: 'lib-custom-kept',
@@ -190,16 +206,381 @@ describe('LibraryService', () => {
       JSON.stringify({
         version: LIBRARY_STORAGE_VERSION,
         devices: [overriddenSeed, custom, legacy],
+        assets: {},
       }),
     );
     vi.stubGlobal('localStorage', storage);
-    const service = new LibraryService();
+    const service = createLibraryService();
 
-    service.restoreDefaults();
+    await service.restoreDefaults();
 
     expect(service.devices()).toEqual([...SEED_LIBRARY, custom]);
     expect(service.devices().some((device) => device.libraryId === legacy.libraryId)).toBe(false);
     expect(service.devices()).not.toBe(SEED_LIBRARY);
-    expect(new LibraryService().devices()).toEqual([...SEED_LIBRARY, custom]);
+    expect(createLibraryService().devices()).toEqual([...SEED_LIBRARY, custom]);
+  });
+
+  it('migrates a legacy v1 device catalog to v2 without losing custom entries', () => {
+    const storage = new MemoryStorage();
+    const custom = {
+      libraryId: 'lib-custom-legacy',
+      template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Legado' },
+    };
+    storage.setItem(LEGACY_LIBRARY_STORAGE_KEY, JSON.stringify({ version: 1, devices: [custom] }));
+
+    expect(loadLibraryCatalog(storage)).toEqual({ devices: [custom], assets: [] });
+    expect(JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}')).toEqual({
+      version: LIBRARY_STORAGE_VERSION,
+      devices: [custom],
+      assets: {},
+    });
+  });
+
+  it('deduplicates artwork by hash and restores a physical custom component', async () => {
+    const storage = new MemoryStorage();
+    vi.stubGlobal('localStorage', storage);
+    const service = createLibraryService();
+    const asset = artworkAsset();
+    const hash = asset.hash;
+    const footprint = {
+      id: 'custom-physical',
+      label: 'Sensor físico',
+      rows: 1,
+      cols: 2,
+      pins: [{ id: 'signal', label: 'Sinal', cell: { row: 0, col: 0 } }],
+      shapes: [],
+      artwork: { assetHash: hash, x: -0.5, y: -0.25, width: 2.5, height: 1.5 },
+    };
+    const template = {
+      ...createBlankTemplate(),
+      manufacturer: 'Talus',
+      model: 'Sensor físico',
+      footprintId: footprint.id,
+      footprint,
+      footprintRotation: 0 as const,
+      footprintPitch: 20,
+      ports: [{ id: 'signal', label: 'Sinal', direction: 'output' as const }],
+    };
+
+    service.beginCreate();
+    const libraryId = service.editingDeviceId();
+    if (!libraryId) throw new Error('Expected library id');
+    expect(await service.commitDraft(libraryId, template, [asset, structuredClone(asset)])).toBe(
+      true,
+    );
+
+    const restored = createLibraryService();
+    expect(restored.devices().at(-1)?.template).toEqual(template);
+    expect(restored.artworkAsset(hash)).toEqual(asset);
+    const payload = JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}') as {
+      assets: Record<string, unknown>;
+    };
+    expect(Object.keys(payload.assets)).toEqual([hash]);
+  });
+
+  it('never hydrates a persisted asset whose bytes do not match its SHA-256 key', () => {
+    const storage = new MemoryStorage();
+    const asset = artworkAsset();
+    const forgedHash = '0'.repeat(64);
+    const device = physicalLibraryDevice('forged', forgedHash);
+    const persistedAsset = {
+      mimeType: asset.mimeType,
+      width: asset.width,
+      height: asset.height,
+      byteLength: asset.byteLength,
+      dataUrl: asset.dataUrl,
+    };
+    storage.setItem(
+      LIBRARY_STORAGE_KEY,
+      JSON.stringify({
+        version: LIBRARY_STORAGE_VERSION,
+        devices: [device],
+        assets: { [forgedHash]: persistedAsset },
+      }),
+    );
+    vi.stubGlobal('localStorage', storage);
+
+    const service = createLibraryService();
+
+    expect(service.artworkAsset(forgedHash)).toBeUndefined();
+    expect(service.devices()[0]?.template.footprint?.artwork).toBeUndefined();
+    const repaired = JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}') as {
+      assets: Record<string, unknown>;
+    };
+    expect(repaired.assets).toEqual({});
+  });
+
+  it('rejects a 129th referenced asset without mutating memory or storage', async () => {
+    const storage = new MemoryStorage();
+    const assets = Array.from({ length: MAX_LIBRARY_ASSETS }, (_, index) => artworkAsset(index));
+    const devices = assets.map((asset, index) =>
+      physicalLibraryDevice(`existing-${index}`, asset.hash),
+    );
+    expect(persistLibraryCatalog(storage, { devices, assets })).toEqual({ ok: true });
+    const before = storage.getItem(LIBRARY_STORAGE_KEY);
+    vi.stubGlobal('localStorage', storage);
+    const service = createLibraryService();
+    const nextAsset = artworkAsset(MAX_LIBRARY_ASSETS);
+    const next = physicalLibraryDevice('next', nextAsset.hash);
+    service.beginCreate();
+    const libraryId = service.editingDeviceId();
+    if (!libraryId) throw new Error('Expected library id');
+
+    expect(await service.commitDraft(libraryId, next.template, [nextAsset])).toBe(false);
+    expect(service.devices()).toHaveLength(MAX_LIBRARY_ASSETS);
+    expect(service.storageError()).toMatch(/no máximo 128 imagens/);
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(before);
+  });
+
+  it('does not truncate or rewrite an over-limit persisted asset catalog', () => {
+    const storage = new MemoryStorage();
+    const assets = Object.fromEntries(
+      Array.from({ length: MAX_LIBRARY_ASSETS + 1 }, (_, index) => [
+        index.toString(16).padStart(64, '0'),
+        {},
+      ]),
+    );
+    const serialized = JSON.stringify({ version: LIBRARY_STORAGE_VERSION, devices: [], assets });
+    storage.setItem(LIBRARY_STORAGE_KEY, serialized);
+
+    const loaded = loadLibraryCatalog(storage);
+
+    expect(loaded.loadError).toMatch(/excede o limite de 128 imagens/);
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
+  });
+
+  it('reports localStorage quota failures instead of silently claiming persistence', async () => {
+    const storage = new MemoryStorage();
+    storage.setItem = () => {
+      throw new DOMException('quota', 'QuotaExceededError');
+    };
+    vi.stubGlobal('localStorage', storage);
+    const service = createLibraryService();
+    service.beginCreate();
+    const libraryId = service.editingDeviceId();
+    if (!libraryId) throw new Error('Expected library id');
+
+    expect(
+      await service.commitDraft(libraryId, {
+        ...createBlankTemplate(),
+        manufacturer: 'Talus',
+        model: 'Sem espaço',
+      }),
+    ).toBe(false);
+    expect(service.storageError()).toMatch(/sem espaço/);
+    expect(service.editingDeviceId()).toBe(libraryId);
+  });
+
+  it('hydrates the shared catalog when the central service is available', async () => {
+    const storage = new MemoryStorage();
+    const remoteDevice = {
+      libraryId: 'lib-shared',
+      template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Compartilhado' },
+    };
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          sharedCatalogResponse({ version: 2, devices: [remoteDevice], assets: {} }, true),
+        ),
+    );
+
+    const service = createLibraryService();
+    await vi.waitFor(() => {
+      expect(service.devices()).toEqual([remoteDevice]);
+    });
+
+    expect(JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}')).toMatchObject({
+      devices: [remoteDevice],
+    });
+  });
+
+  it('waits for central hydration before opening an edit with the remote template', async () => {
+    const storage = new MemoryStorage();
+    const localDevice = {
+      libraryId: 'lib-shared',
+      template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Cache antigo' },
+    };
+    const remoteDevice = {
+      libraryId: 'lib-shared',
+      template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Versão remota' },
+    };
+    expect(persistLibraryCatalog(storage, { devices: [localDevice], assets: [] }).ok).toBe(true);
+    const remote = deferred<Response>();
+    const fetchMock = vi.fn<typeof fetch>().mockReturnValue(remote.promise);
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('fetch', fetchMock);
+    const service = createLibraryService();
+
+    const opening = service.beginEdit(localDevice.libraryId);
+    expect(service.editingDeviceId()).toBeNull();
+
+    remote.resolve(
+      sharedCatalogResponse({ version: 2, devices: [remoteDevice], assets: {} }, true),
+    );
+    await opening;
+
+    expect(service.editingDeviceId()).toBe(remoteDevice.libraryId);
+    expect(service.editingDevice()?.template.model).toBe('Versão remota');
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('does not open or save a local item deleted from the hydrated central catalog', async () => {
+    const storage = new MemoryStorage();
+    const deleted = {
+      libraryId: 'lib-custom-deleted',
+      template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Excluído' },
+    };
+    expect(persistLibraryCatalog(storage, { devices: [deleted], assets: [] }).ok).toBe(true);
+    const remote = deferred<Response>();
+    const fetchMock = vi.fn<typeof fetch>().mockReturnValue(remote.promise);
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('fetch', fetchMock);
+    const service = createLibraryService();
+
+    const opening = service.beginEdit(deleted.libraryId);
+    remote.resolve(sharedCatalogResponse({ version: 2, devices: [], assets: {} }, true));
+    await opening;
+
+    expect(service.editingDeviceId()).toBeNull();
+    expect(service.storageError()).toMatch(/não existe mais/);
+    expect(await service.commitDraft(deleted.libraryId, deleted.template)).toBe(false);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('bootstraps an absent central catalog from the local v1 migration', async () => {
+    const storage = new MemoryStorage();
+    const legacy = {
+      libraryId: 'lib-custom-legacy-central',
+      template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Legado central' },
+    };
+    storage.setItem(LEGACY_LIBRARY_STORAGE_KEY, JSON.stringify({ version: 1, devices: [legacy] }));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(sharedCatalogResponse({ version: 2, devices: [], assets: {} }, false))
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 200,
+          headers: { ETag: `"${'a'.repeat(64)}"` },
+        }),
+      );
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('fetch', fetchMock);
+
+    createLibraryService();
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    const request = fetchMock.mock.calls[1]?.[1];
+    if (typeof request?.body !== 'string') throw new Error('Expected a JSON request body');
+    expect(JSON.parse(request.body)).toMatchObject({ devices: [legacy] });
+  });
+
+  it('surfaces a central ETag conflict without mutating the visible or local catalog', async () => {
+    const storage = new MemoryStorage();
+    const remoteDevice = {
+      libraryId: 'lib-shared',
+      template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Compartilhado' },
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        sharedCatalogResponse({ version: 2, devices: [remoteDevice], assets: {} }, true),
+      )
+      .mockResolvedValueOnce(new Response('{}', { status: 412 }));
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('fetch', fetchMock);
+    const service = createLibraryService();
+    await vi.waitFor(() => {
+      expect(service.devices()).toEqual([remoteDevice]);
+    });
+    const before = storage.getItem(LIBRARY_STORAGE_KEY);
+
+    service.beginCreate();
+    const libraryId = service.editingDeviceId();
+    if (!libraryId) throw new Error('Expected library id');
+    const saved = await service.commitDraft(libraryId, {
+      ...createBlankTemplate(),
+      manufacturer: 'Talus',
+      model: 'Concorrente',
+    });
+
+    expect(saved).toBe(false);
+    expect(service.devices()).toEqual([remoteDevice]);
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(before);
+    expect(service.storageError()).toMatch(/outro navegador/);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
+
+function createLibraryService(): LibraryService {
+  return TestBed.runInInjectionContext(() => new LibraryService());
+}
+
+const PNG_1X1_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+function artworkAsset(unique = -1) {
+  const base = Uint8Array.from(atob(PNG_1X1_BASE64), (character) => character.charCodeAt(0));
+  const bytes = unique < 0 ? base : new Uint8Array([...base, unique >> 8, unique & 0xff]);
+  const hash = sha256HexSync(bytes);
+  return {
+    hash,
+    mimeType: 'image/png' as const,
+    width: 1,
+    height: 1,
+    byteLength: bytes.byteLength,
+    dataUrl: `data:image/png;base64,${bytesToBase64(bytes)}`,
+  };
+}
+
+function physicalLibraryDevice(libraryId: string, assetHash: string) {
+  const footprint = {
+    id: `footprint-${libraryId}`,
+    label: libraryId,
+    rows: 1,
+    cols: 1,
+    pins: [{ id: 'signal', label: 'Sinal', cell: { row: 0, col: 0 } }],
+    shapes: [],
+    artwork: { assetHash, x: 0, y: 0, width: 1, height: 1 },
+  };
+  return {
+    libraryId: `lib-custom-${libraryId}`,
+    template: {
+      ...createBlankTemplate(),
+      model: libraryId,
+      footprintId: footprint.id,
+      footprint,
+      ports: [{ id: 'signal', label: 'Sinal', direction: 'input' as const }],
+    },
+  };
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function sharedCatalogResponse(value: unknown, initialized: boolean): Response {
+  const body = JSON.stringify(value);
+  const etag = `"${sha256HexSync(new TextEncoder().encode(body))}"`;
+  return new Response(body, {
+    headers: {
+      'Content-Type': 'application/json',
+      ETag: etag,
+      'X-Wiring-Library-Initialized': initialized ? '1' : '0',
+    },
+  });
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}

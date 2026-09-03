@@ -78,6 +78,20 @@ export interface FootprintPin {
   primary?: boolean;
 }
 
+/**
+ * Raster artwork placed in the same pitch-unit coordinate system as pins and
+ * vector shapes. The binary lives in the shared artwork asset store; keeping
+ * only its SHA-256 hash here deduplicates identical uploads across components.
+ */
+export interface FootprintArtwork {
+  assetHash: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  preserveAspectRatio?: boolean;
+}
+
 export interface Footprint {
   id: string;
   label: string;
@@ -86,6 +100,8 @@ export interface Footprint {
   cols: number;
   pins: FootprintPin[];
   shapes: FootprintShape[];
+  /** Optional user-supplied raster image, referenced by content hash. */
+  artwork?: FootprintArtwork;
   /**
    * Cells the body physically covers beyond its pins. Absent means the body
    * covers its whole `rows x cols` bounding box, which is the usual case for a
@@ -412,6 +428,7 @@ export function cloneFootprint(footprint: Footprint): Footprint {
     ...footprint,
     pins: footprint.pins.map((pin) => ({ ...pin, cell: { ...pin.cell } })),
     shapes: footprint.shapes.map((shape) => ({ ...shape })),
+    artwork: footprint.artwork ? { ...footprint.artwork } : undefined,
     bodyCells: footprint.bodyCells?.map((cell) => ({ ...cell })),
   };
 }

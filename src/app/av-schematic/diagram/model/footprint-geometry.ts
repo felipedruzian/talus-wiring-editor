@@ -7,7 +7,13 @@ import {
   type BoardGrid,
   type BoardHoleClaim,
 } from './board-geometry';
-import { resolveFootprint, type Footprint, type FootprintCell } from './footprint';
+import {
+  resolveFootprint,
+  type Footprint,
+  type FootprintArtwork,
+  type FootprintCell,
+  type FootprintShape,
+} from './footprint';
 import {
   type BoardHole,
   type BoardNodeData,
@@ -25,6 +31,11 @@ export const DETACHED_FOOTPRINT_FALLBACK_PITCH = 20;
 export interface CellBox {
   rows: number;
   cols: number;
+}
+
+export interface DrawableFootprint extends CellBox {
+  artwork?: FootprintArtwork;
+  shapes?: readonly FootprintShape[];
 }
 
 /**
@@ -162,6 +173,41 @@ export function footprintDrawPoint(
   return { x: rotated.x, y: applyFootprintChannel(rotated.y, channel) };
 }
 
+/**
+ * Rigid artwork mapping. A raster cannot be split across the board channel:
+ * rotate every point together and, when its center belongs below the cut,
+ * translate the whole image by the gap exactly once.
+ */
+export function footprintArtworkPoints(
+  footprint: CellBox,
+  artwork: Pick<FootprintArtwork, 'x' | 'y' | 'width' | 'height'>,
+  rotation: BoardRotation,
+  channel: FootprintChannel | null,
+): {
+  origin: { x: number; y: number };
+  horizontal: { x: number; y: number };
+  vertical: { x: number; y: number };
+  opposite: { x: number; y: number };
+} {
+  const center = rotateFootprintPoint(
+    artwork.x + artwork.width / 2,
+    artwork.y + artwork.height / 2,
+    footprint,
+    rotation,
+  );
+  const shift = channel && center.y > channel.cutY ? channel.gapCells : 0;
+  const at = (x: number, y: number) => {
+    const point = rotateFootprintPoint(x, y, footprint, rotation);
+    return { x: point.x, y: point.y + shift };
+  };
+  return {
+    origin: at(artwork.x, artwork.y),
+    horizontal: at(artwork.x + artwork.width, artwork.y),
+    vertical: at(artwork.x, artwork.y + artwork.height),
+    opposite: at(artwork.x + artwork.width, artwork.y + artwork.height),
+  };
+}
+
 /** Next rotation clockwise (or counter-clockwise for `step: -1`). */
 export function stepRotation(rotation: BoardRotation, step: 1 | -1): BoardRotation {
   const next = (((rotation + step * 90) % 360) + 360) % 360;
@@ -282,18 +328,27 @@ export interface BoardFrame {
  * Top-left pixel position a footprinted node must take, in diagram
  * coordinates, so that its anchor cell sits exactly on the anchor hole.
  *
- * The node's own box is the rotated cell box grown by `FOOTPRINT_PADDING_CELLS`
- * on every side, so cell (0, 0) is `padding * pitch` in from the node corner.
+ * The node's own box unites the padded rotated cell box with vector shapes and
+ * raster artwork. Using the resulting left/top extent here keeps cell (0, 0)
+ * aligned with the anchor even when an illustration extends into negative
+ * coordinates.
  */
 export function placementNodePosition(
   frame: BoardFrame,
   placement: Pick<DevicePlacement, 'anchor' | 'rotation'>,
+  footprint?: DrawableFootprint,
 ): { x: number; y: number } {
-  const pad = FOOTPRINT_PADDING_CELLS * frame.board.pitch;
   const anchor = holeLocalPoint(frame.board, placement.anchor);
+  const channel = footprint ? footprintChannel(frame.board, footprint, placement) : null;
+  const extent = footprint
+    ? footprintDrawnExtent(footprint, placement.rotation, channel)
+    : {
+        left: -FOOTPRINT_PADDING_CELLS,
+        top: -FOOTPRINT_PADDING_CELLS,
+      };
   return {
-    x: frame.position.x + anchor.x - pad,
-    y: frame.position.y + anchor.y - pad,
+    x: frame.position.x + anchor.x + extent.left * frame.board.pitch,
+    y: frame.position.y + anchor.y + extent.top * frame.board.pitch,
   };
 }
 
@@ -309,12 +364,21 @@ export function anchorForNodePosition(
   frame: BoardFrame,
   nodePosition: { x: number; y: number },
   nodePitch = frame.board.pitch,
+  footprint?: DrawableFootprint,
+  rotation: BoardRotation = 0,
 ): BoardHole | null {
-  const pad = FOOTPRINT_PADDING_CELLS * nodePitch;
-  return nearestAvailableHole(frame.board, {
-    x: nodePosition.x - frame.position.x + pad,
-    y: nodePosition.y - frame.position.y + pad,
-  });
+  const findAnchor = (extent: Pick<ReturnType<typeof footprintDrawnExtent>, 'left' | 'top'>) =>
+    nearestAvailableHole(frame.board, {
+      x: nodePosition.x - frame.position.x - extent.left * nodePitch,
+      y: nodePosition.y - frame.position.y - extent.top * nodePitch,
+    });
+  if (!footprint) {
+    return findAnchor({ left: -FOOTPRINT_PADDING_CELLS, top: -FOOTPRINT_PADDING_CELLS });
+  }
+  const initial = findAnchor(footprintDrawnExtent(footprint, rotation, null));
+  if (!initial) return null;
+  const channel = footprintChannel(frame.board, footprint, { anchor: initial, rotation });
+  return findAnchor(footprintDrawnExtent(footprint, rotation, channel));
 }
 
 /**
@@ -340,25 +404,94 @@ export function anchorAfterRotation(
 /**
  * The footprint's drawn extent in cell units, in the board's piecewise space.
  *
- * `top` is always `-FOOTPRINT_PADDING_CELLS` so cell (0, 0) keeps sitting one
- * padding in from the node's corner - the invariant `placementNodePosition`
- * relies on. `bottom` grows by the channel when the footprint straddles it,
- * which is what stretches the body across the trench instead of tearing it
- * away from its own pins.
+ * The padded cell box is the baseline. Vector shapes and rigid raster artwork
+ * may extend any side, including into negative fractional coordinates. The
+ * bottom grows by the channel when the footprint straddles it, while artwork
+ * is translated as one rigid rectangle rather than stretched across the cut.
  */
 export function footprintDrawnExtent(
-  footprint: CellBox,
+  footprint: DrawableFootprint,
   rotation: BoardRotation,
   channel: FootprintChannel | null,
 ): { top: number; bottom: number; left: number; right: number } {
   const box = rotatedFootprintBox(footprint, rotation);
   const pad = FOOTPRINT_PADDING_CELLS;
-  return {
+  const extent = {
     top: -pad,
     bottom: applyFootprintChannel(box.rows - 1 + pad, channel),
     left: -pad,
     right: box.cols - 1 + pad,
   };
+  const includePoints = (points: readonly { x: number; y: number }[], margin = 0): void => {
+    extent.top = Math.min(extent.top, ...points.map((point) => point.y - margin));
+    extent.bottom = Math.max(extent.bottom, ...points.map((point) => point.y + margin));
+    extent.left = Math.min(extent.left, ...points.map((point) => point.x - margin));
+    extent.right = Math.max(extent.right, ...points.map((point) => point.x + margin));
+  };
+  for (const shape of footprint.shapes ?? []) {
+    switch (shape.kind) {
+      case 'rect':
+        includePoints([
+          footprintDrawPoint(shape.x, shape.y, footprint, rotation, channel),
+          footprintDrawPoint(shape.x + shape.width, shape.y, footprint, rotation, channel),
+          footprintDrawPoint(
+            shape.x + shape.width,
+            shape.y + shape.height,
+            footprint,
+            rotation,
+            channel,
+          ),
+          footprintDrawPoint(shape.x, shape.y + shape.height, footprint, rotation, channel),
+        ]);
+        break;
+      case 'circle':
+        includePoints(
+          [footprintDrawPoint(shape.cx, shape.cy, footprint, rotation, channel)],
+          shape.r,
+        );
+        break;
+      case 'line':
+        includePoints(
+          [
+            footprintDrawPoint(shape.x1, shape.y1, footprint, rotation, channel),
+            footprintDrawPoint(shape.x2, shape.y2, footprint, rotation, channel),
+          ],
+          (shape.width ?? 0.08) / 2,
+        );
+        break;
+      case 'text': {
+        const size = shape.size ?? 0.42;
+        const width = Math.max(size * 0.5, shape.text.length * size * 0.6);
+        const left =
+          shape.anchor === 'end'
+            ? shape.x - width
+            : shape.anchor === 'middle'
+              ? shape.x - width / 2
+              : shape.x;
+        const rotatedAnchor = rotateFootprintPoint(shape.x, shape.y, footprint, rotation);
+        const mappedAnchor = footprintDrawPoint(shape.x, shape.y, footprint, rotation, channel);
+        const shiftY = mappedAnchor.y - rotatedAnchor.y;
+        includePoints(
+          [
+            { x: left, y: shape.y - size / 2 },
+            { x: left + width, y: shape.y - size / 2 },
+            { x: left + width, y: shape.y + size / 2 },
+            { x: left, y: shape.y + size / 2 },
+          ].map((corner) => {
+            const point = rotateFootprintPoint(corner.x, corner.y, footprint, rotation);
+            return { x: point.x, y: point.y + shiftY };
+          }),
+        );
+        break;
+      }
+    }
+  }
+  const artwork = footprint.artwork;
+  if (!artwork) return extent;
+  const points = footprintArtworkPoints(footprint, artwork, rotation, channel);
+  const corners = [points.origin, points.horizontal, points.vertical, points.opposite];
+  includePoints(corners);
+  return extent;
 }
 
 /**
@@ -368,7 +501,7 @@ export function footprintDrawnExtent(
  * taller: its lower half really is a `centerGap` further down the board.
  */
 export function footprintNodeSize(
-  footprint: CellBox,
+  footprint: DrawableFootprint,
   rotation: BoardRotation,
   pitch: number,
   channel: FootprintChannel | null = null,

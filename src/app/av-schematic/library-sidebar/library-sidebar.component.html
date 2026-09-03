@@ -11,11 +11,10 @@
   @if (isExpanded()) {
     <div class="sidebar-separator"></div>
     <div class="sidebar-content sidebar-enter">
-      @if (editingDeviceId(); as libraryId) {
-        <app-library-detail [libraryId]="libraryId" />
-      } @else {
-        <app-library-list />
-      }
+      <app-library-list />
     </div>
   }
 </aside>
+@if (editingDeviceId(); as libraryId) {
+  <app-library-detail [libraryId]="libraryId" />
+}

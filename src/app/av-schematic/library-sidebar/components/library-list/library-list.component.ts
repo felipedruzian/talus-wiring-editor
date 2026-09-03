@@ -28,6 +28,7 @@ export class LibraryListComponent {
   protected readonly devices = this.libraryService.devices;
   protected readonly filteredDevices = this.libraryService.filteredDevices;
   protected readonly searchQuery = this.libraryService.searchQuery;
+  protected readonly storageError = this.libraryService.storageError;
 
   protected readonly groupedDevices = computed<DeviceGroup[]>(() =>
     groupDevicesByCategory(this.devices()),
@@ -57,8 +58,12 @@ export class LibraryListComponent {
     this.libraryService.beginCreate();
   }
 
-  protected onRestoreDefaults(): void {
-    this.libraryService.restoreDefaults();
+  protected async onRestoreDefaults(): Promise<void> {
+    await this.libraryService.restoreDefaults();
+  }
+
+  protected dismissStorageError(): void {
+    this.libraryService.dismissStorageError();
   }
 }
 

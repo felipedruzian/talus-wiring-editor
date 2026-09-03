@@ -1,0 +1,432 @@
+<section class="physical-editor" aria-labelledby="physical-editor-title">
+  <div class="physical-editor__heading">
+    <div>
+      <h3 id="physical-editor-title">Representação física</h3>
+      <p>Use a distância entre furos como unidade para imagem, corpo e terminais.</p>
+    </div>
+    @if (isPhysical()) {
+      <button type="button" class="secondary-button" (click)="disablePhysical()">
+        Tornar genérico
+      </button>
+    } @else {
+      <button type="button" class="primary-button" (click)="enablePhysical()">
+        Criar footprint físico
+      </button>
+    }
+  </div>
+
+  @if (footprint(); as footprint) {
+    <div class="physical-editor__workspace">
+      <div class="preview-panel">
+        <div class="preview-panel__toolbar">
+          <strong>Pré-visualização</strong>
+          <span>{{ footprint.cols }} × {{ footprint.rows }} posições</span>
+        </div>
+        <div
+          #previewSurface
+          class="physical-preview"
+          role="group"
+          tabindex="0"
+          aria-label="Área de posicionamento e calibração do componente"
+          [class.physical-preview--calibrating]="calibrationCapture() !== null"
+          [style.aspect-ratio]="
+            extent().right - extent().left + ' / ' + (extent().bottom - extent().top)
+          "
+          (click)="captureCalibrationPoint($event)"
+          (keydown.enter)="captureCalibrationAtSelectedPin($event)"
+          (keydown.space)="captureCalibrationAtSelectedPin($event)"
+        >
+          @for (cell of cells(); track cell.row + ':' + cell.col) {
+            <span
+              class="physical-preview__cell"
+              [class.physical-preview__cell--occupied]="cell.occupied"
+              [style.left.%]="previewLeft(cell.col)"
+              [style.top.%]="previewTop(cell.row)"
+              aria-hidden="true"
+            ></span>
+          }
+          @if (footprint.artwork; as artwork) {
+            @if (asset(); as artworkAsset) {
+              <img
+                class="physical-preview__artwork"
+                [src]="artworkAsset.dataUrl"
+                alt="Pré-visualização da imagem do componente"
+                draggable="false"
+                [style.left.%]="previewLeft(artwork.x)"
+                [style.top.%]="previewTop(artwork.y)"
+                [style.width.%]="previewWidth(artwork.width)"
+                [style.height.%]="previewHeight(artwork.height)"
+                [style.object-fit]="artwork.preserveAspectRatio === false ? 'fill' : 'contain'"
+              />
+            }
+          }
+          @for (entry of pins(); track $index; let index = $index) {
+            <button
+              type="button"
+              class="physical-preview__pin"
+              [class.physical-preview__pin--primary]="entry.pin.primary"
+              [style.left.%]="previewLeft(entry.pin.cell.col)"
+              [style.top.%]="previewTop(entry.pin.cell.row)"
+              [attr.aria-label]="
+                'Mover terminal ' +
+                (entry.pin.label || entry.pin.id || index + 1) +
+                ', linha ' +
+                (entry.pin.cell.row + 1) +
+                ', coluna ' +
+                (entry.pin.cell.col + 1)
+              "
+              [title]="'Arraste para reposicionar ' + (entry.pin.label || entry.pin.id)"
+              (pointerdown)="startPinDrag(index, $event)"
+              (pointermove)="movePinDrag($event)"
+              (pointerup)="endPinDrag($event)"
+              (pointercancel)="endPinDrag($event)"
+              (click)="$event.stopPropagation()"
+            >
+              {{ index + 1 }}
+            </button>
+          }
+          @for (marker of calibrationMarkers(); track marker.label) {
+            <span
+              class="physical-preview__reference"
+              [style.left.%]="previewLeft(marker.x)"
+              [style.top.%]="previewTop(marker.y)"
+              [attr.aria-label]="'Referência de calibração ' + marker.label"
+            >
+              {{ marker.label }}
+            </span>
+          }
+        </div>
+        <p class="preview-panel__hint">
+          Arraste os terminais numerados; eles encaixam no furo mais próximo.
+        </p>
+      </div>
+
+      <div class="physical-controls">
+        <fieldset>
+          <legend>Footprint e escala</legend>
+          <label>
+            Nome
+            <input type="text" [value]="footprint.label" (input)="updateFootprintLabel($event)" />
+          </label>
+          <div class="field-row">
+            <label>
+              Linhas
+              <input
+                type="number"
+                min="1"
+                max="64"
+                step="1"
+                [value]="footprint.rows"
+                (change)="updateDimension('rows', $event)"
+              />
+            </label>
+            <label>
+              Colunas
+              <input
+                type="number"
+                min="1"
+                max="64"
+                step="1"
+                [value]="footprint.cols"
+                (change)="updateDimension('cols', $event)"
+              />
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Imagem do componente</legend>
+          <label class="upload-button" [class.upload-button--busy]="uploadBusy()">
+            <span>{{
+              uploadBusy() ? 'Preparando imagem…' : 'Escolher PNG, JPEG, WebP ou SVG'
+            }}</span>
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg"
+              [disabled]="uploadBusy()"
+              (change)="onArtworkSelected($event)"
+            />
+          </label>
+          <p class="limit-note">
+            Entrada: até 5 MiB, 8192 px por eixo e 16.777.216 pixels. SVG seguro é rasterizado; o
+            catálogo guarda apenas PNG/WebP inerte com até 1024 px, 1 MP e 256 KiB.
+          </p>
+          @if (uploadError(); as message) {
+            <p class="editor-message editor-message--error" role="alert">{{ message }}</p>
+          }
+          @if (footprint.artwork; as artwork) {
+            <div class="field-row field-row--four">
+              <label>
+                X (passos)
+                <input
+                  type="number"
+                  step="0.1"
+                  [value]="artwork.x"
+                  (input)="updateArtworkNumber('x', $event)"
+                />
+              </label>
+              <label>
+                Y (passos)
+                <input
+                  type="number"
+                  step="0.1"
+                  [value]="artwork.y"
+                  (input)="updateArtworkNumber('y', $event)"
+                />
+              </label>
+              <label>
+                Largura (passos)
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  [value]="artwork.width"
+                  (input)="updateArtworkNumber('width', $event)"
+                />
+              </label>
+              <label>
+                Altura (passos)
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  [value]="artwork.height"
+                  (input)="updateArtworkNumber('height', $event)"
+                />
+              </label>
+            </div>
+            <label class="checkbox-field">
+              <input
+                type="checkbox"
+                [checked]="artwork.preserveAspectRatio !== false"
+                (change)="updatePreserveAspectRatio($event)"
+              />
+              Preservar proporção da imagem
+            </label>
+            @if (pins().length >= 2) {
+              <div class="calibration-panel">
+                <strong>Calibrar por dois pontos</strong>
+                <p class="limit-note">
+                  Escolha dois terminais, marque na imagem onde eles aparecem e informe a distância
+                  física entre eles em passos de furo.
+                </p>
+                <div class="field-row">
+                  <label>
+                    Terminal 1
+                    <select
+                      [value]="calibrationFirstPinId() || pins()[0].pin.id"
+                      (change)="updateCalibrationPin(1, $event)"
+                    >
+                      @for (entry of pins(); track $index) {
+                        <option [value]="entry.pin.id">
+                          {{ entry.pin.label || entry.pin.id }}
+                        </option>
+                      }
+                    </select>
+                  </label>
+                  <label>
+                    Terminal 2
+                    <select
+                      [value]="calibrationSecondPinId() || pins()[1].pin.id"
+                      (change)="updateCalibrationPin(2, $event)"
+                    >
+                      @for (entry of pins(); track $index) {
+                        <option [value]="entry.pin.id">
+                          {{ entry.pin.label || entry.pin.id }}
+                        </option>
+                      }
+                    </select>
+                  </label>
+                </div>
+                <label>
+                  Distância conhecida (passos)
+                  <input
+                    type="number"
+                    min="0.001"
+                    step="0.001"
+                    [value]="calibrationDistance() || ''"
+                    (input)="updateCalibrationDistance($event)"
+                  />
+                </label>
+                <div class="inline-actions inline-actions--wrap">
+                  <button type="button" class="secondary-button" (click)="usePinDistance()">
+                    Inferir pelas células
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary-button"
+                    [class.secondary-button--active]="calibrationCapture() === 1"
+                    (click)="beginCalibrationCapture(1)"
+                  >
+                    Marcar ponto 1
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary-button"
+                    [class.secondary-button--active]="calibrationCapture() === 2"
+                    (click)="beginCalibrationCapture(2)"
+                  >
+                    Marcar ponto 2
+                  </button>
+                  <button type="button" class="primary-button" (click)="applyCalibration()">
+                    Aplicar calibração
+                  </button>
+                </div>
+                @if (calibrationCapture(); as pointNumber) {
+                  <p class="editor-message" role="status">
+                    Clique na imagem para marcar o ponto {{ pointNumber }}.
+                  </p>
+                }
+                @if (calibrationError(); as message) {
+                  <p class="editor-message editor-message--error" role="alert">{{ message }}</p>
+                }
+              </div>
+            }
+            <button type="button" class="danger-link" (click)="removeArtwork()">
+              Remover imagem
+            </button>
+          }
+        </fieldset>
+      </div>
+    </div>
+
+    <fieldset class="pins-editor">
+      <div class="fieldset-heading">
+        <legend>Terminais</legend>
+        <button type="button" class="secondary-button" (click)="addPin()">
+          + Adicionar terminal
+        </button>
+      </div>
+      @if (pins().length === 0) {
+        <p class="empty-note">
+          Adicione os terminais e posicione cada um sobre o furo correspondente.
+        </p>
+      } @else {
+        <div class="pins-table" role="table" aria-label="Terminais físicos">
+          <div class="pins-table__header" role="row">
+            <span>#</span><span>ID</span><span>Rótulo</span><span>Linha</span><span>Coluna</span
+            ><span>Direção</span><span>Conector</span><span>Pino 1</span><span></span>
+          </div>
+          @for (entry of pins(); track $index; let index = $index) {
+            <div class="pins-table__row" role="row">
+              <span class="pin-index">{{ index + 1 }}</span>
+              <label>
+                <span class="sr-only">ID do terminal {{ index + 1 }}</span>
+                <input
+                  type="text"
+                  [value]="entry.pin.id"
+                  (input)="updatePinText(index, 'id', $event)"
+                />
+              </label>
+              <label>
+                <span class="sr-only">Rótulo do terminal {{ index + 1 }}</span>
+                <input
+                  type="text"
+                  [value]="entry.pin.label"
+                  (input)="updatePinText(index, 'label', $event)"
+                />
+              </label>
+              <label>
+                <span class="sr-only">Linha do terminal {{ index + 1 }}</span>
+                <input
+                  type="number"
+                  min="0"
+                  [max]="footprint.rows - 1"
+                  [value]="entry.pin.cell.row"
+                  (change)="updatePinCell(index, 'row', $event)"
+                />
+              </label>
+              <label>
+                <span class="sr-only">Coluna do terminal {{ index + 1 }}</span>
+                <input
+                  type="number"
+                  min="0"
+                  [max]="footprint.cols - 1"
+                  [value]="entry.pin.cell.col"
+                  (change)="updatePinCell(index, 'col', $event)"
+                />
+              </label>
+              <label>
+                <span class="sr-only">Direção do terminal {{ index + 1 }}</span>
+                <select [value]="entry.port.direction" (change)="updatePinDirection(index, $event)">
+                  <option value="input">Entrada</option>
+                  <option value="output">Saída</option>
+                </select>
+              </label>
+              <label>
+                <span class="sr-only">Conector do terminal {{ index + 1 }}</span>
+                <input
+                  type="text"
+                  [attr.list]="'connector-types-' + libraryId()"
+                  [value]="entry.port.connectorType ?? ''"
+                  (input)="updatePinConnector(index, $event)"
+                />
+              </label>
+              <label class="pin-primary">
+                <input
+                  type="checkbox"
+                  [checked]="entry.pin.primary === true"
+                  (change)="updatePrimary(index, $event)"
+                />
+                <span class="sr-only">Marcar terminal {{ index + 1 }} como pino 1</span>
+              </label>
+              <button
+                type="button"
+                class="remove-pin"
+                [attr.aria-label]="'Remover terminal ' + (entry.pin.label || index + 1)"
+                (click)="removePin(index)"
+              >
+                ×
+              </button>
+            </div>
+          }
+        </div>
+        <datalist [id]="'connector-types-' + libraryId()">
+          @for (connectorType of connectorTypes; track connectorType) {
+            <option [value]="connectorType"></option>
+          }
+        </datalist>
+      }
+    </fieldset>
+
+    <fieldset class="body-editor">
+      <div class="fieldset-heading">
+        <legend>Células ocupadas pelo corpo</legend>
+        <div class="inline-actions">
+          <button type="button" class="secondary-button" (click)="occupyAllCells()">Todas</button>
+          <button type="button" class="secondary-button" (click)="occupyPinCells()">
+            Somente terminais
+          </button>
+        </div>
+      </div>
+      <p class="limit-note">
+        Clique nas células para declarar quais furos ficam fisicamente cobertos pelo componente.
+      </p>
+      <div
+        class="body-grid"
+        [style.grid-template-columns]="'repeat(' + footprint.cols + ', minmax(18px, 1fr))'"
+      >
+        @for (cell of cells(); track cell.row + ':' + cell.col) {
+          <button
+            type="button"
+            [class.body-grid__cell--occupied]="cell.occupied"
+            [attr.aria-pressed]="cell.occupied"
+            [attr.aria-label]="
+              'Linha ' +
+              (cell.row + 1) +
+              ', coluna ' +
+              (cell.col + 1) +
+              ': ' +
+              (cell.occupied ? 'ocupada' : 'livre')
+            "
+            (click)="toggleBodyCell(cell)"
+          ></button>
+        }
+      </div>
+    </fieldset>
+
+    @if (validationMessage(); as message) {
+      <p class="editor-message editor-message--error" role="alert">{{ message }}</p>
+    }
+  }
+</section>

@@ -1,4 +1,10 @@
 <app-library-search />
+@if (storageError(); as message) {
+  <div class="library-storage-error p10" role="alert">
+    <span>{{ message }}</span>
+    <button type="button" (click)="dismissStorageError()">Dispensar</button>
+  </div>
+}
 <div class="list-scroll">
   @if (devices().length === 0) {
     <div class="empty-state p10">

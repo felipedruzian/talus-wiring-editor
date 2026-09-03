@@ -88,8 +88,8 @@ src/app/av-schematic/
 │   │   ├── footprint-geometry.ts         # Rotação, snap, ocupação e associação pino-furo
 │   │   ├── physical-connectivity.ts      # Resolução pino -> furo -> trilha e rótulo de cobre
 │   │   ├── physical-diagnostics.ts       # Relatório acionável de encaixe, cobre e divergência de net
-│   │   ├── canonical-project.ts          # CanonicalProjectV4 <-> Node/Edge; elétrica separada do layout
-│   │   ├── canonical-project-parse.ts    # Validação v4 e migração de snapshots v1/v2/v3
+│   │   ├── canonical-project.ts          # CanonicalProjectV5 <-> Node/Edge; elétrica, layout e recursos separados
+│   │   ├── canonical-project-parse.ts    # Validação v5 e migração de snapshots v1/v2/v3/v4
 │   │   ├── canonical-project-corpus.mjs  # Casos idênticos para os validadores TypeScript e Node
 │   │   ├── net-grouping.ts               # Nets determinísticas derivadas da conectividade
 │   │   ├── electrical-equivalence.ts     # Comparação elétrica independente da ordem textual

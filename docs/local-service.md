@@ -22,7 +22,7 @@ O `package.json` não tem, hoje, nenhuma dependência de lado servidor.
 Express/Fastify/etc. seriam a primeira dependência de runtime não-Angular
 do repositório para algo que, funcionalmente, é "servir arquivos estáticos
 
-- quatro endpoints JSON pequenos" — bem dentro do que os módulos nativos
+- seis endpoints JSON pequenos" — bem dentro do que os módulos nativos
   `http`/`fs`/`path` do Node cobrem diretamente. Escrito como `ESM` puro
   (`.mjs`) para rodar em qualquer versão do Node que este repositório já
   exige (v20.19+ / v22.12+) sem passo de build nem mudança no `"type"` do
@@ -43,6 +43,7 @@ node server/wiring-editor-server.mjs
 | `WIRING_EDITOR_PORT`          | `4173`                                                                  | Porta local reservada pela integração operacional do Talus após conferência do inventário; não é exposta diretamente na LAN.                                                                                                                              |
 | `WIRING_EDITOR_STATIC_DIR`    | `dist/ng-diagram-av-schematic/browser` (relativo à raiz do repositório) | Caminho de saída padrão do `ng build` para este nome de projeto. Precisa existir e conter `index.html`; o servidor não faz o build.                                                                                                                       |
 | `WIRING_EDITOR_STORAGE_DIR`   | `~/.local/share/talus-wiring-editor/projects`                           | Armazenamento central — o mesmo diretório independentemente de qual navegador/dispositivo salvou o projeto, o que é o que torna possível reabrir a partir de outro cliente da Tailnet. Criado na primeira gravação, se não existir.                       |
+| `WIRING_EDITOR_LIBRARY_DIR`   | `~/.local/share/talus-wiring-editor/library`                            | Catálogo central de componentes e imagens normalizadas. Criado na primeira gravação; deve estar no mesmo armazenamento persistente em todas as releases.                                                                                               |
 | `WIRING_EDITOR_ALLOWED_HOSTS` | (vazio)                                                                 | Lista separada por vírgulas de valores `host:porta` adicionais aceitos no cabeçalho `Host` da requisição (por exemplo, um nome MagicDNS do Tailscale), somados aos padrões de loopback abaixo — nunca os substitui.                                       |
 
 ## Segurança do servidor
@@ -67,22 +68,26 @@ abaixo é implementada explicitamente no próprio `wiring-editor-server.mjs`
   disparam quando o navegador (ou uma página maliciosa) de fato envia o
   cabeçalho — então um `curl -X PUT` simples, sem `Origin`/`Sec-Fetch-Site`,
   continua funcionando para o fluxo local documentado aqui.
-- **Limite de tamanho do corpo**: requisições `PUT` são cortadas em 5 MB
+- **Limite de tamanho do corpo**: requisições `PUT` de projetos são cortadas em 8 MiB
   (`MAX_BODY_BYTES`); acima disso o servidor responde `413` e derruba a
-  conexão em vez de continuar lendo.
+  conexão em vez de continuar lendo. O limite inclui a codificação Base64 de
+  até 4 MiB de imagens rasterizadas efetivamente usadas pelo projeto.
 - **Validação estrutural antes de gravar em disco**: `PUT` chama
   `parseCanonicalProject()` de `server/canonical-project-validate.mjs` —
   uma reimplementação em JavaScript puro (sem build/bundler ligando o
   servidor ao TypeScript do Angular) das mesmas regras de
   `diagram/model/canonical-project-parse.ts::parseCanonicalProject`. Um corpo
-  que não seja um projeto canônico v1, v2, v3 ou v4 válido (tipos errados, ids
+  que não seja um projeto canônico v1, v2, v3, v4 ou v5 válido (tipos errados, ids
   duplicados, referências inexistentes, nets desconectadas, furos ou taps
   fora dos limites, endpoints v1 iguais, conflitos de cor v1, loops inválidos
   ou extras capazes de sobrescrever campos canônicos etc.) é rejeitado com
   `400 invalid_project` antes de
   qualquer gravação. O servidor mantém snapshots v1 na versão v1, após
-  normalizar somente os campos reconhecidos; o frontend os migra para v4 ao
-  abrir. Snapshots v2 e v3 são normalizados para v4 pelo servidor. As implementações de validação permanecem separadas, mas importam a
+  normalizar somente os campos reconhecidos; o frontend os migra para v5 ao
+  abrir. Snapshots v2, v3 e v4 são normalizados para v5 pelo servidor. Em v5,
+  toda imagem de footprint é verificada por assinatura, dimensões, tamanho,
+  Base64 canônico e SHA-256; recursos ausentes, corrompidos ou não referenciados
+  são rejeitados. As implementações de validação permanecem separadas, mas importam a
   mesma fonte auditável de limites operacionais em
   `diagram/model/operational-limits.mjs`; `canonical-project.spec.ts`
   (cliente) e `wiring-editor-server.spec.mjs` (servidor) exercitam o mesmo
@@ -109,9 +114,11 @@ benefício).
 | Método   | Caminho             | Corpo                                                                     | Resposta                                                               |
 | -------- | ------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | `GET`    | `/api/projects`     | —                                                                         | `{ projects: [{ id, name, updatedAt }] }`                              |
-| `GET`    | `/api/projects/:id` | —                                                                         | O projeto canônico v1 ou v4 normalizado e armazenado em JSON, ou `404` |
-| `PUT`    | `/api/projects/:id` | Um objeto JSON canônico v1, v2, v3 ou v4 validado (ver "Validação" acima) | `{ id, saved: true }`, ou `400 invalid_project` se a validação falhar  |
+| `GET`    | `/api/projects/:id` | —                                                                             | O projeto canônico v1 ou v5 normalizado e armazenado em JSON, ou `404` |
+| `PUT`    | `/api/projects/:id` | Um objeto JSON canônico v1, v2, v3, v4 ou v5 validado (ver "Validação" acima) | `{ id, saved: true }`, ou `400 invalid_project` se a validação falhar  |
 | `DELETE` | `/api/projects/:id` | —                                                                         | `{ id, deleted: true }`, ou `404`                                      |
+| `GET`    | `/api/library`      | —                                                                         | Catálogo central v2 exato, ETag SHA-256 forte e indicador de inicialização |
+| `PUT`    | `/api/library`      | Catálogo central v2 e `If-Match` com o ETag lido                           | Novo ETag, `412` em conflito ou `428` sem precondição                  |
 
 Gravações são atômicas: o corpo é escrito em um arquivo de rascunho no
 mesmo diretório e depois `rename()`ado sobre o alvo, então um leitor
@@ -123,12 +130,21 @@ colaboração em tempo real com múltiplos usuários (essa ausência de
 requisito é uma decisão de escopo desta fatia, não algo exigido
 explicitamente pelo critério de aceite público da issue).
 
+A biblioteca usa uma trava de mutação e comparação `If-Match`, portanto dois
+navegadores que partem do mesmo ETag não podem sobrescrever silenciosamente um
+ao outro: a primeira gravação vence e a segunda recebe `412`. O corpo exato do
+catálogo determina o ETag SHA-256; imagens são limitadas, rasterizadas e
+validadas novamente no servidor antes da gravação atômica.
+
 ## Layout de armazenamento
 
 ```
 $WIRING_EDITOR_STORAGE_DIR/
   <id-do-projeto>.json   # projeto canônico versionado, formatado (pretty-printed)
   ...
+
+$WIRING_EDITOR_LIBRARY_DIR/
+  catalog.json           # catálogo compartilhado, incluindo assets deduplicados
 ```
 
 Sem arquivo de índice — `GET /api/projects` lista varrendo o diretório e

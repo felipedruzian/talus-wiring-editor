@@ -26,6 +26,7 @@ import { PropertiesSidebarService } from '../properties-sidebar/properties-sideb
 import { TopNavbarComponent } from '../top-navbar/top-navbar.component';
 import { WireVizExchangeService } from '../wireviz-import/wireviz-exchange.service';
 import { BoardJumperCreationService } from '../diagram/board-jumper-creation.service';
+import { ArtworkAssetStore } from '../diagram/artwork/artwork-asset.store';
 
 @Component({
   selector: 'app-av-schematic-page',
@@ -49,6 +50,7 @@ import { BoardJumperCreationService } from '../diagram/board-jumper-creation.ser
     ViewportAnimationService,
     PortFocusService,
     BoardPlacementService,
+    ArtworkAssetStore,
     LibraryService,
     DiagramExportService,
     ProjectStorageService,

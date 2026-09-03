@@ -15,6 +15,8 @@ import {
   type PhysicalDiagnostic,
 } from '../diagram/model/physical-diagnostics';
 import { NodeVisibilityConfigService } from '../diagram/node-visibility/node-visibility-config.service';
+import { ArtworkAssetStore, type RasterArtworkAsset } from '../diagram/artwork/artwork-asset.store';
+import { isDeviceNode } from '../diagram/model/guards';
 import { beginModelHistoryGroup } from '../diagram/model/model-history-group';
 
 /**
@@ -41,6 +43,7 @@ export class ProjectStorageService {
   private readonly viewportService = inject(NgDiagramViewportService, { optional: true });
   private readonly visibilityConfig = inject(NodeVisibilityConfigService, { optional: true });
   private readonly avConfig = inject(AV_SCHEMATIC_CONFIG);
+  private readonly artworkStore = inject(ArtworkAssetStore);
 
   private readonly _status = signal<ProjectStorageStatus>('idle');
   private readonly _operation = signal<ProjectStorageOperation | null>(null);
@@ -129,8 +132,14 @@ export class ProjectStorageService {
   snapshotProject(): CanonicalProjectV4 {
     const committedModel = this.modelService.getModel();
     this.refreshPhysicalDiagnostics();
+    const nodes = committedModel.getNodes();
     const project = parseCanonicalProject(
-      toCanonicalProject(committedModel.getNodes(), committedModel.getEdges(), this.cableInventory),
+      toCanonicalProject(
+        nodes,
+        committedModel.getEdges(),
+        this.cableInventory,
+        this.projectArtwork(nodes),
+      ),
     );
     this.cableInventory = project.electrical.cables.map(cloneCable);
     return project;
@@ -143,7 +152,8 @@ export class ProjectStorageService {
    */
   snapshotImportSkeleton(): CanonicalProjectV4 {
     const committedModel = this.modelService.getModel();
-    return toCanonicalProject(committedModel.getNodes(), [], []);
+    const nodes = committedModel.getNodes();
+    return toCanonicalProject(nodes, [], [], this.projectArtwork(nodes));
   }
 
   /** Keeps the non-visual cable inventory aligned with a live wire-id rename. */
@@ -170,12 +180,23 @@ export class ProjectStorageService {
   /** Replaces the live canvas and its non-visual cable inventory atomically from one project. */
   async replaceProject(project: CanonicalProjectV4): Promise<void> {
     const parsed = parseCanonicalProject(project);
+    this.artworkStore.registerMany(artworkAssetsFromProject(parsed));
     const { nodes, edges } = fromCanonicalProject(parsed);
     await this.replaceModel(nodes, edges);
     this.cableInventory = parsed.electrical.cables.map(cloneCable);
     const model = this.modelService.getModel() as { resetHistory?: () => void };
     model.resetHistory?.();
     this.refreshPhysicalDiagnostics();
+  }
+
+  private projectArtwork(nodes: readonly Node[]): RasterArtworkAsset[] {
+    const hashes = new Set(
+      nodes.filter(isDeviceNode).flatMap((node) => {
+        const hash = node.data.footprint?.artwork?.assetHash;
+        return hash ? [hash] : [];
+      }),
+    );
+    return this.artworkStore.referenced(hashes);
   }
 
   /** Refreshes the actionable report without blocking save on warnings. */
@@ -271,6 +292,13 @@ export class ProjectStorageService {
     if (err instanceof Error) return err.message;
     return 'erro desconhecido';
   }
+}
+
+function artworkAssetsFromProject(project: CanonicalProjectV4): RasterArtworkAsset[] {
+  return Object.entries(project.resources.artworkAssets).map(([hash, asset]) => ({
+    hash,
+    ...asset,
+  }));
 }
 
 function cloneCable(cable: CanonicalCable): CanonicalCable {

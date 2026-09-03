@@ -5,6 +5,8 @@ import {
   cellToHole,
   deviceHoleClaims,
   findFreeAnchor,
+  footprintArtworkPoints,
+  footprintDrawnExtent,
   footprintNodeSize,
   footprintOccupiedHoles,
   footprintPinHoles,
@@ -140,6 +142,50 @@ describe('pitch and snap', () => {
 });
 
 describe('bounds and occupancy', () => {
+  it('unites negative fractional artwork with node bounds without stretching it across a channel', () => {
+    const artwork = {
+      assetHash: 'a'.repeat(64),
+      x: -1.5,
+      y: -0.5,
+      width: 17,
+      height: 7,
+    };
+    const illustrated: Footprint = {
+      ...footprint,
+      rows: 7,
+      cols: 15,
+      artwork,
+    };
+    const channel = { cutY: 2.5, gapCells: 2 };
+    const points = footprintArtworkPoints(illustrated, artwork, 0, channel);
+    const extent = footprintDrawnExtent(illustrated, 0, channel);
+
+    expect(
+      Math.hypot(points.horizontal.x - points.origin.x, points.horizontal.y - points.origin.y),
+    ).toBe(17);
+    expect(
+      Math.hypot(points.vertical.x - points.origin.x, points.vertical.y - points.origin.y),
+    ).toBe(7);
+    expect(points.origin).toEqual({ x: -1.5, y: 1.5 });
+    expect(extent.left).toBe(-1.5);
+    expect(extent.right).toBe(15.5);
+    expect(footprintNodeSize(illustrated, 0, 20, channel).width).toBe(340);
+  });
+
+  it('includes custom vector shapes in the measured footprint extent', () => {
+    const shaped: Footprint = {
+      ...footprint,
+      shapes: [{ kind: 'rect', x: -2, y: -1, width: 7, height: 4 }],
+    };
+
+    expect(footprintDrawnExtent(shaped, 0, null)).toMatchObject({
+      left: -2,
+      top: -1,
+      right: 5,
+      bottom: 3,
+    });
+  });
+
   it('reports whether the rotated box fits the arbitrary board grid', () => {
     expect(
       isPlacementInBounds(board, footprint, {

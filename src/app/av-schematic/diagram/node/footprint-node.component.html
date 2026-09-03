@@ -22,52 +22,65 @@
       [attr.viewBox]="viewBox()"
       aria-hidden="true"
     >
-      @for (shape of shapes(); track $index) {
-        @switch (shape.kind) {
-          @case ('rect') {
-            <rect
-              [attr.x]="shape.x"
-              [attr.y]="shape.y"
-              [attr.width]="shape.width"
-              [attr.height]="shape.height"
-              [attr.rx]="shape.rx"
-              [attr.fill]="shape.fill"
-              [attr.stroke]="shape.stroke"
-              vector-effect="non-scaling-stroke"
-            />
-          }
-          @case ('circle') {
-            <circle
-              [attr.cx]="shape.cx"
-              [attr.cy]="shape.cy"
-              [attr.r]="shape.r"
-              [attr.fill]="shape.fill"
-              [attr.stroke]="shape.stroke"
-              vector-effect="non-scaling-stroke"
-            />
-          }
-          @case ('line') {
-            <line
-              [attr.x1]="shape.x1"
-              [attr.y1]="shape.y1"
-              [attr.x2]="shape.x2"
-              [attr.y2]="shape.y2"
-              [attr.stroke]="shape.stroke"
-              [attr.stroke-width]="shape.width"
-              stroke-linecap="round"
-            />
-          }
-          @case ('text') {
-            <text
-              [attr.x]="shape.x"
-              [attr.y]="shape.y"
-              [attr.font-size]="shape.size"
-              [attr.text-anchor]="shape.anchor"
-              [attr.fill]="shape.fill"
-              [attr.transform]="shape.transform"
-            >
-              {{ shape.text }}
-            </text>
+      @if (artwork(); as image) {
+        <image
+          class="footprint-node__artwork"
+          x="0"
+          y="0"
+          [attr.width]="image.width"
+          [attr.height]="image.height"
+          [attr.href]="image.href"
+          [attr.transform]="image.transform"
+          [attr.preserveAspectRatio]="image.preserveAspectRatio"
+        />
+      } @else {
+        @for (shape of shapes(); track $index) {
+          @switch (shape.kind) {
+            @case ('rect') {
+              <rect
+                [attr.x]="shape.x"
+                [attr.y]="shape.y"
+                [attr.width]="shape.width"
+                [attr.height]="shape.height"
+                [attr.rx]="shape.rx"
+                [attr.fill]="shape.fill"
+                [attr.stroke]="shape.stroke"
+                vector-effect="non-scaling-stroke"
+              />
+            }
+            @case ('circle') {
+              <circle
+                [attr.cx]="shape.cx"
+                [attr.cy]="shape.cy"
+                [attr.r]="shape.r"
+                [attr.fill]="shape.fill"
+                [attr.stroke]="shape.stroke"
+                vector-effect="non-scaling-stroke"
+              />
+            }
+            @case ('line') {
+              <line
+                [attr.x1]="shape.x1"
+                [attr.y1]="shape.y1"
+                [attr.x2]="shape.x2"
+                [attr.y2]="shape.y2"
+                [attr.stroke]="shape.stroke"
+                [attr.stroke-width]="shape.width"
+                stroke-linecap="round"
+              />
+            }
+            @case ('text') {
+              <text
+                [attr.x]="shape.x"
+                [attr.y]="shape.y"
+                [attr.font-size]="shape.size"
+                [attr.text-anchor]="shape.anchor"
+                [attr.fill]="shape.fill"
+                [attr.transform]="shape.transform"
+              >
+                {{ shape.text }}
+              </text>
+            }
           }
         }
       }
