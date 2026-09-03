@@ -31,6 +31,16 @@ describe('adjustable axial resistor footprint', () => {
         { row: 0, col: 0 },
         { row: 0, col: span },
       ]);
+      expect(footprint.pins.map((pin) => pin.artworkPoint)).toEqual([
+        { x: 0, y: 0 },
+        { x: span, y: 0 },
+      ]);
+      expect(footprint.physicalBounds).toEqual({
+        x: span / 2 - 1.38,
+        y: -0.59,
+        width: 2.76,
+        height: 1.18,
+      });
       expect(
         footprint.shapes.find((shape) => shape.kind === 'line' && shape.x1 === 0),
       ).toMatchObject({ x2: span });

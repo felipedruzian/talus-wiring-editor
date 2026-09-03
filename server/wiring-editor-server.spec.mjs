@@ -490,6 +490,19 @@ describe('wiring-editor-server', () => {
       });
       expect(rejected.status).toBe(400);
       expect(await (await fetch(`${server.baseUrl}/api/library`)).json()).toEqual(catalog);
+
+      const futureRevision = structuredClone(catalog);
+      futureRevision.seedRevision = 3;
+      const futureRejected = await fetch(`${server.baseUrl}/api/library`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'If-Match': accepted.headers.get('etag'),
+        },
+        body: JSON.stringify(futureRevision),
+      });
+      expect(futureRejected.status).toBe(400);
+      expect(await (await fetch(`${server.baseUrl}/api/library`)).json()).toEqual(catalog);
     });
 
     it('rejects forged artwork, SVG assets and dangling artwork references', async () => {

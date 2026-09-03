@@ -243,8 +243,7 @@ function recoverPersistedLibrary(
     seedRevision.revision < LIBRARY_SEED_REVISION
       ? appendMissingPassiveSeeds(recoveredDevices.devices)
       : recoveredDevices.devices;
-  const wasMigrated =
-    recoveredDevices.wasMigrated || devices.length !== recoveredDevices.devices.length;
+  const wasMigrated = recoveredDevices.wasMigrated || seedRevision.revision < LIBRARY_SEED_REVISION;
   return {
     catalog: {
       devices,

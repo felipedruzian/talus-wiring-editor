@@ -383,6 +383,92 @@ describe('LibraryService', () => {
     expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
   });
 
+  it('marks seed revision 1 for upgrade even when every passive is already present', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      LIBRARY_STORAGE_KEY,
+      JSON.stringify({
+        version: LIBRARY_STORAGE_VERSION,
+        seedRevision: 1,
+        devices: SEED_LIBRARY,
+        assets: {},
+      }),
+    );
+
+    const loaded = loadLibraryCatalog(storage);
+
+    expect(loaded.catalog.devices).toEqual(SEED_LIBRARY);
+    expect(loaded.needsUpgrade).toBe(true);
+    expect(loaded.needsRepair).toBe(false);
+  });
+
+  it('preserves an intentional passive deletion from the current seed revision', () => {
+    const storage = new MemoryStorage();
+    const withoutBuzzer = SEED_LIBRARY.filter(
+      (device) => device.libraryId !== 'lib-buzzer-active-12mm',
+    );
+    storage.setItem(
+      LIBRARY_STORAGE_KEY,
+      JSON.stringify({
+        version: LIBRARY_STORAGE_VERSION,
+        seedRevision: LIBRARY_SEED_REVISION,
+        devices: withoutBuzzer,
+        assets: {},
+      }),
+    );
+
+    const loaded = loadLibraryCatalog(storage);
+
+    expect(loaded.catalog.devices).toEqual(withoutBuzzer);
+    expect(loaded.needsUpgrade).toBe(false);
+    expect(loaded.needsRepair).toBe(false);
+  });
+
+  it('does not PUT or restore a deleted passive in a current central catalog', async () => {
+    const storage = new MemoryStorage();
+    const withoutBuzzer = SEED_LIBRARY.filter(
+      (device) => device.libraryId !== 'lib-buzzer-active-12mm',
+    );
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      sharedCatalogResponse(
+        {
+          version: LIBRARY_STORAGE_VERSION,
+          seedRevision: LIBRARY_SEED_REVISION,
+          devices: withoutBuzzer,
+          assets: {},
+        },
+        true,
+      ),
+    );
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const service = createLibraryService();
+    await vi.waitFor(() => {
+      expect(service.devices()).toEqual(withoutBuzzer);
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledWith('/api/library', { method: 'GET' });
+  });
+
+  it('reports a future seed revision as corruption instead of downgrading it', () => {
+    const storage = new MemoryStorage();
+    const serialized = JSON.stringify({
+      version: LIBRARY_STORAGE_VERSION,
+      seedRevision: LIBRARY_SEED_REVISION + 1,
+      devices: SEED_LIBRARY,
+      assets: {},
+    });
+    storage.setItem(LIBRARY_STORAGE_KEY, serialized);
+
+    const loaded = loadLibraryCatalog(storage);
+
+    expect(loaded.needsUpgrade).toBe(false);
+    expect(loaded.needsRepair).toBe(true);
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
+  });
+
   it('deduplicates artwork by hash and restores a physical custom component', async () => {
     const storage = new MemoryStorage();
     vi.stubGlobal('localStorage', storage);
@@ -558,6 +644,7 @@ describe('LibraryService', () => {
     const { hash: unreferencedHash, ...persistedUnreferencedAsset } = unreferencedAsset;
     const remoteCatalog = {
       version: LIBRARY_STORAGE_VERSION,
+      seedRevision: LIBRARY_SEED_REVISION,
       devices: [oldNano, custom],
       assets: {
         [hash]: persistedAsset,

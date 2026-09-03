@@ -134,6 +134,11 @@ describe('trusted component artwork contract', () => {
 
     expect(trustedArtworkForFootprintDefinition(ARDUINO_NANO_FOOTPRINT)).toBe(ARDUINO_NANO_ARTWORK);
     expect(trustedArtworkForFootprintDefinition(changed)).toBeUndefined();
+
+    const changedBounds = cloneFootprint(ARDUINO_NANO_FOOTPRINT);
+    if (!changedBounds.physicalBounds) throw new Error('Missing Nano physical bounds');
+    changedBounds.physicalBounds.width += 1;
+    expect(trustedArtworkForFootprintDefinition(changedBounds)).toBeUndefined();
   });
 
   it('requires the persisted physical bounds to match the reviewed figure', () => {

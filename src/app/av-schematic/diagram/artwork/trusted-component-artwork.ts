@@ -346,14 +346,22 @@ export function trustedArtworkForFootprintDefinition(
           }
         : pin,
     );
-    if (!pinsMatch(footprint.pins, resolvedPins)) return undefined;
+    const resolvedBounds = {
+      x: span / 2 + adjustable.bodyBounds.x,
+      y: adjustable.bodyBounds.y,
+      width: adjustable.bodyBounds.width,
+      height: adjustable.bodyBounds.height,
+    };
+    if (
+      !pinsMatch(footprint.pins, resolvedPins) ||
+      !physicalBoundsMatch(footprint.physicalBounds, resolvedBounds)
+    ) {
+      return undefined;
+    }
     return Object.freeze({
       ...artwork,
       bounds: Object.freeze({
-        x: span / 2 + adjustable.bodyBounds.x,
-        y: adjustable.bodyBounds.y,
-        width: adjustable.bodyBounds.width,
-        height: adjustable.bodyBounds.height,
+        ...resolvedBounds,
         preserveAspectRatio: true as const,
       }),
       grid: Object.freeze({ rows: 1, cols: span + 1 }),
@@ -367,15 +375,26 @@ export function trustedArtworkForFootprintDefinition(
   if (
     footprint.rows !== artwork.grid.rows ||
     footprint.cols !== artwork.grid.cols ||
-    footprint.physicalBounds?.x !== artwork.bounds.x ||
-    footprint.physicalBounds?.y !== artwork.bounds.y ||
-    footprint.physicalBounds?.width !== artwork.bounds.width ||
-    footprint.physicalBounds?.height !== artwork.bounds.height ||
     footprint.pins?.length !== artwork.pins.length
   ) {
     return undefined;
   }
-  return pinsMatch(footprint.pins, artwork.pins) ? artwork : undefined;
+  return pinsMatch(footprint.pins, artwork.pins) &&
+    physicalBoundsMatch(footprint.physicalBounds, artwork.bounds)
+    ? artwork
+    : undefined;
+}
+
+function physicalBoundsMatch(
+  footprintBounds: TrustedFootprintDefinition['physicalBounds'],
+  trustedBounds: Pick<TrustedComponentArtwork['bounds'], 'x' | 'y' | 'width' | 'height'>,
+): boolean {
+  return (
+    footprintBounds?.x === trustedBounds.x &&
+    footprintBounds.y === trustedBounds.y &&
+    footprintBounds.width === trustedBounds.width &&
+    footprintBounds.height === trustedBounds.height
+  );
 }
 
 function pinsMatch(

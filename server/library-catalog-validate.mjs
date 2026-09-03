@@ -5,6 +5,7 @@
 import { createHash } from 'node:crypto';
 
 export const LIBRARY_CATALOG_VERSION = 2;
+export const LIBRARY_SEED_REVISION = 2;
 export const MAX_LIBRARY_DEVICES = 4096;
 export const MAX_LIBRARY_ASSETS = 128;
 export const MAX_LIBRARY_ASSET_BYTES = 256 * 1024;
@@ -42,8 +43,11 @@ export function parseLibraryCatalog(raw) {
     fail(`library.version: expected ${LIBRARY_CATALOG_VERSION}`);
   }
   const seedRevision = root.seedRevision;
-  if (seedRevision !== undefined && expectSafeInteger(seedRevision, 'library.seedRevision') < 0) {
-    fail('library.seedRevision: expected a non-negative integer');
+  if (seedRevision !== undefined) {
+    const revision = expectSafeInteger(seedRevision, 'library.seedRevision');
+    if (revision < 0 || revision > LIBRARY_SEED_REVISION) {
+      fail(`library.seedRevision: expected an integer from 0 to ${LIBRARY_SEED_REVISION}`);
+    }
   }
 
   const devices = expectArray(root.devices, 'library.devices');
