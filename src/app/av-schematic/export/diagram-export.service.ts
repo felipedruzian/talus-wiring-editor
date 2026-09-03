@@ -1,5 +1,5 @@
 import { ElementRef, Injectable, computed, inject, signal } from '@angular/core';
-import { toCanvas } from 'html-to-image';
+import { toCanvas, toSvg } from 'html-to-image';
 import { NgDiagramModelService } from 'ng-diagram';
 import { buildAvDxfConfig } from './dxf-av-schematic/av-dxf-config';
 import { DxfExporter } from './dxf/dxf-exporter';
@@ -61,6 +61,24 @@ export class DiagramExportService {
     });
 
     this.downloadDataUrl(canvas.toDataURL('image/png'), 'av-schematic.png');
+  }
+
+  async exportSvg(): Promise<void> {
+    const canvasEl = this.getDiagramCanvasEl();
+    if (!canvasEl) return;
+    const region = this.computeExportRegion();
+    if (!region) return;
+
+    const dataUrl = await toSvg(canvasEl, {
+      backgroundColor: this.resolveBackgroundColor(canvasEl),
+      width: region.width,
+      height: region.height,
+      style: {
+        transform: `translate(${-region.x}px, ${-region.y}px) scale(1)`,
+        transformOrigin: 'top left',
+      },
+    });
+    this.downloadDataUrl(dataUrl, 'av-schematic.svg');
   }
 
   exportDxf(): void {

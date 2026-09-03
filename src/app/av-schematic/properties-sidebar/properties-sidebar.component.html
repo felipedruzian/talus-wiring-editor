@@ -18,6 +18,12 @@
           [nodeData]="node.data"
           [readonlyPorts]="!!node.data.footprintId"
         />
+      } @else if (state() === 'single-board' && selectedBoard(); as board) {
+        <section class="board-summary" aria-label="Placa selecionada">
+          <span class="field-label">Placa</span>
+          <strong>{{ board.data.label }}</strong>
+          <span>{{ board.data.rows }} x {{ board.data.cols }} furos</span>
+        </section>
       } @else if (state() === 'single-junction' && selectedJunction(); as junction) {
         <app-junction-form [nodeId]="junction.id" [nodeData]="junction.data" />
       } @else if (state() === 'single-edge' && selectedWireDetails(); as wire) {
@@ -41,11 +47,32 @@
           description="Selecione apenas um dispositivo ou fio para ver suas propriedades."
         />
       }
+      @if (selectedVisualElement(); as selected) {
+        <section class="visual-plane" aria-labelledby="visual-plane-label">
+          <label id="visual-plane-label" for="visual-plane-input">Plano visual</label>
+          <input
+            id="visual-plane-input"
+            type="number"
+            step="1"
+            [min]="minVisualPlane"
+            [max]="maxVisualPlane"
+            [value]="selected.visualPlane"
+            (change)="onVisualPlaneChange($event)"
+          />
+          <small>Números maiores aparecem acima. Isso não altera nets nem layers DXF.</small>
+        </section>
+      }
     </div>
     @if (state() === 'single-node') {
       <div class="sidebar-actions">
         <button class="remove-button p10" type="button" (click)="onRemoveNode()">
           Remover dispositivo
+        </button>
+      </div>
+    } @else if (state() === 'single-board') {
+      <div class="sidebar-actions">
+        <button class="remove-button p10" type="button" (click)="onRemoveBoard()">
+          Remover placa
         </button>
       </div>
     } @else if (state() === 'single-junction') {

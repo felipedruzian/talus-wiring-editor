@@ -37,6 +37,20 @@ class ModelStub {
     if (index >= 0) this.edges[index] = { ...this.edges[index], data };
     return Promise.resolve();
   });
+  readonly updateNodes = vi.fn((updates: readonly (Pick<Node, 'id'> & Partial<Node>)[]) => {
+    for (const update of updates) {
+      const index = this.nodes.findIndex((node) => node.id === update.id);
+      if (index >= 0) this.nodes[index] = { ...this.nodes[index], ...update };
+    }
+    return Promise.resolve();
+  });
+  readonly updateEdges = vi.fn((updates: readonly (Pick<Edge, 'id'> & Partial<Edge>)[]) => {
+    for (const update of updates) {
+      const index = this.edges.findIndex((edge) => edge.id === update.id);
+      if (index >= 0) this.edges[index] = { ...this.edges[index], ...update };
+    }
+    return Promise.resolve();
+  });
   readonly deleteEdges = vi.fn((ids: readonly string[]) => {
     const removed = new Set(ids);
     this.edges = this.edges.filter((edge) => !removed.has(edge.id));
@@ -109,6 +123,48 @@ function identityOptions(project: CanonicalProjectV2): WireVizImportOptions {
 
 describe('ElementMutationService wire identity edits', () => {
   afterEach(() => TestBed.resetTestingModule());
+
+  it('updates one visual plane and recomputes node and edge z-order together', async () => {
+    const model = new ModelStub();
+    model.nodes = [
+      {
+        id: 'board',
+        type: 'boardNode',
+        position: { x: 0, y: 0 },
+        data: { type: 'board', visualPlane: 0 },
+      },
+      {
+        id: 'device',
+        type: 'deviceNode',
+        position: { x: 0, y: 0 },
+        data: { type: 'device', visualPlane: 10 },
+      },
+    ];
+    model.edges = [
+      {
+        id: 'wire',
+        type: 'wireEdge',
+        source: 'device',
+        target: 'board',
+        data: { type: 'wire', visualPlane: 20 },
+      },
+    ];
+    TestBed.configureTestingModule({
+      providers: [
+        ElementMutationService,
+        { provide: ProjectStorageService, useValue: {} },
+        { provide: NgDiagramModelService, useValue: model },
+        { provide: NgDiagramService, useValue: diagramStub },
+      ],
+    });
+
+    await TestBed.inject(ElementMutationService).setVisualPlane('edge', 'conductor', 'wire', -1);
+
+    expect(model.edges[0].data).toMatchObject({ visualPlane: -1 });
+    expect(model.edges[0].zOrder).toBeLessThan(model.nodes[0].zOrder ?? -1);
+    expect(model.nodes[0].data).toMatchObject({ visualPlane: 0 });
+    expect(model.nodes[1].data).toMatchObject({ visualPlane: 10 });
+  });
 
   it('renames every conductor and the cable inventory through export and reimport', async () => {
     const model = new ModelStub();

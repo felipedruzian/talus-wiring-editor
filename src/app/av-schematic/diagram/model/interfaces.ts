@@ -21,6 +21,11 @@ export enum EdgeTemplateType {
 
 export type PortDirection = 'input' | 'output';
 
+/** Persisted drawing plane. Greater values render above lower values. */
+export interface VisualPlaneData {
+  visualPlane?: number;
+}
+
 /** WireViz pin-level link used when two connector pins mate without a cable. */
 export type WireVizLinkStyle = '--' | '<--' | '<-->' | '-->';
 
@@ -110,7 +115,7 @@ export interface DevicePlacement {
   rotation: BoardRotation;
 }
 
-export interface DeviceNodeData extends WireVizConnectorMetadata {
+export interface DeviceNodeData extends WireVizConnectorMetadata, VisualPlaneData {
   type: 'device';
   deviceId: string;
   manufacturer: string;
@@ -225,7 +230,7 @@ export function isBoardSurface(value: unknown): value is BoardSurface {
  * own node so it shares the single ng-diagram canvas/coordinate plane with
  * devices and wires -- not a second canvas, not a background image.
  */
-export interface BoardNodeData {
+export interface BoardNodeData extends VisualPlaneData {
   type: 'board';
   boardId: string;
   label: string;
@@ -290,7 +295,7 @@ export type JunctionKind = 'junction' | 'rail';
  * net membership always comes from the conductor graph
  * (`model/net-grouping.ts`).
  */
-export interface JunctionNodeData extends WireVizConnectorMetadata {
+export interface JunctionNodeData extends WireVizConnectorMetadata, VisualPlaneData {
   type: 'junction';
   junctionId: string;
   label: string;
@@ -318,7 +323,7 @@ export interface JunctionNodeData extends WireVizConnectorMetadata {
  * and reconciles the color with the referenced cable slot for WireViz. Cable
  * attributes remain an export/import representation without flattening a net.
  */
-export interface WireEdgeData {
+export interface WireEdgeData extends VisualPlaneData {
   type: 'wire';
   wireId: string;
   /** 1-based wire index within `wireId`'s cable. Absent means wire 1. */

@@ -7,9 +7,10 @@ import {
   type CanonicalElectrical,
   type CanonicalJunction,
   type CanonicalJunctionLayout,
-  type CanonicalProjectV2,
+  type CanonicalProjectV3,
 } from '../diagram/model/canonical-project';
 import { OPERATIONAL_LIMITS } from '../diagram/model/operational-limits.mjs';
+import { defaultVisualPlane } from '../diagram/model/visual-planes';
 import { ProjectStorageService } from '../project-storage/project-storage.service';
 import { exportWireViz, type WireVizExportResult } from './export-wireviz';
 import {
@@ -138,7 +139,7 @@ export class WireVizExchangeService {
  * targets it; otherwise it is restored from the import skeleton together with
  * the hidden bindings.
  */
-export function wireVizElectrical(project: CanonicalProjectV2): CanonicalElectrical {
+export function wireVizElectrical(project: CanonicalProjectV3): CanonicalElectrical {
   const hiddenConductorIds = new Set(
     project.layout.conductors
       .filter((layout) => layout.physicalBinding)
@@ -211,7 +212,7 @@ function withPhysicalBindingReport(
  * omits the positional label, but can avoid promoting a generated redundant
  * label to explicit metadata.
  */
-function inferImportOptions(project: CanonicalProjectV2): WireVizImportOptions {
+function inferImportOptions(project: CanonicalProjectV3): WireVizImportOptions {
   const placement: Record<string, string> = {};
   for (const component of project.electrical.components) {
     const name = component.wirevizName ?? component.deviceId;
@@ -250,8 +251,8 @@ function inferImportOptions(project: CanonicalProjectV2): WireVizImportOptions {
 
 export function buildImportedProject(
   importedElectrical: CanonicalElectrical,
-  previous: CanonicalProjectV2,
-): CanonicalProjectV2 {
+  previous: CanonicalProjectV3,
+): CanonicalProjectV3 {
   const electrical = withPhysicalBindings(importedElectrical, previous);
   const previousComponents = new Map(
     previous.layout.components.map((layout) => [layout.componentId, layout]),
@@ -270,6 +271,7 @@ export function buildImportedProject(
       existing ?? {
         componentId: component.id,
         position: autoPosition(index, 0),
+        visualPlane: defaultVisualPlane('component'),
       }
     );
   });
@@ -285,6 +287,7 @@ export function buildImportedProject(
       : {
           junctionId: junction.id,
           position: autoPosition(index, 1),
+          visualPlane: defaultVisualPlane('junction'),
           taps,
         };
   });
@@ -296,6 +299,7 @@ export function buildImportedProject(
       if (existing) return existing;
       return {
         conductorId: conductor.id,
+        visualPlane: defaultVisualPlane('conductor'),
         fromTap:
           conductor.from.kind === 'junction'
             ? nextTap(conductor.from.junctionId, tapCursor, junctionDegree)
@@ -331,7 +335,7 @@ export function buildImportedProject(
  */
 function withPhysicalBindings(
   imported: CanonicalElectrical,
-  previous: CanonicalProjectV2,
+  previous: CanonicalProjectV3,
 ): CanonicalElectrical {
   const importedComponents = new Map(
     imported.components.map((component) => [component.id, component]),

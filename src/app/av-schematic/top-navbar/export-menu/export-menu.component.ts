@@ -59,6 +59,17 @@ export class ExportMenuComponent {
     }
   }
 
+  protected async exportSvg(): Promise<void> {
+    if (!this.canExport() || this.isExporting()) return;
+    this.isOpen.set(false);
+    this.isExporting.set(true);
+    try {
+      await this.exportService.exportSvg();
+    } finally {
+      this.isExporting.set(false);
+    }
+  }
+
   protected exportDxf(): void {
     if (!this.canExport() || this.isExporting()) return;
     this.isOpen.set(false);

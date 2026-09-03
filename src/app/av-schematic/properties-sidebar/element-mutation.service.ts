@@ -23,6 +23,11 @@ import {
   formDataToJunctionData,
   type JunctionFieldChange,
 } from './components/junction-form/junction-form.mappers';
+import {
+  applyVisualZOrder,
+  isValidVisualPlane,
+  type VisualElementKind,
+} from '../diagram/model/visual-planes';
 
 /** Mutates diagram nodes and edges in response to sidebar form changes and removal requests, including port-direction-flip reflow and orphaned-edge cleanup. */
 @Injectable()
@@ -37,6 +42,54 @@ export class ElementMutationService {
 
   async removeEdge(edgeId: string): Promise<void> {
     await this.modelService.deleteEdges([edgeId]);
+  }
+
+  async setVisualPlane(
+    modelKind: 'node' | 'edge',
+    elementKind: VisualElementKind,
+    id: string,
+    visualPlane: number,
+  ): Promise<void> {
+    if (!isValidVisualPlane(visualPlane)) return;
+    const model = this.modelService.getModel();
+    const nodes = model
+      .getNodes()
+      .map((node) =>
+        modelKind === 'node' && node.id === id
+          ? { ...node, data: { ...node.data, visualPlane } }
+          : node,
+      );
+    const edges = model
+      .getEdges()
+      .map((edge) =>
+        modelKind === 'edge' && edge.id === id
+          ? { ...edge, data: { ...edge.data, visualPlane } }
+          : edge,
+      );
+    const target =
+      modelKind === 'node'
+        ? nodes.find((node) => node.id === id)
+        : edges.find((edge) => edge.id === id);
+    const targetType = (target?.data as { type?: unknown } | undefined)?.type;
+    if (!target || targetType !== elementKindToDataType(elementKind)) return;
+    await this.applyVisualOrder(nodes, edges);
+  }
+
+  async normalizeVisualOrder(): Promise<void> {
+    const model = this.modelService.getModel();
+    await this.applyVisualOrder(model.getNodes(), model.getEdges());
+  }
+
+  private async applyVisualOrder(nodes: readonly Node[], edges: readonly Edge[]): Promise<void> {
+    const ordered = applyVisualZOrder(nodes, edges);
+    await this.diagramService.transaction(() => {
+      void this.modelService.updateNodes(
+        ordered.nodes.map((node) => ({ id: node.id, data: node.data, zOrder: node.zOrder })),
+      );
+      void this.modelService.updateEdges(
+        ordered.edges.map((edge) => ({ id: edge.id, data: edge.data, zOrder: edge.zOrder })),
+      );
+    });
   }
 
   handleDeviceFieldChange(change: DeviceFieldChange): void {
@@ -282,6 +335,12 @@ export class ElementMutationService {
       routingMode: 'auto',
     });
   }
+}
+
+function elementKindToDataType(kind: VisualElementKind): string {
+  if (kind === 'component') return 'device';
+  if (kind === 'conductor') return 'wire';
+  return kind;
 }
 
 const findDirectionFlippedPortIds = (

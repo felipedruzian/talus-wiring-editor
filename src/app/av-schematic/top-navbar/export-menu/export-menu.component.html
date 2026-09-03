@@ -10,7 +10,7 @@
     [disabled]="!canExport()"
     (click)="toggle()"
   >
-    Export
+    Exportar
   </button>
 
   @if (open) {
@@ -22,7 +22,16 @@
         [disabled]="isExporting()"
         (click)="exportPng()"
       >
-        Export to PNG
+        Exportar para PNG
+      </button>
+      <button
+        type="button"
+        class="panel-item"
+        role="menuitem"
+        [disabled]="isExporting()"
+        (click)="exportSvg()"
+      >
+        Exportar para SVG
       </button>
       <button
         type="button"
@@ -31,7 +40,7 @@
         [disabled]="isExporting()"
         (click)="exportDxf()"
       >
-        Export to DXF
+        Exportar para DXF
       </button>
     </div>
   }

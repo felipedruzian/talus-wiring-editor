@@ -23,9 +23,10 @@ import { snapPointToGrid } from './edge-reshaping/logic';
 import { DanglingEdgeService } from './dangling-edge-creation/dangling-edge.service';
 import { DiagramExportService } from '../export/diagram-export.service';
 import { PropertiesSidebarService } from '../properties-sidebar/properties-sidebar.service';
+import { ElementMutationService } from '../properties-sidebar/element-mutation.service';
 import { randomShortId } from '../shared/utils/random-short-id';
 import { generateDeviceId } from './model/auto-device-id';
-import { isDeviceNode, isJunctionNode, isWireEdge } from './model/guards';
+import { isBoardNode, isDeviceNode, isJunctionNode, isWireEdge } from './model/guards';
 import {
   boardPortsResolveToSameCopper,
   initialNetNameFromCopper,
@@ -48,6 +49,7 @@ import { applyEdgeStretchOnSelectionMoved } from './edge-reshaping/middleware/ed
 import { EdgeReshapeOverlayComponent } from './edge-reshaping/edge-reshape-overlay.component';
 import { WireEdgeComponent } from './wire-edge.component';
 import { diagramModel } from './data';
+import { defaultVisualPlane } from './model/visual-planes';
 
 const generateWireId = (): string => randomShortId('W');
 
@@ -62,6 +64,7 @@ export class DiagramComponent {
   private readonly avConfig = inject(AV_SCHEMATIC_CONFIG);
   private readonly viewportService = inject(NgDiagramViewportService);
   private readonly sidebarService = inject(PropertiesSidebarService);
+  private readonly elementMutationService = inject(ElementMutationService);
   private readonly nodeVisibilityConfigService = inject(NodeVisibilityConfigService);
   private readonly modelService = inject(NgDiagramModelService);
   private readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -105,6 +108,7 @@ export class DiagramComponent {
         targetArrowhead: undefined,
         data: {
           type: 'wire',
+          visualPlane: defaultVisualPlane('conductor'),
           wireId: '',
           netName: initialNetNameFromCopper(
             undefined,
@@ -124,6 +128,7 @@ export class DiagramComponent {
         targetArrowhead: undefined,
         data: {
           type: 'wire',
+          visualPlane: defaultVisualPlane('conductor'),
           wireId: generateWireId(),
           netName: initialNetNameFromCopper(
             undefined,
@@ -169,8 +174,9 @@ export class DiagramComponent {
     this.zoomToFit();
   }
 
-  onEdgeDrawEnded(event: EdgeDrawEndedEvent): void {
-    this.danglingEdge.handleEdgeDrawEnded(event);
+  async onEdgeDrawEnded(event: EdgeDrawEndedEvent): Promise<void> {
+    await this.danglingEdge.handleEdgeDrawEnded(event);
+    await this.elementMutationService.normalizeVisualOrder();
   }
 
   // Manual edges don't auto-reroute, so re-anchor their endpoints to the live
@@ -237,24 +243,32 @@ export class DiagramComponent {
 
   onSelectionGestureEnded(event: SelectionGestureEndedEvent): void {
     const hasDeviceNodes = event.nodes.some(isDeviceNode);
+    const hasBoardNodes = event.nodes.some(isBoardNode);
     const hasJunctionNodes = event.nodes.some(isJunctionNode);
     const hasWireEdges = event.edges.some(isWireEdge);
-    if (hasDeviceNodes || hasJunctionNodes || hasWireEdges) {
+    if (hasDeviceNodes || hasBoardNodes || hasJunctionNodes || hasWireEdges) {
       this.sidebarService.expandSidebar();
     }
   }
 
-  onPaletteItemDropped(event: PaletteItemDroppedEvent): void {
+  async onPaletteItemDropped(event: PaletteItemDroppedEvent): Promise<void> {
     const node = event.node;
-    if (!isDeviceNode(node) || node.data.deviceId) return;
+    if (!isDeviceNode(node)) return;
 
     // Committed model, not the nodes() signal - on rapid consecutive drops the
     // signal may not include the previous drop yet, minting a duplicate id.
-    const deviceId = generateDeviceId(node.data.category, this.modelService.getModel().getNodes());
-    void this.modelService.updateNodeData<DeviceNodeData>(node.id, {
-      ...node.data,
-      deviceId,
-    });
+    if (!node.data.deviceId) {
+      const deviceId = generateDeviceId(
+        node.data.category,
+        this.modelService.getModel().getNodes(),
+      );
+      await this.modelService.updateNodeData<DeviceNodeData>(node.id, {
+        ...node.data,
+        visualPlane: node.data.visualPlane ?? defaultVisualPlane('component'),
+        deviceId,
+      });
+    }
+    await this.elementMutationService.normalizeVisualOrder();
   }
 
   private zoomToFit(): void {

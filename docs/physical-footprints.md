@@ -255,7 +255,7 @@ aplicada a endpoints de placa ou footprint.
 
 ## Persistência
 
-O projeto usa o único formato canônico v2 introduzido pela issue #2. A seção
+O projeto usa o formato canônico v3, evolução compatível do v2 introduzido pela issue #2. A seção
 `electrical` continua contendo componentes, junções, cabos, nets multi-drop e
 condutores; a seção `layout` contém placas, footprints, placements e geometria.
 Não existe `CanonicalNet` v1 paralelo. Snapshots v1 anteriores continuam sendo

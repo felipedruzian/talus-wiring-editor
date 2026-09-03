@@ -1,15 +1,30 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { NgDiagramModelService, NgDiagramSelectionService, type Edge, type Node } from 'ng-diagram';
-import { isDeviceNode, isJunctionNode, isWireEdge } from '../diagram/model/guards';
+import { isBoardNode, isDeviceNode, isJunctionNode, isWireEdge } from '../diagram/model/guards';
 import {
+  type BoardNodeData,
   type DeviceNodeData,
   type JunctionNodeData,
   type WireEdgeData,
 } from '../diagram/model/interfaces';
+import { visualPlaneOf, type VisualElementKind } from '../diagram/model/visual-planes';
 import { describeWireEndpoints, type WireEndpointInfo } from '../diagram/model/wire-endpoints';
 import { NetHighlightService } from '../diagram/net-highlight/net-highlight.service';
 
-export type SidebarState = 'empty' | 'single-node' | 'single-junction' | 'single-edge' | 'multi';
+export type SidebarState =
+  | 'empty'
+  | 'single-node'
+  | 'single-board'
+  | 'single-junction'
+  | 'single-edge'
+  | 'multi';
+
+export interface SelectedVisualElement {
+  id: string;
+  modelKind: 'node' | 'edge';
+  elementKind: VisualElementKind;
+  visualPlane: number;
+}
 
 // Re-exported so existing consumers keep their import path.
 export type { WireEndpointInfo } from '../diagram/model/wire-endpoints';
@@ -37,6 +52,10 @@ export class PropertiesSidebarService {
     this.selectionService.selection().nodes.filter(isDeviceNode),
   );
 
+  readonly selectedBoardNodes = computed<Node<BoardNodeData>[]>(() =>
+    this.selectionService.selection().nodes.filter(isBoardNode),
+  );
+
   readonly selectedWireEdges = computed<Edge<WireEdgeData>[]>(() =>
     this.selectionService.selection().edges.filter(isWireEdge),
   );
@@ -49,6 +68,10 @@ export class PropertiesSidebarService {
     this.selectedDeviceNodes().at(0),
   );
 
+  readonly selectedBoard = computed<Node<BoardNodeData> | undefined>(() =>
+    this.selectedBoardNodes().at(0),
+  );
+
   readonly selectedEdge = computed<Edge<WireEdgeData> | undefined>(() =>
     this.selectedWireEdges().at(0),
   );
@@ -59,14 +82,44 @@ export class PropertiesSidebarService {
 
   readonly sidebarState = computed<SidebarState>(() => {
     const nodeCount = this.selectedDeviceNodes().length;
+    const boardCount = this.selectedBoardNodes().length;
     const junctionCount = this.selectedJunctionNodes().length;
     const edgeCount = this.selectedWireEdges().length;
-    const total = nodeCount + junctionCount + edgeCount;
+    const total = nodeCount + boardCount + junctionCount + edgeCount;
     if (total === 0) return 'empty';
     if (total > 1) return 'multi';
     if (nodeCount === 1) return 'single-node';
+    if (boardCount === 1) return 'single-board';
     if (junctionCount === 1) return 'single-junction';
     return 'single-edge';
+  });
+
+  readonly selectedVisualElement = computed<SelectedVisualElement | null>(() => {
+    const state = this.sidebarState();
+    const element =
+      state === 'single-node'
+        ? this.selectedNode()
+        : state === 'single-board'
+          ? this.selectedBoard()
+          : state === 'single-junction'
+            ? this.selectedJunction()
+            : state === 'single-edge'
+              ? this.selectedEdge()
+              : undefined;
+    if (!element) return null;
+    return {
+      id: element.id,
+      modelKind: state === 'single-edge' ? 'edge' : 'node',
+      elementKind:
+        state === 'single-board'
+          ? 'board'
+          : state === 'single-junction'
+            ? 'junction'
+            : state === 'single-edge'
+              ? 'conductor'
+              : 'component',
+      visualPlane: visualPlaneOf(element),
+    };
   });
 
   readonly selectedWireDetails = computed<SelectedWireDetails | null>(() => {

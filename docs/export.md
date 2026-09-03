@@ -1,10 +1,14 @@
-# Export (PNG and DXF)
+# Exportação (PNG, SVG e DXF)
 
-`src/app/av-schematic/export/` houses both formats. The trigger is a primary **Export** button in the top navbar (`top-navbar/export-menu/`), placed to the right of the theme toggle with a vertical separator — disabled until the diagram has at least one node.
+`src/app/av-schematic/export/` concentra os três formatos. O botão **Export** fica na barra superior e é habilitado quando o diagrama possui ao menos um nó.
 
 **PNG** is a raster capture via [`html-to-image`](https://www.npmjs.com/package/html-to-image): `computePartsBounds(nodes, edges)` plus a 50-unit padding defines the region; the canvas is rendered at 2× pixel ratio with the active theme's background color (resolved by walking up from the diagram canvas to the first non-transparent ancestor — usually `<html>`).
 
+**SVG** usa a mesma árvore DOM, região, fundo e ordem visual do PNG. Como ambos são capturas do canvas renderizado, os planos visuais persistentes e o `zOrder` aplicado pelo ng-diagram aparecem de forma idêntica nos dois formatos.
+
 **DXF** is a clean, vector, layer-aware drawing for CAD tools, generated entirely client-side (no library dependency). The code is split into two folders so the architecture stays clear:
+
+Os layers `DEVICES` e `WIRES` do DXF continuam sem relação com os planos visuais. Eles representam categorias semânticas do desenho CAD, enquanto `visualPlane` controla somente a composição do canvas, PNG e SVG.
 
 ```
 export/

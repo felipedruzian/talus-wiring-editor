@@ -31,8 +31,7 @@ const HOST = '127.0.0.1';
 describe('canonical physical validation corpus', () => {
   for (const testCase of canonicalValidationCorpus) {
     it(testCase.name, () => {
-      const parse = () =>
-        parseCanonicalProjectOnServer(JSON.parse(JSON.stringify(testCase.raw)));
+      const parse = () => parseCanonicalProjectOnServer(JSON.parse(JSON.stringify(testCase.raw)));
       if (testCase.accepted) {
         expect(parse).not.toThrow();
       } else {
@@ -103,7 +102,7 @@ async function startServer(cfg) {
 
 function validProjectPayload() {
   return {
-    formatVersion: 2,
+    formatVersion: 3,
     electrical: {
       components: [
         {
@@ -181,15 +180,15 @@ function validProjectPayload() {
     layout: {
       boards: [],
       components: [
-        { componentId: 'source', position: { x: 0, y: 0 } },
-        { componentId: 'load-a', position: { x: 200, y: 0 } },
-        { componentId: 'load-b', position: { x: 200, y: 100 } },
+        { componentId: 'source', position: { x: 0, y: 0 }, visualPlane: 10 },
+        { componentId: 'load-a', position: { x: 200, y: 0 }, visualPlane: 10 },
+        { componentId: 'load-b', position: { x: 200, y: 100 }, visualPlane: 10 },
       ],
-      junctions: [{ junctionId: 'rail', position: { x: 100, y: 50 }, taps: 3 }],
+      junctions: [{ junctionId: 'rail', position: { x: 100, y: 50 }, visualPlane: 30, taps: 3 }],
       conductors: [
-        { conductorId: 'feed', toTap: 0 },
-        { conductorId: 'branch-a', fromTap: 1 },
-        { conductorId: 'branch-b', fromTap: 2 },
+        { conductorId: 'feed', visualPlane: 20, toTap: 0 },
+        { conductorId: 'branch-a', visualPlane: 20, fromTap: 1 },
+        { conductorId: 'branch-b', visualPlane: 20, fromTap: 2 },
       ],
     },
   };
@@ -604,6 +603,30 @@ describe('wiring-editor-server', () => {
   });
 
   describe('canonical v1/v2 validation parity', () => {
+    it('migrates v2 visual planes deterministically', async () => {
+      const project = validProjectPayload();
+      project.formatVersion = 2;
+      for (const collection of [
+        project.layout.boards,
+        project.layout.components,
+        project.layout.junctions,
+        project.layout.conductors,
+      ]) {
+        for (const entry of collection) delete entry.visualPlane;
+      }
+      const res = await fetch(`${server.baseUrl}/api/projects/migrated-planes`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(res.status).toBe(200);
+      const stored = await (await fetch(`${server.baseUrl}/api/projects/migrated-planes`)).json();
+      expect(stored.formatVersion).toBe(3);
+      expect(stored.layout.components.every((item) => item.visualPlane === 10)).toBe(true);
+      expect(stored.layout.junctions.every((item) => item.visualPlane === 30)).toBe(true);
+      expect(stored.layout.conductors.every((item) => item.visualPlane === 20)).toBe(true);
+    });
+
     it('stores per-conductor metadata with a tolerant orthogonal manual route', async () => {
       const project = validProjectPayload();
       Object.assign(project.electrical.nets[0].conductors[0], {
@@ -655,11 +678,25 @@ describe('wiring-editor-server', () => {
     });
 
     it.each([
-      ['points without manual mode', { points: [{ x: 0, y: 0 }, { x: 0, y: 20 }] }],
+      [
+        'points without manual mode',
+        {
+          points: [
+            { x: 0, y: 0 },
+            { x: 0, y: 20 },
+          ],
+        },
+      ],
       ['manual without points', { routingMode: 'manual' }],
       [
         'diagonal manual route',
-        { routingMode: 'manual', points: [{ x: 0, y: 0 }, { x: 10, y: 10 }] },
+        {
+          routingMode: 'manual',
+          points: [
+            { x: 0, y: 0 },
+            { x: 10, y: 10 },
+          ],
+        },
       ],
     ])('rejects %s', async (_label, route) => {
       const project = validProjectPayload();
@@ -831,7 +868,7 @@ describe('wiring-editor-server', () => {
           },
         ],
       });
-      project.layout.conductors.push({ conductorId: 'internal-loop' });
+      project.layout.conductors.push({ conductorId: 'internal-loop', visualPlane: 20 });
 
       const accepted = await fetch(`${server.baseUrl}/api/projects/internal-loop`, {
         method: 'PUT',

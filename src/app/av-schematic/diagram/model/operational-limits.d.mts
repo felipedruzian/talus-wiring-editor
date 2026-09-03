@@ -12,6 +12,7 @@ export interface OperationalLimits {
   readonly maxFootprintRows: number;
   readonly maxFootprintCols: number;
   readonly maxFootprintShapes: number;
+  readonly maxVisualPlane: number;
   readonly maxTotalEntities: number;
 }
 

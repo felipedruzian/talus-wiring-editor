@@ -27,7 +27,7 @@ function clone<T>(value: T): T {
 
 function emptyV2(): CanonicalProjectV2 {
   return {
-    formatVersion: 2,
+    formatVersion: 3,
     electrical: { components: [], junctions: [], cables: [], nets: [] },
     layout: { boards: [], components: [], junctions: [], conductors: [] },
   };
@@ -136,7 +136,7 @@ describe('canonical project round-trip', () => {
   it('keeps electrical semantics separate from complementary visual geometry', () => {
     const project = toCanonicalProject(diagramModel.nodes, diagramModel.edges);
 
-    expect(project.formatVersion).toBe(2);
+    expect(project.formatVersion).toBe(3);
     expect(project.electrical.nets.length).toBeGreaterThanOrEqual(2);
     expect(project.electrical.components.length).toBeGreaterThan(2);
     expect(project.layout.boards).toHaveLength(5);
@@ -215,6 +215,24 @@ describe('canonical project round-trip', () => {
     const first = toCanonicalProject(diagramModel.nodes, diagramModel.edges);
     const rebuilt = fromCanonicalProject(first);
     expect(toCanonicalProject(rebuilt.nodes, rebuilt.edges, rebuilt.cableInventory)).toEqual(first);
+  });
+
+  it('persists authored visual planes through a model round-trip', () => {
+    const model = {
+      nodes: diagramModel.nodes.map((node) =>
+        node.id === 'board-a' ? { ...node, data: { ...node.data, visualPlane: 42 } } : node,
+      ),
+      edges: diagramModel.edges.map((edge, index) =>
+        index === 0 ? { ...edge, data: { ...edge.data, visualPlane: -5 } } : edge,
+      ),
+    };
+    const saved = toCanonicalProject(model.nodes, model.edges);
+    const reopened = fromCanonicalProject(parseCanonicalProject(clone(saved)));
+    const board = must(reopened.nodes.find((node) => node.id === 'board-a'));
+    const edge = must(reopened.edges.find((candidate) => candidate.id === model.edges[0].id));
+    expect(board.data).toMatchObject({ visualPlane: 42 });
+    expect(edge.data).toMatchObject({ visualPlane: -5 });
+    expect(toCanonicalProject(reopened.nodes, reopened.edges)).toEqual(saved);
   });
 
   it('preserves the upper protoboard geometry, bulk notes, and provisional endpoints', () => {
@@ -413,7 +431,11 @@ describe('canonical project round-trip', () => {
       model: 'Generic',
       pins: [{ id: 'p1', label: 'P1', direction: 'input' }],
     });
-    project.layout.components.push({ componentId: 'generic', position: { x: 20, y: 30 } });
+    project.layout.components.push({
+      componentId: 'generic',
+      position: { x: 20, y: 30 },
+      visualPlane: 10,
+    });
 
     const rebuilt = must(fromCanonicalProject(project).nodes.find(isDeviceNode));
 
@@ -445,6 +467,36 @@ describe('parseCanonicalProject', () => {
     expect(parseCanonicalProject(clone(empty))).toEqual(empty);
   });
 
+  it('migrates v2 snapshots to deterministic visual-plane defaults', () => {
+    const legacy = clone(validProject) as unknown as Record<string, unknown>;
+    legacy['formatVersion'] = 2;
+    const layout = legacy['layout'] as Record<string, Record<string, unknown>[]>;
+    for (const collection of ['boards', 'components', 'junctions', 'conductors']) {
+      for (const entry of layout[collection] ?? []) delete entry['visualPlane'];
+    }
+    const migrated = parseCanonicalProject(legacy);
+    expect(migrated.formatVersion).toBe(3);
+    expect(migrated.layout.boards.every((item) => item.visualPlane === 0)).toBe(true);
+    expect(migrated.layout.components.every((item) => item.visualPlane === 10)).toBe(true);
+    expect(migrated.layout.junctions.every((item) => item.visualPlane === 30)).toBe(true);
+    expect(migrated.layout.conductors.every((item) => item.visualPlane === 20)).toBe(true);
+  });
+
+  it('requires a bounded integer visual plane in v3 snapshots', () => {
+    const missing = clone(validProject);
+    delete (missing.layout.components[0] as Partial<(typeof missing.layout.components)[number]>)
+      .visualPlane;
+    expect(() => parseCanonicalProject(missing)).toThrow(/visualPlane/);
+
+    const fractional = clone(validProject);
+    fractional.layout.conductors[0].visualPlane = 1.5;
+    expect(() => parseCanonicalProject(fractional)).toThrow(/integer between/);
+
+    const excessive = clone(validProject);
+    excessive.layout.junctions[0].visualPlane = OPERATIONAL_LIMITS.maxVisualPlane + 1;
+    expect(() => parseCanonicalProject(excessive)).toThrow(/integer between/);
+  });
+
   it.each([
     ['below', OPERATIONAL_LIMITS.maxPinsPerComponent - 1, true],
     ['at', OPERATIONAL_LIMITS.maxPinsPerComponent, true],
@@ -462,7 +514,11 @@ describe('parseCanonicalProject', () => {
         direction: 'output',
       })),
     });
-    project.layout.components.push({ componentId: 'x1', position: { x: 0, y: 0 } });
+    project.layout.components.push({
+      componentId: 'x1',
+      position: { x: 0, y: 0 },
+      visualPlane: 10,
+    });
 
     const parse = () => parseCanonicalProject(project);
     if (accepted) expect(parse).not.toThrow();
@@ -491,6 +547,7 @@ describe('parseCanonicalProject', () => {
     project.layout.junctions.push({
       junctionId: 'j1',
       position: { x: 0, y: 0 },
+      visualPlane: 30,
       taps,
     });
 
@@ -893,8 +950,12 @@ describe('parseCanonicalProject', () => {
         },
       ],
     });
-    loopProject.layout.components.push({ componentId: 'x1', position: { x: 0, y: 0 } });
-    loopProject.layout.conductors.push({ conductorId: 'loop' });
+    loopProject.layout.components.push({
+      componentId: 'x1',
+      position: { x: 0, y: 0 },
+      visualPlane: 10,
+    });
+    loopProject.layout.conductors.push({ conductorId: 'loop', visualPlane: 20 });
 
     expect(parseCanonicalProject(clone(loopProject))).toEqual(loopProject);
 

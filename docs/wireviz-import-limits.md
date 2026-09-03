@@ -75,7 +75,7 @@ Conexões:
 
 ## Preservação e relatório
 
-No projeto v2, cor, bitola, comprimento e observação também ficam no condutor
+No projeto canônico atual, cor, bitola, comprimento e observação também ficam no condutor
 que representa a ligação física. Na importação, atributos de cabo são
 materializados nos condutores correspondentes para que cada fio possa ser
 editado de forma independente. Na exportação, valores iguais podem voltar ao
@@ -108,12 +108,12 @@ A fonte auditável dos limites é
 O importador WireViz e os validadores canônicos do cliente e do serviço usam
 os mesmos valores:
 
-| Recurso | Limite |
-|---|---:|
-| Pinos por componente | 256 |
-| Condutores por cabo | 256 |
-| Largura paralela ou entradas produzidas por uma expansão de intervalo | 256 |
-| Entradas de entidades e coleções materializadas por documento | 10.000 |
+| Recurso                                                               | Limite |
+| --------------------------------------------------------------------- | -----: |
+| Pinos por componente                                                  |    256 |
+| Condutores por cabo                                                   |    256 |
+| Largura paralela ou entradas produzidas por uma expansão de intervalo |    256 |
+| Entradas de entidades e coleções materializadas por documento         | 10.000 |
 
 Contagens, índices e extremos de intervalos precisam ser inteiros seguros do
 JavaScript. O limite é conferido antes de `pincount`, `wirecount`, intervalos,
