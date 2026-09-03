@@ -359,6 +359,7 @@ describe('wiring-editor-server', () => {
       const etag = initial.headers.get('etag');
       const catalog = {
         version: 2,
+        seedRevision: 2,
         devices: [
           {
             libraryId: 'lib-custom-test',
@@ -430,6 +431,65 @@ describe('wiring-editor-server', () => {
       expect(responses.map((response) => response.status).sort()).toEqual([200, 412]);
       const stored = await (await fetch(`${server.baseUrl}/api/library`)).json();
       expect(catalogs).toContainEqual(stored);
+    });
+
+    it('accepts only coherent adjustable axial footprints in the shared library', async () => {
+      const initial = await fetch(`${server.baseUrl}/api/library`);
+      const etag = initial.headers.get('etag');
+      const catalog = {
+        version: 2,
+        seedRevision: 2,
+        devices: [
+          {
+            libraryId: 'lib-resistor-1k',
+            template: {
+              type: 'device',
+              deviceId: '',
+              manufacturer: 'Talus',
+              model: 'Resistor 1 kOhm',
+              ports: [
+                { id: 'a', label: '1', direction: 'input' },
+                { id: 'b', label: '2', direction: 'output' },
+              ],
+              footprintId: 'resistor-1k',
+              footprint: {
+                id: 'resistor-1k',
+                label: '1 kOhm',
+                rows: 1,
+                cols: 5,
+                axialSpan: 4,
+                pins: [
+                  { id: 'a', label: '1', cell: { row: 0, col: 0 }, primary: true },
+                  { id: 'b', label: '2', cell: { row: 0, col: 4 } },
+                ],
+                shapes: [],
+              },
+            },
+          },
+        ],
+        assets: {},
+      };
+
+      const accepted = await fetch(`${server.baseUrl}/api/library`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'If-Match': etag },
+        body: JSON.stringify(catalog),
+      });
+      expect(accepted.status).toBe(200);
+      expect(await (await fetch(`${server.baseUrl}/api/library`)).json()).toEqual(catalog);
+
+      const invalid = structuredClone(catalog);
+      invalid.devices[0].template.footprint.cols = 6;
+      const rejected = await fetch(`${server.baseUrl}/api/library`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'If-Match': accepted.headers.get('etag'),
+        },
+        body: JSON.stringify(invalid),
+      });
+      expect(rejected.status).toBe(400);
+      expect(await (await fetch(`${server.baseUrl}/api/library`)).json()).toEqual(catalog);
     });
 
     it('rejects forged artwork, SVG assets and dangling artwork references', async () => {

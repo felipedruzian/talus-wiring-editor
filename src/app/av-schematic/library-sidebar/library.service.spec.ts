@@ -128,7 +128,7 @@ describe('LibraryService', () => {
     const resized = resizeAxialFootprintSpan(resistor.template.footprint, 10);
     if (!resized.ok) throw new Error(resized.message);
 
-    service.beginEdit(resistor.libraryId);
+    await service.beginEdit(resistor.libraryId);
     expect(
       await service.commitDraft(resistor.libraryId, {
         ...resistor.template,

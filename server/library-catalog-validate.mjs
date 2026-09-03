@@ -41,6 +41,10 @@ export function parseLibraryCatalog(raw) {
   if (root.version !== LIBRARY_CATALOG_VERSION) {
     fail(`library.version: expected ${LIBRARY_CATALOG_VERSION}`);
   }
+  const seedRevision = root.seedRevision;
+  if (seedRevision !== undefined && expectSafeInteger(seedRevision, 'library.seedRevision') < 0) {
+    fail('library.seedRevision: expected a non-negative integer');
+  }
 
   const devices = expectArray(root.devices, 'library.devices');
   if (devices.length > MAX_LIBRARY_DEVICES) {
@@ -77,6 +81,7 @@ export function parseLibraryCatalog(raw) {
 
   return {
     version: LIBRARY_CATALOG_VERSION,
+    ...(seedRevision === undefined ? {} : { seedRevision }),
     devices: structuredClone(devices),
     assets: validatedAssets,
   };
@@ -190,6 +195,18 @@ function validateFootprint(value, label, footprintId, referencedAssets) {
       fail(`${pinLabel}.primary: expected boolean`);
     }
   });
+  if (footprint.axialSpan !== undefined) {
+    const span = expectBoundedInteger(footprint.axialSpan, `${label}.axialSpan`, 4, 10);
+    if (
+      rows !== 1 ||
+      cols !== span + 1 ||
+      pins.length !== 2 ||
+      !pinCells.has('0:0') ||
+      !pinCells.has(`0:${span}`)
+    ) {
+      fail(`${label}.axialSpan: expected one row and pins at both span endpoints`);
+    }
+  }
   shapes.forEach((shape, index) => validateShape(shape, `${label}.shapes[${index}]`));
   if (footprint.bodyCells !== undefined) {
     expectArray(footprint.bodyCells, `${label}.bodyCells`).forEach((cell, index) =>
