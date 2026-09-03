@@ -1,11 +1,14 @@
 <div
   class="editor-backdrop"
   tabindex="-1"
-  (click)="onBackdropClick($event)"
-  (keydown.escape)="onEscape($event)"
+  (click)="onBackdropActivate($event)"
+  (keydown.enter)="onBackdropActivate($event)"
+  (keydown.space)="onBackdropActivate($event)"
 >
   <section
+    #dialog
     class="editor-dialog"
+    tabindex="-1"
     role="dialog"
     aria-modal="true"
     aria-labelledby="component-editor-title"
@@ -16,6 +19,7 @@
         <p>Configure a identidade, a imagem e a geometria física do componente.</p>
       </div>
       <button
+        #closeButton
         class="close-button"
         type="button"
         (click)="onBack()"
@@ -28,7 +32,12 @@
 
     <div class="editor-content">
       <aside class="detail-form" aria-label="Dados do componente">
-        <app-device-form [entityId]="libraryId()" [nodeData]="initialTemplate()" />
+        <app-device-form
+          [entityId]="libraryId()"
+          [nodeData]="initialTemplate()"
+          [readonlyPorts]="draft().footprintId !== undefined"
+          [readonlyPortData]="draft().ports"
+        />
       </aside>
       <main class="physical-form">
         <app-physical-component-editor [libraryId]="libraryId()" />

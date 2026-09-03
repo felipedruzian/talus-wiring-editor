@@ -50,13 +50,7 @@ export class DebouncedFormController<TFormData extends object> {
         const model = this.formModel();
         untracked(() => {
           if (!this.fieldTree().dirty()) return;
-          const diffs = config.trackedFields.filter(
-            (key) => model[key] !== this.lastEmittedModel[key],
-          );
-          this.lastEmittedModel = { ...model };
-          if (this.currentEntityId && diffs.length) {
-            config.onChange(this.currentEntityId, diffs, model);
-          }
+          this.emitChanges(model);
         });
       },
       { injector: config.injector },
@@ -79,11 +73,30 @@ export class DebouncedFormController<TFormData extends object> {
    * the last keystroke is lost.
    */
   commitPendingEdits(): void {
-    // Same indexed-access caveat as in the constructor — `fieldKey` is a
-    // real field on the model by the caller's typing.
-    const tree = this.fieldTree as Record<keyof TFormData, () => { markAsTouched(): void }>;
+    // `controlValue` is the immediate UI value, before a debounce has copied
+    // it into the model. Copy every visible control value first so callers can
+    // safely read their draft in the same event turn.
+    const tree = this.fieldTree as Record<
+      keyof TFormData,
+      () => { controlValue(): TFormData[keyof TFormData]; markAsTouched(): void }
+    >;
+    const model = { ...this.formModel() };
     for (const fieldKey of this.config.debouncedFields) {
-      tree[fieldKey]().markAsTouched();
+      const field = tree[fieldKey]();
+      model[fieldKey] = field.controlValue();
+      field.markAsTouched();
+    }
+    this.formModel.set(model);
+    this.emitChanges(model);
+  }
+
+  private emitChanges(model: TFormData): void {
+    const diffs = this.config.trackedFields.filter(
+      (key) => model[key] !== this.lastEmittedModel[key],
+    );
+    this.lastEmittedModel = { ...model };
+    if (this.currentEntityId && diffs.length) {
+      this.config.onChange(this.currentEntityId, diffs, model);
     }
   }
 }

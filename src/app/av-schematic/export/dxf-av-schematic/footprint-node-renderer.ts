@@ -1,8 +1,8 @@
 import type { Node, Point } from 'ng-diagram';
 import {
-  FOOTPRINT_PADDING_CELLS,
   footprintChannel,
   footprintDrawPoint,
+  footprintDrawnExtent,
   footprintNodeSize,
   type FootprintChannel,
 } from '../../diagram/model/footprint-geometry';
@@ -30,8 +30,11 @@ export const renderFootprintNode: DxfNodeRenderer = (ctx, node) => {
   const pitch = board?.data.pitch ?? data.footprintPitch ?? FALLBACK_PITCH;
   const channel =
     board && data.placement ? footprintChannel(board.data, footprint, data.placement) : null;
-  const pad = FOOTPRINT_PADDING_CELLS * pitch;
-  const origin = { x: node.position.x + pad, y: node.position.y + pad };
+  const extent = footprintDrawnExtent(footprint, rotation, channel);
+  const origin = {
+    x: node.position.x - extent.left * pitch,
+    y: node.position.y - extent.top * pitch,
+  };
   const size = footprintNodeSize(footprint, rotation, pitch, channel);
 
   addPolyline(

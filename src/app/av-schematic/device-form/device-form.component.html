@@ -67,7 +67,7 @@
       Os pinos físicos são definidos pelo footprint e acompanham a posição na placa.
     </p>
     <ul class="physical-ports-list">
-      @for (port of nodeData().ports; track port.id) {
+      @for (port of displayedPorts(); track port.id) {
         <li class="p10">
           <span>{{ port.label || port.id }}</span>
           @if (port.hole; as hole) {

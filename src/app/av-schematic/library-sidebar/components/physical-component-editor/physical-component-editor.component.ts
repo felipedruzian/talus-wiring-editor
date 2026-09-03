@@ -20,6 +20,7 @@ import {
   type DevicePort,
   type PortDirection,
 } from '../../../diagram/model/interfaces';
+import { DeviceFormService } from '../../../device-form/device-form.service';
 import { CONNECTOR_TYPES } from '../../../shared/ui/ports-editor/connector-types';
 import {
   calibrateArtwork,
@@ -42,6 +43,7 @@ interface EditablePin {
 })
 export class PhysicalComponentEditorComponent {
   private readonly draftService = inject(LibraryDraftService);
+  private readonly formService = inject(DeviceFormService);
   private readonly artworkAssets = inject(ArtworkAssetStore);
   private readonly previewSurface = viewChild<ElementRef<HTMLElement>>('previewSurface');
 
@@ -53,6 +55,7 @@ export class PhysicalComponentEditorComponent {
   protected readonly connectorTypes = CONNECTOR_TYPES;
   protected readonly uploadBusy = signal(false);
   protected readonly uploadError = signal<string | null>(null);
+  protected readonly dimensionError = signal<string | null>(null);
   protected readonly draggingPin = signal<number | null>(null);
   protected readonly calibrationFirstPinId = signal('');
   protected readonly calibrationSecondPinId = signal('');
@@ -63,7 +66,11 @@ export class PhysicalComponentEditorComponent {
   protected readonly calibrationError = signal<string | null>(null);
   protected readonly asset = computed(() => {
     const hash = this.footprint()?.artwork?.assetHash;
-    return this.artworkAssets.asset(hash) ?? null;
+    return (
+      this.draftService.pendingAssets().find((candidate) => candidate.hash === hash) ??
+      this.artworkAssets.asset(hash) ??
+      null
+    );
   });
   protected readonly extent = computed(() => {
     const footprint = this.footprint();
@@ -100,7 +107,9 @@ export class PhysicalComponentEditorComponent {
       })),
     ).flat();
   });
-  protected readonly validationMessage = computed(() => validatePhysicalDraft(this.draft()));
+  protected readonly validationMessage = computed(
+    () => this.dimensionError() ?? validatePhysicalDraft(this.draft()),
+  );
   protected readonly calibrationMarkers = computed(() => {
     const artwork = this.footprint()?.artwork;
     if (!artwork) return [];
@@ -118,6 +127,7 @@ export class PhysicalComponentEditorComponent {
   });
 
   protected enablePhysical(): void {
+    this.formService.commitPendingEdits();
     const current = this.draft();
     if (current.footprint) return;
     const footprintId = footprintIdForLibrary(this.libraryId());
@@ -146,6 +156,7 @@ export class PhysicalComponentEditorComponent {
   }
 
   protected disablePhysical(): void {
+    this.formService.commitPendingEdits();
     this.draftService.update((draft) => ({
       ...draft,
       footprintId: undefined,
@@ -166,25 +177,11 @@ export class PhysicalComponentEditorComponent {
 
   protected updateDimension(field: 'rows' | 'cols', event: Event): void {
     const raw = Number(inputValue(event));
-    if (!Number.isFinite(raw)) return;
-    const value = Math.max(1, Math.min(64, Math.round(raw)));
-    this.updateFootprint((footprint) => {
-      const rows = field === 'rows' ? value : footprint.rows;
-      const cols = field === 'cols' ? value : footprint.cols;
-      return {
-        ...footprint,
-        rows,
-        cols,
-        pins: footprint.pins.map((pin) => ({
-          ...pin,
-          cell: {
-            row: Math.min(pin.cell.row, rows - 1),
-            col: Math.min(pin.cell.col, cols - 1),
-          },
-        })),
-        bodyCells: footprint.bodyCells?.filter((cell) => cell.row < rows && cell.col < cols),
-      };
-    });
+    const footprint = this.footprint();
+    if (!Number.isFinite(raw) || !footprint) return;
+    const result = resizeFootprintGrid(footprint, field, raw);
+    this.dimensionError.set(result.ok ? null : result.message);
+    if (result.ok) this.updateFootprint(() => result.footprint);
   }
 
   protected async onArtworkSelected(event: Event): Promise<void> {
@@ -196,7 +193,6 @@ export class PhysicalComponentEditorComponent {
     this.uploadError.set(null);
     try {
       const asset = await importArtwork(file);
-      this.artworkAssets.register(asset);
       this.draftService.addAsset(asset);
       if (!this.footprint()) this.enablePhysical();
       this.resetCalibration();
@@ -590,6 +586,10 @@ export function validatePhysicalDraft(data: DeviceNodeData): string | null {
   const ids = footprint.pins.map((pin) => pin.id.trim());
   if (ids.some((id) => id === '')) return 'Todo terminal precisa de um ID.';
   if (new Set(ids).size !== ids.length) return 'Os IDs dos terminais precisam ser únicos.';
+  const pinCells = footprint.pins.map((pin) => cellKey(pin.cell));
+  if (new Set(pinCells).size !== pinCells.length) {
+    return 'Dois terminais não podem ocupar a mesma célula.';
+  }
   const rawPortIds = data.ports.map((port) => port.id.trim());
   if (rawPortIds.some((id) => id === '')) return 'Toda porta elétrica precisa de um ID.';
   const portIds = new Set(rawPortIds);
@@ -600,6 +600,41 @@ export function validatePhysicalDraft(data: DeviceNodeData): string | null {
   if (rawPortIds.some((id) => !pinIds.has(id)))
     return 'Toda porta elétrica precisa de uma posição física.';
   return null;
+}
+
+export type FootprintGridResizeResult =
+  | { ok: true; footprint: Footprint }
+  | { ok: false; message: string };
+
+export function resizeFootprintGrid(
+  footprint: Footprint,
+  field: 'rows' | 'cols',
+  requestedValue: number,
+): FootprintGridResizeResult {
+  const value = Math.max(1, Math.min(64, Math.round(requestedValue)));
+  const rows = field === 'rows' ? value : footprint.rows;
+  const cols = field === 'cols' ? value : footprint.cols;
+  const pins = footprint.pins.map((pin) => ({
+    ...pin,
+    cell: {
+      row: Math.min(pin.cell.row, rows - 1),
+      col: Math.min(pin.cell.col, cols - 1),
+    },
+  }));
+  const pinCells = pins.map((pin) => cellKey(pin.cell));
+  if (new Set(pinCells).size !== pinCells.length) {
+    return { ok: false, message: 'A redução colocaria dois terminais na mesma célula.' };
+  }
+  return {
+    ok: true,
+    footprint: {
+      ...footprint,
+      rows,
+      cols,
+      pins,
+      bodyCells: footprint.bodyCells?.filter((cell) => cell.row < rows && cell.col < cols),
+    },
+  };
 }
 
 function footprintIdForLibrary(libraryId: string): string {

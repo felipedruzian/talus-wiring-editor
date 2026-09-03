@@ -1,12 +1,15 @@
 import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { sha256HexSync } from './artwork-import';
 import { LibraryService } from './library.service';
 import {
   LEGACY_LIBRARY_STORAGE_KEY,
   LIBRARY_STORAGE_KEY,
   LIBRARY_STORAGE_VERSION,
+  MAX_LIBRARY_ASSETS,
   loadLibraryCatalog,
   loadLibraryDevices,
+  persistLibraryCatalog,
 } from './library-storage';
 import { createBlankTemplate, SEED_LIBRARY } from './seed-library';
 
@@ -237,15 +240,8 @@ describe('LibraryService', () => {
     const storage = new MemoryStorage();
     vi.stubGlobal('localStorage', storage);
     const service = createLibraryService();
-    const hash = 'a'.repeat(64);
-    const asset = {
-      hash,
-      mimeType: 'image/png' as const,
-      width: 1,
-      height: 1,
-      byteLength: 1,
-      dataUrl: 'data:image/png;base64,AA==',
-    };
+    const asset = artworkAsset();
+    const hash = asset.hash;
     const footprint = {
       id: 'custom-physical',
       label: 'Sensor físico',
@@ -280,6 +276,77 @@ describe('LibraryService', () => {
     expect(Object.keys(payload.assets)).toEqual([hash]);
   });
 
+  it('never hydrates a persisted asset whose bytes do not match its SHA-256 key', () => {
+    const storage = new MemoryStorage();
+    const asset = artworkAsset();
+    const forgedHash = '0'.repeat(64);
+    const device = physicalLibraryDevice('forged', forgedHash);
+    const persistedAsset = {
+      mimeType: asset.mimeType,
+      width: asset.width,
+      height: asset.height,
+      byteLength: asset.byteLength,
+      dataUrl: asset.dataUrl,
+    };
+    storage.setItem(
+      LIBRARY_STORAGE_KEY,
+      JSON.stringify({
+        version: LIBRARY_STORAGE_VERSION,
+        devices: [device],
+        assets: { [forgedHash]: persistedAsset },
+      }),
+    );
+    vi.stubGlobal('localStorage', storage);
+
+    const service = createLibraryService();
+
+    expect(service.artworkAsset(forgedHash)).toBeUndefined();
+    expect(service.devices()[0]?.template.footprint?.artwork).toBeUndefined();
+    const repaired = JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}') as {
+      assets: Record<string, unknown>;
+    };
+    expect(repaired.assets).toEqual({});
+  });
+
+  it('rejects a 129th referenced asset without mutating memory or storage', () => {
+    const storage = new MemoryStorage();
+    const assets = Array.from({ length: MAX_LIBRARY_ASSETS }, (_, index) => artworkAsset(index));
+    const devices = assets.map((asset, index) =>
+      physicalLibraryDevice(`existing-${index}`, asset.hash),
+    );
+    expect(persistLibraryCatalog(storage, { devices, assets })).toEqual({ ok: true });
+    const before = storage.getItem(LIBRARY_STORAGE_KEY);
+    vi.stubGlobal('localStorage', storage);
+    const service = createLibraryService();
+    const nextAsset = artworkAsset(MAX_LIBRARY_ASSETS);
+    const next = physicalLibraryDevice('next', nextAsset.hash);
+    service.beginCreate();
+    const libraryId = service.editingDeviceId();
+    if (!libraryId) throw new Error('Expected library id');
+
+    expect(service.commitDraft(libraryId, next.template, [nextAsset])).toBe(false);
+    expect(service.devices()).toHaveLength(MAX_LIBRARY_ASSETS);
+    expect(service.storageError()).toMatch(/no máximo 128 imagens/);
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(before);
+  });
+
+  it('does not truncate or rewrite an over-limit persisted asset catalog', () => {
+    const storage = new MemoryStorage();
+    const assets = Object.fromEntries(
+      Array.from({ length: MAX_LIBRARY_ASSETS + 1 }, (_, index) => [
+        index.toString(16).padStart(64, '0'),
+        {},
+      ]),
+    );
+    const serialized = JSON.stringify({ version: LIBRARY_STORAGE_VERSION, devices: [], assets });
+    storage.setItem(LIBRARY_STORAGE_KEY, serialized);
+
+    const loaded = loadLibraryCatalog(storage);
+
+    expect(loaded.loadError).toMatch(/excede o limite de 128 imagens/);
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
+  });
+
   it('reports localStorage quota failures instead of silently claiming persistence', () => {
     const storage = new MemoryStorage();
     storage.setItem = () => {
@@ -305,4 +372,49 @@ describe('LibraryService', () => {
 
 function createLibraryService(): LibraryService {
   return TestBed.runInInjectionContext(() => new LibraryService());
+}
+
+const PNG_1X1_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+function artworkAsset(unique = -1) {
+  const base = Uint8Array.from(atob(PNG_1X1_BASE64), (character) => character.charCodeAt(0));
+  const bytes = unique < 0 ? base : new Uint8Array([...base, unique >> 8, unique & 0xff]);
+  const hash = sha256HexSync(bytes);
+  return {
+    hash,
+    mimeType: 'image/png' as const,
+    width: 1,
+    height: 1,
+    byteLength: bytes.byteLength,
+    dataUrl: `data:image/png;base64,${bytesToBase64(bytes)}`,
+  };
+}
+
+function physicalLibraryDevice(libraryId: string, assetHash: string) {
+  const footprint = {
+    id: `footprint-${libraryId}`,
+    label: libraryId,
+    rows: 1,
+    cols: 1,
+    pins: [{ id: 'signal', label: 'Sinal', cell: { row: 0, col: 0 } }],
+    shapes: [],
+    artwork: { assetHash, x: 0, y: 0, width: 1, height: 1 },
+  };
+  return {
+    libraryId: `lib-custom-${libraryId}`,
+    template: {
+      ...createBlankTemplate(),
+      model: libraryId,
+      footprintId: footprint.id,
+      footprint,
+      ports: [{ id: 'signal', label: 'Sinal', direction: 'input' as const }],
+    },
+  };
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
 }

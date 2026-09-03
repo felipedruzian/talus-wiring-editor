@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { FormField } from '@angular/forms/signals';
 import { DEVICE_CATEGORIES } from '../diagram/model/device-categories';
-import { type DeviceNodeData } from '../diagram/model/interfaces';
+import { type DeviceNodeData, type DevicePort } from '../diagram/model/interfaces';
 import { AutofocusDirective } from '../shared/directives/autofocus/autofocus.directive';
 import { ComboboxComponent } from '../shared/ui/combobox/combobox.component';
 import { FormFieldComponent } from '../shared/ui/form-field/form-field.component';
@@ -37,13 +37,17 @@ export class DeviceFormComponent {
 
   readonly entityId = input.required<string>();
   readonly nodeData = input.required<DeviceNodeData>();
-  readonly readonlyPorts = input(false);
+  readonly readonlyPorts = input<boolean>();
+  readonly readonlyPortData = input<readonly DevicePort[]>();
 
   protected readonly fieldTree = this.formService.fieldTree;
   protected readonly showDeviceId = !this.hiddenFields.includes('deviceId');
   protected readonly showLocation = !this.hiddenFields.includes('location');
   protected readonly portsAreReadonly = computed(
-    () => this.readonlyPorts() || this.nodeData().footprintId !== undefined,
+    () => this.readonlyPorts() ?? this.nodeData().footprintId !== undefined,
+  );
+  protected readonly displayedPorts = computed(
+    () => this.readonlyPortData() ?? this.nodeData().ports,
   );
   protected readonly autofocusManufacturer = computed(() =>
     this.showDeviceId ? null : this.entityId(),
@@ -52,9 +56,29 @@ export class DeviceFormComponent {
 
   constructor() {
     this.syncFormWithInputs();
+    this.syncPortsAfterPhysicalEditing();
 
     inject(DestroyRef).onDestroy(() => {
       this.formService.commitPendingEdits();
+    });
+  }
+
+  private syncPortsAfterPhysicalEditing(): void {
+    let wasReadonly = false;
+    effect(() => {
+      const entityId = this.entityId();
+      const readonly = this.portsAreReadonly();
+      const ports = this.displayedPorts();
+
+      untracked(() => {
+        if (wasReadonly && !readonly) {
+          this.formService.loadFormData(entityId, {
+            ...this.formService.formModel(),
+            ports: structuredClone([...ports]),
+          });
+        }
+        wasReadonly = readonly;
+      });
     });
   }
 

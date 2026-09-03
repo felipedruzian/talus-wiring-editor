@@ -4,6 +4,7 @@ import { type DeviceNodeData } from '../diagram/model/interfaces';
 import {
   browserLocalStorage,
   loadLibraryCatalog,
+  MAX_LIBRARY_ASSETS,
   persistLibraryCatalog,
   referencedArtworkHashes,
 } from './library-storage';
@@ -24,7 +25,7 @@ export class LibraryService {
   readonly editingDeviceId = signal<string | null>(null);
   readonly editingMode = signal<LibraryEditMode | null>(null);
   readonly searchQuery = signal('');
-  readonly storageError = signal<string | null>(null);
+  readonly storageError = signal<string | null>(this.initialCatalog.loadError ?? null);
   private returnFocus: HTMLElement | null = null;
 
   constructor() {
@@ -69,26 +70,47 @@ export class LibraryService {
     pendingAssets: readonly RasterArtworkAsset[] = [],
   ): boolean {
     const mode = this.editingMode();
+    let nextDevices: LibraryDevice[];
     if (mode === 'create') {
-      this.devices.update((list) => {
+      nextDevices = (() => {
+        const list = this.devices();
         const cloned = structuredClone(template);
         const existing = list.findIndex((device) => device.libraryId === libraryId);
         if (existing < 0) return [...list, { libraryId, template: cloned }];
         return list.map((device, index) =>
           index === existing ? { ...device, template: cloned } : device,
         );
-      });
+      })();
     } else if (mode === 'edit') {
-      this.devices.update((list) =>
-        list.map((d) =>
-          d.libraryId === libraryId ? { ...d, template: structuredClone(template) } : d,
-        ),
+      nextDevices = this.devices().map((d) =>
+        d.libraryId === libraryId ? { ...d, template: structuredClone(template) } : d,
       );
+    } else {
+      return false;
     }
-    this.artworkStore.registerMany(pendingAssets);
-    const saved = this.persist();
-    if (saved) this.closeDetail();
-    return saved;
+    const pendingByHash = new Map(pendingAssets.map((asset) => [asset.hash, asset]));
+    const hashes = referencedArtworkHashes(nextDevices);
+    if (hashes.size > MAX_LIBRARY_ASSETS) {
+      this.storageError.set(
+        `O catálogo aceita no máximo ${MAX_LIBRARY_ASSETS} imagens. Remova uma imagem antes de continuar.`,
+      );
+      return false;
+    }
+    const assets = [...hashes].flatMap((hash) => {
+      const asset = pendingByHash.get(hash) ?? this.artworkStore.asset(hash);
+      return asset ? [asset] : [];
+    });
+    if (assets.length !== hashes.size) {
+      this.storageError.set('O componente referencia uma imagem que não está disponível.');
+      return false;
+    }
+    const result = persistLibraryCatalog(this.storage, { devices: nextDevices, assets });
+    this.storageError.set(result.ok ? null : result.message);
+    if (!result.ok) return false;
+    this.devices.set(nextDevices);
+    this.artworkStore.replace(assets);
+    this.closeDetail();
+    return true;
   }
 
   closeDetail(): void {

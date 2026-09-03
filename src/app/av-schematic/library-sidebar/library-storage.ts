@@ -9,6 +9,7 @@ import {
   type FootprintCell,
 } from '../diagram/model/footprint';
 import {
+  assertValidRasterArtworkAsset,
   MAX_ARTWORK_OUTPUT_BYTES,
   MAX_ARTWORK_OUTPUT_DIMENSION,
   MAX_ARTWORK_OUTPUT_PIXELS,
@@ -24,6 +25,7 @@ export const MAX_LIBRARY_STORAGE_BYTES = 16 * 1024 * 1024;
 export interface LibraryCatalog {
   devices: LibraryDevice[];
   assets: RasterArtworkAsset[];
+  loadError?: string;
 }
 
 interface PersistedLibraryV2 {
@@ -49,7 +51,9 @@ export function loadLibraryCatalog(storage: Storage | null): LibraryCatalog {
     if (current) {
       const recovered = recoverPersistedLibrary(JSON.parse(current) as unknown);
       if (!recovered) return seedCatalog();
-      if (recovered.wasRepaired) persistLibraryCatalog(storage, recovered.catalog);
+      if (recovered.wasRepaired && !recovered.catalog.loadError) {
+        persistLibraryCatalog(storage, recovered.catalog);
+      }
       return recovered.catalog;
     }
 
@@ -79,8 +83,31 @@ export function persistLibraryCatalog(
       message: 'O armazenamento local não está disponível; as alterações durarão apenas nesta aba.',
     };
   }
+  const assetsByHash = new Map<string, RasterArtworkAsset>();
+  for (const asset of catalog.assets) {
+    const existing = assetsByHash.get(asset.hash);
+    if (existing && JSON.stringify(existing) !== JSON.stringify(asset)) {
+      return { ok: false, message: 'Há duas imagens diferentes declaradas com o mesmo hash.' };
+    }
+    assetsByHash.set(asset.hash, asset);
+  }
+  if (assetsByHash.size > MAX_LIBRARY_ASSETS) {
+    return {
+      ok: false,
+      message: `O catálogo aceita no máximo ${MAX_LIBRARY_ASSETS} imagens. Remova uma imagem antes de continuar.`,
+    };
+  }
+  try {
+    for (const asset of assetsByHash.values()) assertValidRasterArtworkAsset(asset);
+  } catch {
+    return { ok: false, message: 'O catálogo contém uma imagem inválida ou corrompida.' };
+  }
+  const referencedHashes = referencedArtworkHashes(catalog.devices);
+  if ([...referencedHashes].some((hash) => !assetsByHash.has(hash))) {
+    return { ok: false, message: 'O catálogo referencia uma imagem que não está disponível.' };
+  }
   const assets = Object.fromEntries(
-    catalog.assets.map(({ hash, ...asset }) => [hash, asset]),
+    [...assetsByHash].map(([hash, { hash: _hash, ...asset }]) => [hash, asset]),
   ) as PersistedLibraryV2['assets'];
   const payload: PersistedLibraryV2 = {
     version: LIBRARY_STORAGE_VERSION,
@@ -129,12 +156,20 @@ function recoverPersistedLibrary(
   const assets: RasterArtworkAsset[] = [];
   let wasRepaired = false;
   const rawAssets = Object.entries(value['assets']);
-  for (const [hash, rawAsset] of rawAssets.slice(0, MAX_LIBRARY_ASSETS)) {
+  if (rawAssets.length > MAX_LIBRARY_ASSETS) {
+    return {
+      catalog: {
+        ...seedCatalog(),
+        loadError: `O catálogo armazenado excede o limite de ${MAX_LIBRARY_ASSETS} imagens e não foi alterado.`,
+      },
+      wasRepaired: false,
+    };
+  }
+  for (const [hash, rawAsset] of rawAssets) {
     const asset = recoverAsset(hash, rawAsset);
     if (asset) assets.push(asset);
     else wasRepaired = true;
   }
-  if (rawAssets.length > MAX_LIBRARY_ASSETS) wasRepaired = true;
   const availableHashes = new Set(assets.map((asset) => asset.hash));
   const recoveredDevices = recoverDevices(value['devices'], availableHashes);
   wasRepaired ||= recoveredDevices.wasRepaired;
@@ -199,13 +234,17 @@ function recoverAsset(hash: string, value: unknown): RasterArtworkAsset | null {
     width * height > MAX_ARTWORK_OUTPUT_PIXELS ||
     !isPositiveInteger(byteLength) ||
     byteLength > MAX_ARTWORK_OUTPUT_BYTES ||
-    typeof dataUrl !== 'string' ||
-    !dataUrl.startsWith(`data:${mimeType};base64,`) ||
-    estimatedDataUrlBytes(dataUrl) !== byteLength
+    typeof dataUrl !== 'string'
   ) {
     return null;
   }
-  return { hash, mimeType, width, height, byteLength, dataUrl };
+  const asset = { hash, mimeType, width, height, byteLength, dataUrl };
+  try {
+    assertValidRasterArtworkAsset(asset);
+    return asset;
+  } catch {
+    return null;
+  }
 }
 
 function isLibraryDevice(value: unknown): value is LibraryDevice {
@@ -264,6 +303,7 @@ function isFootprint(value: unknown): value is Footprint {
   const rows = value['rows'];
   const cols = value['cols'];
   const pinIds = new Set<string>();
+  const pinCells = new Set<string>();
   if (
     !value['pins'].every((pin) => {
       if (
@@ -273,11 +313,13 @@ function isFootprint(value: unknown): value is Footprint {
         pinIds.has(pin['id']) ||
         typeof pin['label'] !== 'string' ||
         !isFootprintCell(pin['cell'], rows, cols) ||
-        (pin['primary'] !== undefined && typeof pin['primary'] !== 'boolean')
+        (pin['primary'] !== undefined && typeof pin['primary'] !== 'boolean') ||
+        pinCells.has(cellKey(pin['cell']))
       ) {
         return false;
       }
       pinIds.add(pin['id']);
+      pinCells.add(cellKey(pin['cell']));
       return true;
     }) ||
     !value['shapes'].every(isFootprintShape)
@@ -364,13 +406,6 @@ export function referencedArtworkHashes(devices: readonly LibraryDevice[]): Set<
   );
 }
 
-function estimatedDataUrlBytes(dataUrl: string): number {
-  const payload = dataUrl.slice(dataUrl.indexOf(',') + 1).replace(/\s/g, '');
-  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(payload) || payload.length % 4 !== 0) return -1;
-  const padding = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0;
-  return (payload.length / 4) * 3 - padding;
-}
-
 function numericFields(value: Record<string, unknown>, names: readonly string[]): boolean {
   return names.every((name) => isFiniteNumber(value[name]));
 }
@@ -400,6 +435,10 @@ function isPositiveFinite(value: unknown): value is number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function cellKey(cell: FootprintCell): string {
+  return `${cell.row}:${cell.col}`;
 }
 
 const cloneSeedLibrary = (): LibraryDevice[] => structuredClone(SEED_LIBRARY);
