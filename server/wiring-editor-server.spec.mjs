@@ -359,7 +359,7 @@ describe('wiring-editor-server', () => {
       const etag = initial.headers.get('etag');
       const catalog = {
         version: 2,
-        seedRevision: 2,
+        seedRevision: 3,
         devices: [
           {
             libraryId: 'lib-custom-test',
@@ -438,7 +438,7 @@ describe('wiring-editor-server', () => {
       const etag = initial.headers.get('etag');
       const catalog = {
         version: 2,
-        seedRevision: 2,
+        seedRevision: 3,
         devices: [
           {
             libraryId: 'lib-resistor-1k',
@@ -492,7 +492,7 @@ describe('wiring-editor-server', () => {
       expect(await (await fetch(`${server.baseUrl}/api/library`)).json()).toEqual(catalog);
 
       const futureRevision = structuredClone(catalog);
-      futureRevision.seedRevision = 3;
+      futureRevision.seedRevision = 4;
       const futureRejected = await fetch(`${server.baseUrl}/api/library`, {
         method: 'PUT',
         headers: {

@@ -26,6 +26,7 @@ describe('Talus-Droid library catalog', () => {
       'lib-resistor-1k',
       'lib-resistor-1k8',
       'lib-capacitor-electrolytic-470uf',
+      'lib-capacitor-electrolytic-470uf-16v',
       'lib-capacitor-ceramic-100nf',
       'lib-lm2596s',
       'lib-hall-a3144-lm393',
@@ -43,6 +44,7 @@ describe('Talus-Droid library catalog', () => {
       ['lib-resistor-1k', 1, 5, 2],
       ['lib-resistor-1k8', 1, 5, 2],
       ['lib-capacitor-electrolytic-470uf', 1, 3, 2],
+      ['lib-capacitor-electrolytic-470uf-16v', 1, 3, 2],
       ['lib-capacitor-ceramic-100nf', 1, 3, 2],
     ] as const;
 
@@ -72,6 +74,12 @@ describe('Talus-Droid library catalog', () => {
       ]),
     );
     expect(seed('lib-capacitor-electrolytic-470uf').template.footprint?.pins).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'plus', cell: { row: 0, col: 0 }, primary: true }),
+        expect.objectContaining({ id: 'minus', cell: { row: 0, col: 2 } }),
+      ]),
+    );
+    expect(seed('lib-capacitor-electrolytic-470uf-16v').template.footprint?.pins).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: 'plus', cell: { row: 0, col: 0 }, primary: true }),
         expect.objectContaining({ id: 'minus', cell: { row: 0, col: 2 } }),

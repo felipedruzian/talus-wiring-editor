@@ -5,7 +5,7 @@
 import { createHash } from 'node:crypto';
 
 export const LIBRARY_CATALOG_VERSION = 2;
-export const LIBRARY_SEED_REVISION = 2;
+export const LIBRARY_SEED_REVISION = 3;
 export const MAX_LIBRARY_DEVICES = 4096;
 export const MAX_LIBRARY_ASSETS = 128;
 export const MAX_LIBRARY_ASSET_BYTES = 256 * 1024;
