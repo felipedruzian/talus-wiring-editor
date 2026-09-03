@@ -1,12 +1,14 @@
 import { ElementRef, Injectable, computed, inject, signal } from '@angular/core';
-import { toCanvas, toSvg } from 'html-to-image';
+import { toCanvas } from 'html-to-image';
 import { NgDiagramModelService } from 'ng-diagram';
 import { buildAvDxfConfig } from './dxf-av-schematic/av-dxf-config';
 import { DxfExporter } from './dxf/dxf-exporter';
 import { DxfWriter } from './dxf/dxf-writer';
+import { SVG_EXPORT_MIME_TYPE, buildRasterSvgSnapshot } from './raster-svg';
 
 const EXPORT_PADDING = 50;
 const PNG_PIXEL_RATIO = 2;
+const SVG_PIXEL_RATIO = 1;
 const DIAGRAM_CANVAS_SELECTOR = 'ng-diagram-canvas';
 
 /**
@@ -69,16 +71,22 @@ export class DiagramExportService {
     const region = this.computeExportRegion();
     if (!region) return;
 
-    const dataUrl = await toSvg(canvasEl, {
+    const canvas = await toCanvas(canvasEl, {
       backgroundColor: this.resolveBackgroundColor(canvasEl),
       width: region.width,
       height: region.height,
+      pixelRatio: SVG_PIXEL_RATIO,
       style: {
         transform: `translate(${-region.x}px, ${-region.y}px) scale(1)`,
         transformOrigin: 'top left',
       },
     });
-    this.downloadDataUrl(dataUrl, 'av-schematic.svg');
+    const svg = buildRasterSvgSnapshot({
+      width: region.width,
+      height: region.height,
+      pngDataUrl: canvas.toDataURL('image/png'),
+    });
+    this.downloadText(svg, 'av-schematic.svg', SVG_EXPORT_MIME_TYPE);
   }
 
   exportDxf(): void {

@@ -4,7 +4,7 @@
 
 **PNG** is a raster capture via [`html-to-image`](https://www.npmjs.com/package/html-to-image): `computePartsBounds(nodes, edges)` plus a 50-unit padding defines the region; the canvas is rendered at 2× pixel ratio with the active theme's background color (resolved by walking up from the diagram canvas to the first non-transparent ancestor — usually `<html>`).
 
-**SVG** usa a mesma árvore DOM, região, fundo e ordem visual do PNG. Como ambos são capturas do canvas renderizado, os planos visuais persistentes e o `zOrder` aplicado pelo ng-diagram aparecem de forma idêntica nos dois formatos.
+**SVG** usa uma captura raster composta do mesmo canvas e a incorpora como uma única imagem PNG dentro de um contêiner SVG leve. Essa escolha é deliberada: preserva fundo, geometria e ordem visual exatamente como no PNG sem serializar a aplicação Angular inteira em um `foreignObject` (que incluía estilos e fontes e podia gerar dezenas de megabytes). O exportador usa razão de pixel 1 e rejeita arquivos acima de 5 MiB; para edição vetorial real, use o DXF.
 
 **DXF** is a clean, vector, layer-aware drawing for CAD tools, generated entirely client-side (no library dependency). The code is split into two folders so the architecture stays clear:
 

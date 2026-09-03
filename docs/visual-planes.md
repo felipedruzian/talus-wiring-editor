@@ -15,4 +15,6 @@ Isso garante que fios ligados a furos e trilhas sejam desenhados acima do corpo 
 
 O plano persistido não é usado diretamente como índice CSS. Antes de renderizar, `visual-planes.ts` ordena todos os nós e arestas pelo par `(visualPlane, tipo, id)` e atribui um `zOrder` sequencial do ng-diagram. Assim, empates dentro de um plano são determinísticos e não dependem da ordem de inserção, seleção, arraste ou reabertura.
 
-PNG e SVG capturam a árvore DOM já ordenada. O DXF mantém os layers semânticos `DEVICES` e `WIRES`; esses layers não são planos visuais e não mudam quando o usuário altera `visualPlane`.
+O PNG compõe a árvore DOM já ordenada, e o SVG incorpora essa mesma composição como uma imagem raster leve. O DXF mantém os layers semânticos `DEVICES` e `WIRES`; esses layers não são planos visuais e não mudam quando o usuário altera `visualPlane`.
+
+Se um fio for colocado abaixo de um componente, use **Selecionar fio oculto** no rodapé do canvas e clique no trecho sobreposto; o modo é encerrado após o gesto. Como atalho, mantenha `Alt` pressionado durante o clique. Fora desse modo temporário, seleção, portas, handles de dobra e menus continuam com a interação normal.

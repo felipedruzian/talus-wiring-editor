@@ -59,4 +59,26 @@ describe('visual plane ordering', () => {
     const ordered = applyVisualZOrder([node('board', 'board')], [edge('wire', -1)]);
     expect(ordered.edges[0].zOrder).toBeLessThan(ordered.nodes[0].zOrder ?? -1);
   });
+
+  it('renormalizes stale copied z-orders into one deterministic sequence after paste', () => {
+    const copiedNodes = [
+      { ...node('component-copy', 'device', 10), zOrder: 99 },
+      { ...node('component', 'device', 10), zOrder: 99 },
+    ];
+    const copiedEdges = [
+      { ...edge('wire-copy', 20), zOrder: 99 },
+      { ...edge('wire', 20), zOrder: 99 },
+    ];
+
+    const first = applyVisualZOrder(copiedNodes, copiedEdges);
+    const second = applyVisualZOrder([...copiedNodes].reverse(), [...copiedEdges].reverse());
+    const zOrders = (value: typeof first) =>
+      new Map<string, number | undefined>([
+        ...value.nodes.map((item) => [item.id, item.zOrder] as const),
+        ...value.edges.map((item) => [item.id, item.zOrder] as const),
+      ]);
+
+    expect(new Set(zOrders(first).values())).toEqual(new Set([0, 1, 2, 3]));
+    expect(zOrders(second)).toEqual(zOrders(first));
+  });
 });

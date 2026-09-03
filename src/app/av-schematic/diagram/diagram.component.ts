@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  ElementRef,
+  HostListener,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import {
   DiagramInitEvent,
   initializeModel,
@@ -10,6 +19,7 @@ import {
   NgDiagramViewportService,
   type Edge,
   type EdgeDrawEndedEvent,
+  type ClipboardPastedEvent,
   type NgDiagramConfig,
   type Node,
   type NodeDragEndedEvent,
@@ -71,6 +81,10 @@ export class DiagramComponent {
   private readonly exportService = inject(DiagramExportService);
   private readonly danglingEdge = inject(DanglingEdgeService);
   private readonly boardPlacement = inject(BoardPlacementService);
+  private readonly manualWirePick = signal(false);
+  private readonly altWirePick = signal(false);
+
+  protected readonly wirePickActive = computed(() => this.manualWirePick() || this.altWirePick());
 
   constructor() {
     this.exportService.setDiagramElement(this.elementRef);
@@ -179,6 +193,10 @@ export class DiagramComponent {
     await this.elementMutationService.normalizeVisualOrder();
   }
 
+  async onClipboardPasted(_: ClipboardPastedEvent): Promise<void> {
+    await this.elementMutationService.normalizeVisualOrder();
+  }
+
   // Manual edges don't auto-reroute, so re-anchor their endpoints to the live
   // ports of any moved node (auto edges are handled by ng-diagram's router).
   // Mid-drag: re-anchor only, no merge - the route mustn't simplify before drop.
@@ -242,6 +260,7 @@ export class DiagramComponent {
   }
 
   onSelectionGestureEnded(event: SelectionGestureEndedEvent): void {
+    this.manualWirePick.set(false);
     const hasDeviceNodes = event.nodes.some(isDeviceNode);
     const hasBoardNodes = event.nodes.some(isBoardNode);
     const hasJunctionNodes = event.nodes.some(isJunctionNode);
@@ -249,6 +268,25 @@ export class DiagramComponent {
     if (hasDeviceNodes || hasBoardNodes || hasJunctionNodes || hasWireEdges) {
       this.sidebarService.expandSidebar();
     }
+  }
+
+  protected toggleWirePickMode(): void {
+    this.manualWirePick.update((active) => !active);
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  protected activateAltWirePick(event: KeyboardEvent): void {
+    if (event.key === 'Alt') this.altWirePick.set(true);
+  }
+
+  @HostListener('document:keyup', ['$event'])
+  protected deactivateAltWirePick(event: KeyboardEvent): void {
+    if (event.key === 'Alt') this.altWirePick.set(false);
+  }
+
+  @HostListener('window:blur')
+  protected clearAltWirePick(): void {
+    this.altWirePick.set(false);
   }
 
   async onPaletteItemDropped(event: PaletteItemDroppedEvent): Promise<void> {
