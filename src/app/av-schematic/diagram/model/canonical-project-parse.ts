@@ -828,7 +828,7 @@ interface ResolvedBoardPort {
  * missing entirely.
  */
 function validateInternalCopperTaps(
-  project: CanonicalProjectV2,
+  project: CanonicalProjectV3,
   boardPortsByJunction: ReadonlyMap<string, ResolvedBoardPort>,
 ): void {
   const layoutsByConductor = new Map(
