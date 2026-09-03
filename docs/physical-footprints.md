@@ -131,7 +131,7 @@ lado do canal — uma peça que atravessa o canal da protoboard de 830 pontos te
 a metade de baixo desenhada um `centerGap` inteiro acima dos furos em que os
 pinos realmente estão.
 
-`footprintChannel(board, placement)` descreve esse canal visto do anchor da
+`footprintChannel(board, footprint, placement)` descreve esse canal visto do anchor da
 peça, e `applyFootprintChannel` aplica o mesmo mapeamento por partes **depois da
 rotação** — o corte é uma linha horizontal no espaço da placa, então não pode
 ser expresso pela matriz de rotação do SVG. Por isso o grupo `matrix(...)` deu
@@ -141,17 +141,21 @@ texto gira em torno do próprio ponto. Nada é escalado no eixo horizontal.
 
 Consequências, todas intencionais:
 
-- `applyFootprintChannel(0)` é sempre `0`, dos dois lados do canal, então a
+- `applyFootprintChannel(0)` é sempre `0` quando a caixa de células atravessa o canal, então a
   célula (0, 0) continua colada ao furo do anchor e `placementNodePosition`
   **não recebe nenhum offset ad hoc** — ela já resolve o anchor por
   `holeLocalPoint`.
+- Um footprint cuja caixa de células está inteiramente acima ou abaixo do split
+  permanece rígido. Shapes que avançam para o espaço livre (inclusive textos
+  com `y` negativo na primeira linha inferior) não saltam para o outro lado do
+  canal nem saem do `viewBox` compartilhado por desenho e portas.
 - O corpo de uma peça que atravessa o canal **é esticado pelo `centerGap`**, e o
   box do nó cresce junto. É o que o contrato atual `hole = anchor + rotatedCell`
   significa: as duas metades da peça estão a três passos de distância na placa.
   Fidelidade metrológica maior (offsets físicos por pino, independentes de
   `FootprintCell`) é assunto da issue #31 e não deste caminho.
 - O `centerGap` inteiro é o que desloca. O canal mais estreito que o plástico
-  *pinta* (`boardChannelRect`) é detalhe de superfície e nunca entra nessa
+  _pinta_ (`boardChannelRect`) é detalhe de superfície e nunca entra nessa
   geometria.
 - O exportador DXF consome exatamente as mesmas funções, então o desenho
   concorda com a tela em rotação, pitch e canal.

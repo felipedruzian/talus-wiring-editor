@@ -28,7 +28,8 @@ export const renderFootprintNode: DxfNodeRenderer = (ctx, node) => {
   // half of a seated footprint that sits below it, so a drawing that ignored
   // the gap would put that half a whole `centerGap` away from its own holes.
   const pitch = board?.data.pitch ?? data.footprintPitch ?? FALLBACK_PITCH;
-  const channel = board && data.placement ? footprintChannel(board.data, data.placement) : null;
+  const channel =
+    board && data.placement ? footprintChannel(board.data, footprint, data.placement) : null;
   const pad = FOOTPRINT_PADDING_CELLS * pitch;
   const origin = { x: node.position.x + pad, y: node.position.y + pad };
   const size = footprintNodeSize(footprint, rotation, pitch, channel);

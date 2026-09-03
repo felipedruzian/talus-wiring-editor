@@ -14,7 +14,7 @@ import {
 } from './footprint-geometry';
 import { footprintPinViews } from '../node/footprint-node.component';
 import { BREADBOARD_ROWS, breadboardRowIndex, createBreadboard830 } from './breadboard';
-import { type Footprint } from './footprint';
+import { RESISTOR_1K_FOOTPRINT, type Footprint } from './footprint';
 import {
   BOARD_ROTATIONS,
   type BoardNodeData,
@@ -87,7 +87,7 @@ function pinDrawnPoints(
   placement: DevicePlacement,
   boardPosition = { x: 137, y: -42 },
 ): { drawn: { x: number; y: number }; hole: { x: number; y: number } }[] {
-  const channel = footprintChannel(board, placement);
+  const channel = footprintChannel(board, module6, placement);
   const node = placementNodePosition({ board, position: boardPosition }, placement);
   const views = footprintPinViews(module6, placement.rotation, board.pitch, ports, channel);
   const holes = footprintPinHoles(module6, placement);
@@ -118,35 +118,49 @@ function straddles(placement: DevicePlacement): boolean {
 
 describe('footprintChannel', () => {
   it('is absent for a board that declares no central gap', () => {
-    expect(footprintChannel(perfboard, placementAt(3, 0))).toBeNull();
+    expect(footprintChannel(perfboard, module6, placementAt(3, 0))).toBeNull();
   });
 
   it('opens half a cell after the last row above the split', () => {
-    const channel = footprintChannel(breadboard, placementAt(SPLIT - 2, 0));
-    expect(channel).toEqual({ cutY: 1.5, gapCells: 2, anchorBelow: false });
+    const channel = footprintChannel(breadboard, module6, placementAt(SPLIT - 1, 0));
+    expect(channel).toEqual({ cutY: 0.5, gapCells: 2 });
   });
 
   it('uses the whole centerGap, not the narrower groove the plastic paints', () => {
-    const channel = footprintChannel(breadboard, placementAt(0, 0));
+    const channel = footprintChannel(breadboard, module6, placementAt(SPLIT - 1, 0));
     expect(channel?.gapCells).toBe((breadboard.centerGap ?? 0) / PITCH);
   });
 
-  it('pins the anchor cell to itself on either side of the channel', () => {
-    expect(applyFootprintChannel(0, footprintChannel(breadboard, placementAt(SPLIT - 1, 0)))).toBe(
-      0,
-    );
-    expect(applyFootprintChannel(0, footprintChannel(breadboard, placementAt(SPLIT, 0)))).toBe(0);
+  it('pins the anchor cell to itself when the footprint crosses the channel', () => {
+    expect(
+      applyFootprintChannel(0, footprintChannel(breadboard, module6, placementAt(SPLIT - 1, 0))),
+    ).toBe(0);
   });
 
   it('moves nothing when the footprint stays on one side', () => {
-    const above = footprintChannel(breadboard, placementAt(SPLIT - 4, 0));
+    const above = footprintChannel(breadboard, module6, placementAt(SPLIT - 4, 0));
     expect(applyFootprintChannel(1, above)).toBe(1);
-    const below = footprintChannel(breadboard, placementAt(SPLIT + 1, 0));
+    const below = footprintChannel(breadboard, module6, placementAt(SPLIT + 1, 0));
     expect(applyFootprintChannel(1, below)).toBe(1);
   });
 
+  it('keeps a resistor rigid on the first row wholly below the channel in every rotation', () => {
+    const label = RESISTOR_1K_FOOTPRINT.shapes.find((shape) => shape.kind === 'text');
+    if (label?.kind !== 'text') throw new Error('resistor label not found');
+
+    for (const rotation of BOARD_ROTATIONS) {
+      const placement = placementAt(SPLIT, rotation);
+      const channel = footprintChannel(breadboard, RESISTOR_1K_FOOTPRINT, placement);
+
+      expect(channel, `${rotation} degrees`).toBeNull();
+      expect(
+        footprintDrawPoint(label.x, label.y, RESISTOR_1K_FOOTPRINT, rotation, channel),
+      ).toEqual(rotateFootprintPoint(label.x, label.y, RESISTOR_1K_FOOTPRINT, rotation));
+    }
+  });
+
   it('pushes the far side of the channel down by the whole gap', () => {
-    const channel = footprintChannel(breadboard, placementAt(SPLIT - 1, 0));
+    const channel = footprintChannel(breadboard, module6, placementAt(SPLIT - 1, 0));
     expect(applyFootprintChannel(0, channel)).toBe(0);
     expect(applyFootprintChannel(1, channel)).toBe(3);
   });
@@ -185,7 +199,7 @@ describe('a seated footprint is drawn on its own holes', () => {
   it('holds for a fractional gap that is not a whole number of pitches', () => {
     const odd: BoardNodeData = { ...breadboard, centerGap: PITCH * 1.35 };
     const placement = placementAt(SPLIT - 1, 0);
-    expect(footprintChannel(odd, placement)?.gapCells).toBeCloseTo(1.35);
+    expect(footprintChannel(odd, module6, placement)?.gapCells).toBeCloseTo(1.35);
     expectPinsOnTheirHoles(odd, placement);
   });
 
@@ -196,7 +210,7 @@ describe('a seated footprint is drawn on its own holes', () => {
       placement.rotation,
       PITCH,
       ports,
-      footprintChannel(perfboard, placement),
+      footprintChannel(perfboard, module6, placement),
     );
     expect(withChannel).toEqual(footprintPinViews(module6, placement.rotation, PITCH, ports));
   });
@@ -204,7 +218,7 @@ describe('a seated footprint is drawn on its own holes', () => {
 
 describe('the drawn body follows its pins across the channel', () => {
   const placement = placementAt(SPLIT - 1, 0);
-  const channel = footprintChannel(breadboard, placement);
+  const channel = footprintChannel(breadboard, module6, placement);
 
   it('stretches the node box by the gap, and only when the part straddles it', () => {
     const straddling = footprintNodeSize(module6, 0, PITCH, channel);
@@ -212,7 +226,7 @@ describe('the drawn body follows its pins across the channel', () => {
       module6,
       0,
       PITCH,
-      footprintChannel(breadboard, placementAt(0, 0)),
+      footprintChannel(breadboard, module6, placementAt(0, 0)),
     );
     const ungapped = footprintNodeSize(module6, 0, PITCH);
 
@@ -235,7 +249,8 @@ describe('the drawn body follows its pins across the channel', () => {
 
   it('never scales the horizontal axis', () => {
     for (const rotation of BOARD_ROTATIONS) {
-      const rotated = footprintChannel(breadboard, placementAt(SPLIT - 2, rotation));
+      const anchor = rotation === 90 || rotation === 270 ? SPLIT - 3 : SPLIT - 1;
+      const rotated = footprintChannel(breadboard, module6, placementAt(anchor, rotation));
       expect(footprintDrawPoint(3, 1, module6, rotation, rotated).x).toBe(
         footprintDrawPoint(3, 1, module6, rotation, null).x,
       );
@@ -246,7 +261,7 @@ describe('the drawn body follows its pins across the channel', () => {
 describe('padding around a channel-straddling footprint', () => {
   it('keeps cell (0,0) one padding in from the node corner, whatever the gap', () => {
     const placement = placementAt(SPLIT - 1, 0);
-    const channel = footprintChannel(breadboard, placement);
+    const channel = footprintChannel(breadboard, module6, placement);
     const views = footprintPinViews(module6, 0, PITCH, ports, channel);
     const first = views.find((view) => view.id === 'p1');
     expect(first?.x).toBe(FOOTPRINT_PADDING_CELLS * PITCH);

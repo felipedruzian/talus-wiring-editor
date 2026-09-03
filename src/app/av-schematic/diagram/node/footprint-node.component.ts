@@ -261,7 +261,9 @@ export class FootprintNodeComponent implements NgDiagramNodeTemplate<DeviceNodeD
     const board = this.hostBoard();
     const placement = this.data().placement;
     if (!board || !placement) return null;
-    return footprintChannel(board.data, placement);
+    const footprint = this.footprint();
+    if (!footprint) return null;
+    return footprintChannel(board.data, footprint, placement);
   });
 
   protected readonly size = computed(() => {

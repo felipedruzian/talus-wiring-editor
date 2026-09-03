@@ -2,8 +2,12 @@ import { type Edge, type Node } from 'ng-diagram';
 import { describe, expect, it } from 'vitest';
 import { holeLocalPoint } from '../../diagram/model/board-geometry';
 import { breadboardRowIndex, createBreadboard830 } from '../../diagram/model/breadboard';
-import { footprintPinHoles, placementNodePosition } from '../../diagram/model/footprint-geometry';
-import { type Footprint } from '../../diagram/model/footprint';
+import {
+  footprintNodeSize,
+  footprintPinHoles,
+  placementNodePosition,
+} from '../../diagram/model/footprint-geometry';
+import { RESISTOR_1K_FOOTPRINT, type Footprint } from '../../diagram/model/footprint';
 import {
   EdgeTemplateType,
   NodeTemplateType,
@@ -289,6 +293,34 @@ describe('breadboard DXF rendering', () => {
   );
   const mapper = CoordinateMapper.fromScale(bounds, DXF_SCALE_MM_PER_PX, DIAGRAM_PADDING);
 
+  const resistorPlacement = {
+    boardId: 'bb',
+    anchor: { row: breadboardRowIndex('E'), col: 10 },
+    rotation: 0 as const,
+  };
+  const resistorNode: Node<DeviceNodeData> = {
+    id: 'resistor-below',
+    type: NodeTemplateType.FootprintNode,
+    position: placementNodePosition(
+      { board: breadboardNode.data, position: breadboardNode.position },
+      resistorPlacement,
+    ),
+    data: {
+      type: 'device',
+      deviceId: 'R1',
+      manufacturer: 'generic',
+      model: '1 kOhm',
+      boardId: 'bb',
+      footprintId: RESISTOR_1K_FOOTPRINT.id,
+      footprint: RESISTOR_1K_FOOTPRINT,
+      placement: resistorPlacement,
+      ports: [
+        { id: 'a', label: '1', direction: 'input' },
+        { id: 'b', label: '2', direction: 'output' },
+      ],
+    },
+  };
+
   it('exports no copper for the groups sealed inside the plastic', () => {
     const copper = doc
       .getEntities()
@@ -357,5 +389,41 @@ describe('breadboard DXF rendering', () => {
     });
     // The lead runs hole to hole - three pitches apart, not one.
     expect(lead?.points).toEqual(points);
+  });
+
+  it('keeps negative resistor artwork inside its rigid DXF outline below the channel', () => {
+    const resistorDoc = new DxfExporter(buildAvDxfConfig()).export(
+      [breadboardNode, resistorNode],
+      [],
+      bounds,
+    );
+    const closed = resistorDoc
+      .getEntities()
+      .filter(
+        (entity): entity is DxfLwPolyline =>
+          entity instanceof DxfLwPolyline &&
+          entity.layerName === LAYERS.FOOTPRINTS &&
+          entity.closed,
+      );
+    const outline = closed[0];
+    const label = resistorDoc
+      .getEntities()
+      .find(
+        (entity): entity is DxfText =>
+          entity instanceof DxfText &&
+          entity.layerName === LAYERS.FOOTPRINTS &&
+          entity.text === '1k',
+      );
+    if (!outline || !label) throw new Error('resistor outline or label not rendered');
+
+    const xs = outline.points.map((point) => point.x);
+    const ys = outline.points.map((point) => point.y);
+    const rigidSize = footprintNodeSize(RESISTOR_1K_FOOTPRINT, 0, PITCH);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(mapper.mapLength(rigidSize.width));
+    expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(mapper.mapLength(rigidSize.height));
+    expect(label.x).toBeGreaterThanOrEqual(Math.min(...xs));
+    expect(label.x).toBeLessThanOrEqual(Math.max(...xs));
+    expect(label.y).toBeGreaterThanOrEqual(Math.min(...ys));
+    expect(label.y).toBeLessThanOrEqual(Math.max(...ys));
   });
 });

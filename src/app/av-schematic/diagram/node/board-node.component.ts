@@ -93,7 +93,7 @@ interface TraceView {
   labelY: number;
 }
 
-/** Column numbers are printed every fifth column, plus the first one. */
+/** Column numbers are printed every fifth column, as on the reference board. */
 const COLUMN_TICK_STEP = 5;
 
 /** Stable hue per net name, so the same rail is the same color on every board. */
@@ -282,8 +282,7 @@ export class BoardNodeComponent implements NgDiagramNodeTemplate<BoardNodeData> 
     const top = holeLocalPoint(data, { row: firstRow, col: 0 }).y;
     const bottom = holeLocalPoint(data, { row: lastRow, col: 0 }).y;
     const ticks: ColumnTickView[] = [];
-    for (let col = 0; col < data.cols; col++) {
-      if (col !== 0 && (col + 1) % COLUMN_TICK_STEP !== 0) continue;
+    for (let col = COLUMN_TICK_STEP - 1; col < data.cols; col += COLUMN_TICK_STEP) {
       ticks.push({
         x: holeLocalPoint(data, { row: firstRow, col }).x,
         text: String(col + 1),

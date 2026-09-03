@@ -113,30 +113,41 @@ export interface FootprintChannel {
   cutY: number;
   /** Channel height in cell units: `centerGap / pitch`. */
   gapCells: number;
-  /** True when the anchor cell is already below the channel. */
-  anchorBelow: boolean;
 }
 
 export function footprintChannel(
   board: Pick<BoardNodeData, 'rows' | 'pitch' | 'centerGap'>,
-  placement: Pick<DevicePlacement, 'anchor'>,
+  footprint: CellBox,
+  placement: Pick<DevicePlacement, 'anchor' | 'rotation'>,
 ): FootprintChannel | null {
   const gap = board.centerGap ?? 0;
   if (gap <= 0 || board.rows < 2 || board.pitch <= 0) return null;
-  const cutY = lowerBoardHalfStartRow(board) - placement.anchor.row - 0.5;
-  return { cutY, gapCells: gap / board.pitch, anchorBelow: cutY < 0 };
+  const split = lowerBoardHalfStartRow(board);
+  const box = rotatedFootprintBox(footprint, placement.rotation);
+  const firstRow = placement.anchor.row;
+  const lastRow = firstRow + box.rows - 1;
+
+  // A channel changes the component geometry only when the footprint's actual
+  // hole-cell box occupies both halves. Artwork may extend into the clearance,
+  // but a component seated wholly above or below remains one rigid object; in
+  // particular, negative-Y labels on the first lower row must not jump across
+  // the trench and outside the node's shared padded origin.
+  if (firstRow >= split || lastRow < split) return null;
+
+  const cutY = split - firstRow - 0.5;
+  return { cutY, gapCells: gap / board.pitch };
 }
 
 /**
  * A footprint-local Y in the board's own piecewise space.
  *
- * `applyFootprintChannel(0)` is always 0, whichever side of the channel the
- * anchor is on, which is what keeps cell (0, 0) pinned to the anchor hole.
+ * A channel exists only for a footprint whose cell box straddles the split, so
+ * its anchor is always above the cut and cell (0, 0) remains pinned to the
+ * anchor hole.
  */
 export function applyFootprintChannel(y: number, channel: FootprintChannel | null): number {
   if (!channel) return y;
-  const below = y > channel.cutY ? channel.gapCells : 0;
-  return y + below - (channel.anchorBelow ? channel.gapCells : 0);
+  return y + (y > channel.cutY ? channel.gapCells : 0);
 }
 
 /** Rotation then channel: the one mapping every drawn part of a footprint takes. */

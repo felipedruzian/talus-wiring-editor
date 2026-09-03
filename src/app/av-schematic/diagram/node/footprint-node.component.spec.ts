@@ -4,8 +4,12 @@ import { NgDiagramModelService, NgDiagramPortComponent, type Node, type Point } 
 import { afterEach, describe, expect, it } from 'vitest';
 import { holeLocalPoint } from '../model/board-geometry';
 import { breadboardRowIndex, createBreadboard830 } from '../model/breadboard';
-import { footprintPinHoles, placementNodePosition } from '../model/footprint-geometry';
-import { type Footprint } from '../model/footprint';
+import {
+  footprintNodeSize,
+  footprintPinHoles,
+  placementNodePosition,
+} from '../model/footprint-geometry';
+import { RESISTOR_1K_FOOTPRINT, type Footprint } from '../model/footprint';
 import {
   NodeTemplateType,
   type BoardNodeData,
@@ -266,5 +270,57 @@ describe('FootprintNodeComponent seated across a breadboard channel', () => {
     );
     expect(tops[1] - tops[0]).toBeCloseTo(PITCH);
     expect(Number(host.querySelector('rect')?.getAttribute('height'))).toBeCloseTo(1);
+  });
+});
+
+describe('FootprintNodeComponent wholly below a breadboard channel', () => {
+  it('keeps negative artwork inside the rigid viewBox in every rotation', () => {
+    for (const rotation of [0, 90, 180, 270] as const) {
+      const resistorPlacement: DevicePlacement = {
+        boardId: 'bb',
+        anchor: { row: breadboardRowIndex('E'), col: 10 },
+        rotation,
+      };
+      const resistor: Node<DeviceNodeData> = {
+        id: `resistor-${rotation}`,
+        type: NodeTemplateType.FootprintNode,
+        position: placementNodePosition(
+          { board: breadboard.data, position: breadboard.position },
+          resistorPlacement,
+        ),
+        data: {
+          type: 'device',
+          deviceId: 'R1',
+          manufacturer: 'generic',
+          model: '1 kOhm',
+          boardId: 'bb',
+          footprintId: RESISTOR_1K_FOOTPRINT.id,
+          footprint: RESISTOR_1K_FOOTPRINT,
+          placement: resistorPlacement,
+          ports: [
+            { id: 'a', label: '1', direction: 'input' },
+            { id: 'b', label: '2', direction: 'output' },
+          ],
+        },
+      };
+
+      const { host } = render(resistor);
+      const svg = host.querySelector('svg');
+      const label = svg?.querySelector('text');
+      const viewBox = (svg?.getAttribute('viewBox') ?? '').split(' ').map(Number);
+      const [left, top, width, height] = viewBox;
+      const labelX = Number(label?.getAttribute('x'));
+      const labelY = Number(label?.getAttribute('y'));
+      const box = host.querySelector<HTMLElement>('.footprint-node');
+      const rigidSize = footprintNodeSize(RESISTOR_1K_FOOTPRINT, rotation, PITCH);
+
+      expect(viewBox).toHaveLength(4);
+      expect(labelX, `${rotation} degrees x`).toBeGreaterThanOrEqual(left);
+      expect(labelX, `${rotation} degrees x`).toBeLessThanOrEqual(left + width);
+      expect(labelY, `${rotation} degrees y`).toBeGreaterThanOrEqual(top);
+      expect(labelY, `${rotation} degrees y`).toBeLessThanOrEqual(top + height);
+      expect(Number.parseFloat(box?.style.width ?? '0')).toBeCloseTo(rigidSize.width);
+      expect(Number.parseFloat(box?.style.height ?? '0')).toBeCloseTo(rigidSize.height);
+    }
   });
 });

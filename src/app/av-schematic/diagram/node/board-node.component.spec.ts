@@ -241,6 +241,14 @@ describe('BoardNodeComponent - solderless breadboard', () => {
     const left = numbers(host, '.board-node__row-mark[text-anchor="end"]', 'x');
     expect(left.every((x) => x > 0 && x < BOARD_MARGIN)).toBe(true);
   });
+
+  it('prints the reference column ruler at 5, 10 and onward, without an extra 1', () => {
+    const { host } = render({ ...breadboard, cols: 12 });
+    const ticks = [...host.querySelectorAll('.board-node__column-tick')].map((tick) =>
+      tick.textContent?.trim(),
+    );
+    expect(ticks).toEqual(['5', '10']);
+  });
 });
 
 describe('BoardNodeComponent - perfboard', () => {
