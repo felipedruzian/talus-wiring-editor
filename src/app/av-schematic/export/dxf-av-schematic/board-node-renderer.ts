@@ -1,11 +1,11 @@
 import type { BoardNodeData } from '../../diagram/model/interfaces';
 import {
   BOARD_MARGIN,
-  DEFAULT_HOLE_DIAMETER,
   boardHoles,
   boardSize,
   holeLocalPoint,
 } from '../../diagram/model/board-geometry';
+import { boardHoleRadius } from '../../diagram/model/board-surface';
 import { traceHoles, traceSegmentHoles } from '../../diagram/model/board-trace';
 import { DxfCircle, DxfLwPolyline, DxfText } from '../dxf/dxf-entity';
 import type { DxfNodeRenderer, DxfRenderContext } from '../dxf/dxf-types';
@@ -33,7 +33,12 @@ export const renderBoardNode: DxfNodeRenderer = (ctx, node) => {
     ),
   );
 
+  // Copper sealed inside the body is not on the drawing for the same reason it
+  // is not on the canvas: it has no visible run and no exposed pad. Emitting
+  // the 130 groups of an 830-point breadboard as copper would cover the board
+  // with lines and labels that no one could solder to.
   for (const trace of data.traces ?? []) {
+    if (trace.internal) continue;
     trace.segments.forEach((segment, index) => {
       const from = toDiagramPoint(data, nodeX, nodeY, segment.from);
       const to = toDiagramPoint(data, nodeX, nodeY, segment.to);
@@ -58,7 +63,8 @@ export const renderBoardNode: DxfNodeRenderer = (ctx, node) => {
     }
   }
 
-  const radius = (data.holeDiameter ?? DEFAULT_HOLE_DIAMETER) / 2;
+  // Same radius rule as the canvas, so the drawing matches what was on screen.
+  const radius = boardHoleRadius(data);
   for (const hole of boardHoles(data)) {
     const point = toDiagramPoint(data, nodeX, nodeY, hole);
     addCircle(ctx, point.x, point.y, radius, LAYERS.BOARDS, LINE_WEIGHT.SUBTLE);

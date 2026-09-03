@@ -1,6 +1,8 @@
 import { type Edge, type Node } from 'ng-diagram';
 import { describe, expect, it } from 'vitest';
-import { placementNodePosition } from '../../diagram/model/footprint-geometry';
+import { holeLocalPoint } from '../../diagram/model/board-geometry';
+import { breadboardRowIndex, createBreadboard830 } from '../../diagram/model/breadboard';
+import { footprintPinHoles, placementNodePosition } from '../../diagram/model/footprint-geometry';
 import { type Footprint } from '../../diagram/model/footprint';
 import {
   EdgeTemplateType,
@@ -218,5 +220,142 @@ describe('detached footprint DXF rendering', () => {
       );
 
     expect(caption?.text).toBe('LINK-DETACHED vertical-link 90 deg');
+  });
+});
+
+/**
+ * The drawing has to agree with the canvas about the board's central channel
+ * and about what copper is even visible. Both were wrong: the footprint
+ * renderer duplicated the rotation without the gap, and the board renderer
+ * exported the 130 sealed groups of a breadboard as if they were pads.
+ */
+describe('breadboard DXF rendering', () => {
+  const PITCH = 20;
+  const breadboardNode: Node<BoardNodeData> = {
+    id: 'bb',
+    type: NodeTemplateType.BoardNode,
+    position: { x: 60, y: 40 },
+    data: createBreadboard830({ boardId: 'bb', label: 'Breadboard 830', pitch: PITCH }),
+  };
+
+  /** A two-row link seated across the trench: one pin in F, one in E. */
+  const straddler: Footprint = {
+    id: 'straddler',
+    label: 'Straddler',
+    rows: 2,
+    cols: 1,
+    pins: [
+      { id: 'top', label: 'TOP', cell: { row: 0, col: 0 }, primary: true },
+      { id: 'bottom', label: 'BOTTOM', cell: { row: 1, col: 0 } },
+    ],
+    shapes: [{ kind: 'line', x1: 0, y1: 0, x2: 0, y2: 1, stroke: 'lead' }],
+    bodyCells: [],
+  };
+
+  const straddlePlacement = {
+    boardId: 'bb',
+    anchor: { row: breadboardRowIndex('F'), col: 4 },
+    rotation: 0 as const,
+  };
+
+  const straddleNode: Node<DeviceNodeData> = {
+    id: 'straddle-1',
+    type: NodeTemplateType.FootprintNode,
+    position: placementNodePosition(
+      { board: breadboardNode.data, position: breadboardNode.position },
+      straddlePlacement,
+    ),
+    data: {
+      type: 'device',
+      deviceId: 'STRADDLE-1',
+      manufacturer: 'project',
+      model: 'straddler',
+      boardId: 'bb',
+      footprintId: straddler.id,
+      footprint: straddler,
+      placement: straddlePlacement,
+      ports: [
+        { id: 'top', label: 'TOP', direction: 'input' },
+        { id: 'bottom', label: 'BOTTOM', direction: 'output' },
+      ],
+    },
+  };
+
+  const bounds = { x: 0, y: 0, width: 2000, height: 800 };
+  const doc = new DxfExporter(buildAvDxfConfig()).export(
+    [breadboardNode, straddleNode],
+    [],
+    bounds,
+  );
+  const mapper = CoordinateMapper.fromScale(bounds, DXF_SCALE_MM_PER_PX, DIAGRAM_PADDING);
+
+  it('exports no copper for the groups sealed inside the plastic', () => {
+    const copper = doc
+      .getEntities()
+      .filter(
+        (entity): entity is DxfLwPolyline =>
+          entity instanceof DxfLwPolyline && entity.layerName === LAYERS.BOARDS,
+      );
+    // Only the board outline: no run, no bridge for any of the 130 internal
+    // groups, which have no exposed pad to draw.
+    expect(copper).toHaveLength(1);
+    expect(copper[0].closed).toBe(true);
+
+    const labels = doc
+      .getEntities()
+      .filter(
+        (entity): entity is DxfText =>
+          entity instanceof DxfText && entity.layerName === LAYERS.BOARDS,
+      );
+    expect(labels.map((label) => label.text)).toEqual(['Breadboard 830']);
+  });
+
+  it('still exports all 830 holes', () => {
+    const holes = doc
+      .getEntities()
+      .filter(
+        (entity): entity is DxfCircle =>
+          entity instanceof DxfCircle && entity.layerName === LAYERS.BOARDS,
+      );
+    expect(holes).toHaveLength(830);
+  });
+
+  it('puts a seated footprint pad on the hole it is actually in, across the channel', () => {
+    const pads = doc
+      .getEntities()
+      .filter(
+        (entity): entity is DxfCircle =>
+          entity instanceof DxfCircle && entity.layerName === LAYERS.FOOTPRINTS,
+      );
+
+    const expected = footprintPinHoles(straddler, straddlePlacement).map((pin) => {
+      const local = holeLocalPoint(breadboardNode.data, pin.hole);
+      return mapper.mapPoint(
+        breadboardNode.position.x + local.x,
+        breadboardNode.position.y + local.y,
+      );
+    });
+    expect(pads.map((pad) => ({ x: pad.x, y: pad.y }))).toEqual(expected);
+  });
+
+  it('stretches the exported body across the trench instead of leaving it behind', () => {
+    const lead = doc
+      .getEntities()
+      .find(
+        (entity): entity is DxfLwPolyline =>
+          entity instanceof DxfLwPolyline &&
+          entity.layerName === LAYERS.FOOTPRINTS &&
+          !entity.closed,
+      );
+    const holes = footprintPinHoles(straddler, straddlePlacement);
+    const points = holes.map((pin) => {
+      const local = holeLocalPoint(breadboardNode.data, pin.hole);
+      return mapper.mapPoint(
+        breadboardNode.position.x + local.x,
+        breadboardNode.position.y + local.y,
+      );
+    });
+    // The lead runs hole to hole - three pitches apart, not one.
+    expect(lead?.points).toEqual(points);
   });
 });

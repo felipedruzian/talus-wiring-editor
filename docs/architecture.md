@@ -81,6 +81,7 @@ src/app/av-schematic/
 │   │   ├── board-selection.ts            # Escolha determinística entre placas sobrepostas
 │   │   ├── board-trace.ts                # Expansão e associação elétrica das trilhas
 │   │   ├── board-ports.ts                # IDs persistentes de endpoints de furos e trilhas
+│   │   ├── board-surface.ts              # Variante visual persistida (perfboard/breadboard): plastico, canal, faixas e marcacoes por pitch
 │   │   ├── breadboard.ts                 # Geometria da protoboard de 830 pontos (63 colunas, A-J, canal, 4 barramentos)
 │   │   ├── footprint.ts                  # Catálogo original de footprints vetoriais em unidades de furo
 │   │   ├── footprint-geometry.ts         # Rotação, snap, ocupação e associação pino-furo

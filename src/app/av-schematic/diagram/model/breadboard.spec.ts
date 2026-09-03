@@ -27,7 +27,13 @@ import {
   createBreadboard830,
   isBreadboardBusColumn,
 } from './breadboard';
-import { fromCanonicalProject, junctionTapPortId, toCanonicalProject } from './canonical-project';
+import {
+  fromCanonicalProject,
+  junctionTapPortId,
+  toCanonicalProject,
+  type CanonicalBoard,
+  type CanonicalProjectV2,
+} from './canonical-project';
 import { parseCanonicalProject } from './canonical-project-parse';
 import {
   NodeTemplateType,
@@ -341,6 +347,9 @@ describe('breadboard round-trip', () => {
     expect(savedBoard?.cols).toBe(BREADBOARD_COLS);
     expect(savedBoard?.centerGap).toBe(breadboardCenterGap(PITCH));
     expect(savedBoard?.rowLabels).toEqual(board.rowLabels);
+    // The visual variant is saved state: reopening never has to infer
+    // "830 holes, therefore breadboard".
+    expect(savedBoard?.surface).toBe('breadboard');
     expect(savedBoard?.holes).toHaveLength(830);
     expect(savedBoard?.traces).toHaveLength(BREADBOARD_COLS * 2 + BREADBOARD_BUS_ROWS.length);
     expect(savedBoard?.traces?.every((trace) => trace.internal === true)).toBe(true);
@@ -350,6 +359,7 @@ describe('breadboard round-trip', () => {
     expect(reopenedBoard?.position).toEqual(POSITION);
     expect((reopenedBoard?.data as BoardNodeData).holes).toHaveLength(830);
     expect((reopenedBoard?.data as BoardNodeData).rowLabels).toEqual(board.rowLabels);
+    expect((reopenedBoard?.data as BoardNodeData).surface).toBe('breadboard');
 
     const wire = reopened.edges.find((edge) => edge.id === 'w-probe');
     expect(wire?.source).toBe(board.boardId);
@@ -361,6 +371,29 @@ describe('breadboard round-trip', () => {
     expect(toCanonicalProject(reopened.nodes, reopened.edges)).toEqual(
       toCanonicalProject(original.nodes, original.edges),
     );
+  });
+
+  it('refuses a saved breadboard the renderer could not draw as one', () => {
+    const original = model(POSITION);
+    const saved = toCanonicalProject(original.nodes, original.edges);
+    const clone = (): CanonicalProjectV2 => structuredClone(saved);
+    const savedBoardOf = (project: CanonicalProjectV2): CanonicalBoard => {
+      const entry = project.layout.boards.find((candidate) => candidate.id === board.boardId);
+      if (!entry) throw new Error('the saved project lost its board');
+      return entry;
+    };
+
+    const withoutChannel = clone();
+    delete savedBoardOf(withoutChannel).centerGap;
+    const withoutRowLabels = clone();
+    delete savedBoardOf(withoutRowLabels).rowLabels;
+
+    // The surface is a rendering claim and the renderer takes it literally, so
+    // a board that keeps it without the channel or the printed rows is
+    // rejected at the boundary rather than reopening as a blank rectangle.
+    expect(() => parseCanonicalProject(withoutChannel)).toThrow(/centerGap/);
+    expect(() => parseCanonicalProject(withoutRowLabels)).toThrow(/rowLabels/);
+    expect(() => parseCanonicalProject(clone())).not.toThrow();
   });
 
   it('records the landing as one junction on the column group, keeping the exact hole', () => {

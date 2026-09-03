@@ -80,6 +80,90 @@ barramentos terminados em `+` ou `-` ganham a linha-guia colorida convencional.
 Tudo isso é derivado de `rowLabels` e da lista de furos, então nenhuma outra
 placa muda de aparência.
 
+### Superfície da placa
+
+`BoardNodeData.surface` diz de que a placa é feita, e portanto como ela é
+desenhada. Só existem dois valores:
+
+- `perfboard` — substrato marrom furado, com o cobre exposto na face. É o valor
+  padrão e o que toda placa salva antes deste campo continua sendo, então
+  reabrir um projeto antigo não muda nada.
+- `breadboard` — bloco de plástico claro moldado: canal central rebaixado,
+  faixas coloridas atrás de cada barramento, furos e silk-screen impressos.
+
+O campo é **persistido** — a aparência de um projeto reaberto é a que foi
+salva, e o renderizador nunca deduz "830 furos, logo é protoboard" a partir das
+dimensões — e é **estritamente validado** nos dois validadores: um valor fora
+da união é rejeitado em vez de cair no padrão, e uma placa que declara
+`breadboard` precisa carregar de fato o que o desenho lê dela (`centerGap` e
+`rowLabels`, com pelo menos um barramento `+`/`-`). Sem isso ela reabriria como
+um retângulo claro vazio.
+
+`diagram/model/board-surface.ts` concentra a geometria desenhada. Toda medida é
+uma razão do `pitch` da própria placa — raio do furo, altura da faixa de
+barramento, distância da listra de polaridade, altura do canal, corpo do texto,
+espessura dos contornos — nunca uma constante em pixels; as razões são as
+proporções da referência `safaorhan/breadboard` reexpressas sobre o `PITCH = 12`
+e o `HOLE_RADIUS = 3.5` dela. Uma protoboard salva em outro `pitch` volta com as
+mesmas proporções.
+
+O cobre `internal` — os clipes de coluna e os quatro barramentos — **não é
+desenhado** na renderização normal, nem na tela nem no DXF. Ele continua sendo
+um ponto elétrico e continua derivando nets; só não tem trilha visível nem pad
+de pouso, exatamente como no plástico real. Conectar-se a um grupo interno
+significa conectar-se a um dos furos dele. As perfboards seguem desenhando seu
+cobre exposto, com rótulo e porta `trace:<id>`, sem nenhuma mudança.
+
+Como não existe porta `trace:<id>` para esse cobre, **um condutor que aterrissa
+em um grupo interno precisa declarar o tap** (o índice do furo do grupo em que
+ele pousa). Os dois validadores rejeitam a ausência do tap: sem ele, reabrir o
+projeto reconstruiria a aresta apontando para uma porta que nunca é renderizada
+— um fio ligado a nada, sem erro visível. Ligações físicas (`physicalBinding`)
+já fixavam o tap exato; a regra cobre todo condutor comum, inclusive um cujo
+registro de layout esteja ausente.
+
+### Canal central e footprints encaixados
+
+Uma placa com `centerGap` não é uma grade uniforme: `holeLocalPoint` empurra
+toda linha a partir do split para baixo pelo gap inteiro. Um footprint desenhado
+como `cell.row * pitch` só concorda com os próprios furos enquanto fica de um
+lado do canal — uma peça que atravessa o canal da protoboard de 830 pontos teria
+a metade de baixo desenhada um `centerGap` inteiro acima dos furos em que os
+pinos realmente estão.
+
+`footprintChannel(board, placement)` descreve esse canal visto do anchor da
+peça, e `applyFootprintChannel` aplica o mesmo mapeamento por partes **depois da
+rotação** — o corte é uma linha horizontal no espaço da placa, então não pode
+ser expresso pela matriz de rotação do SVG. Por isso o grupo `matrix(...)` deu
+lugar a formas já transformadas ponto a ponto: retângulos pelos extremos dos
+quatro cantos, linhas pelos dois extremos, círculo e texto pelo centro, e o
+texto gira em torno do próprio ponto. Nada é escalado no eixo horizontal.
+
+Consequências, todas intencionais:
+
+- `applyFootprintChannel(0)` é sempre `0`, dos dois lados do canal, então a
+  célula (0, 0) continua colada ao furo do anchor e `placementNodePosition`
+  **não recebe nenhum offset ad hoc** — ela já resolve o anchor por
+  `holeLocalPoint`.
+- O corpo de uma peça que atravessa o canal **é esticado pelo `centerGap`**, e o
+  box do nó cresce junto. É o que o contrato atual `hole = anchor + rotatedCell`
+  significa: as duas metades da peça estão a três passos de distância na placa.
+  Fidelidade metrológica maior (offsets físicos por pino, independentes de
+  `FootprintCell`) é assunto da issue #31 e não deste caminho.
+- O `centerGap` inteiro é o que desloca. O canal mais estreito que o plástico
+  *pinta* (`boardChannelRect`) é detalhe de superfície e nunca entra nessa
+  geometria.
+- O exportador DXF consome exatamente as mesmas funções, então o desenho
+  concorda com a tela em rotação, pitch e canal.
+
+A propriedade garantida, testada em `model/footprint-channel.spec.ts` para as
+quatro rotações, atravessando e não atravessando o canal, em placa sem gap e com
+gap fracionário:
+
+```
+node.position + pinView == board.position + holeLocalPoint(board, pinHole)
+```
+
 O `pitch` é a única escala: largura, altura, canal, marcações e o encaixe de
 qualquer footprint saem dele, sem número de pixels fixado na geometria física.
 Com 830 furos, o nó da placa expõe 830 portas de furo; é o maior caso previsto
@@ -242,13 +326,13 @@ esse limite é de interface de autoria, não do modelo nem da persistência.
 
 `diagram/fixtures/physical-boards.fixture.ts` inclui:
 
-| Placa | Dimensão | Conteúdo demonstrado |
-|---|---:|---|
-| Placa A | 6 × 11 | seis trilhas de distribuição |
-| `Protoboard superior` | 18 × 63 | protoboard de 830 pontos, canal central, quatro barramentos e capacitores bulk já incorporados |
-| Placa de origem | 6 × 28 | perfboard sem trilhas |
-| Peça E | 6 × 3 | divisor de nível do UART e jumper |
-| Peça G | 6 × 4 | distribuição da base |
+| Placa                 | Dimensão | Conteúdo demonstrado                                                                           |
+| --------------------- | -------: | ---------------------------------------------------------------------------------------------- |
+| Placa A               |   6 × 11 | seis trilhas de distribuição                                                                   |
+| `Protoboard superior` |  18 × 63 | protoboard de 830 pontos, canal central, quatro barramentos e capacitores bulk já incorporados |
+| Placa de origem       |   6 × 28 | perfboard sem trilhas                                                                          |
+| Peça E                |    6 × 3 | divisor de nível do UART e jumper                                                              |
+| Peça G                |    6 × 4 | distribuição da base                                                                           |
 
 As antigas peças D e F e seus capacitores não fazem mais parte do seed: os dois
 bulk pertencem à placa de ensaio superior já montada. O seed preserva as peças E e

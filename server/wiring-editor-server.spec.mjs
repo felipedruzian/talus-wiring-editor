@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { OPERATIONAL_LIMITS } from '../src/app/av-schematic/diagram/model/operational-limits.mjs';
 import {
   basePhysicalProject,
+  breadboardSurfaceProject,
   canonicalValidationCorpus,
 } from '../src/app/av-schematic/diagram/model/canonical-project-corpus.mjs';
 import { parseCanonicalProject as parseCanonicalProjectOnServer } from './canonical-project-validate.mjs';
@@ -315,6 +316,49 @@ describe('wiring-editor-server', () => {
       // Written atomically via a scratch file that gets renamed away.
       const onDisk = await readFile(join(storageDir, 'my-project.json'), 'utf8');
       expect(JSON.parse(onDisk)).toEqual(project);
+    });
+
+    it('stores and returns the solderless-breadboard surface unchanged', async () => {
+      const project = breadboardSurfaceProject();
+      const putRes = await fetch(`${server.baseUrl}/api/projects/breadboard`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(putRes.status).toBe(200);
+
+      const saved = await (await fetch(`${server.baseUrl}/api/projects/breadboard`)).json();
+      // The visual variant is persisted state, not something the client
+      // re-derives from the board's shape on reopen.
+      expect(saved.layout.boards[0]).toMatchObject({
+        surface: 'breadboard',
+        centerGap: 12,
+        rowLabels: ['top+', '', 'A'],
+      });
+
+      // A board with no surface stays a perfboard and gains no field.
+      await fetch(`${server.baseUrl}/api/projects/plain`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(basePhysicalProject()),
+      });
+      const plain = await (await fetch(`${server.baseUrl}/api/projects/plain`)).json();
+      expect(plain.layout.boards[0]).not.toHaveProperty('surface');
+    });
+
+    it('rejects a breadboard surface the renderer could not draw', async () => {
+      const project = breadboardSurfaceProject();
+      delete project.layout.boards[0].centerGap;
+
+      const putRes = await fetch(`${server.baseUrl}/api/projects/broken-breadboard`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(putRes.status).toBe(400);
+
+      const getRes = await fetch(`${server.baseUrl}/api/projects/broken-breadboard`);
+      expect(getRes.status).toBe(404);
     });
 
     it('serves the same current project version to two independent clients', async () => {

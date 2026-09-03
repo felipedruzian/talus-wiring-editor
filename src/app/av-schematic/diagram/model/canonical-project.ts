@@ -25,6 +25,7 @@ import {
   type BoardHole,
   type BoardNodeData,
   type BoardRotation,
+  type BoardSurface,
   type BoardTrace,
   type DeviceNodeData,
   type DevicePlacement,
@@ -244,6 +245,11 @@ export interface CanonicalBoard {
   id: string;
   label: string;
   notes?: string;
+  /**
+   * How the board body is built and drawn. Absent means `perfboard`, which is
+   * what every project written before this field existed is.
+   */
+  surface?: BoardSurface;
   rows: number;
   cols: number;
   pitch: number;
@@ -1180,6 +1186,7 @@ function toCanonicalBoard(node: Node<BoardNodeData>): CanonicalBoard {
     id: node.id,
     label: node.data.label,
     notes: node.data.notes,
+    surface: node.data.surface,
     rows: node.data.rows,
     cols: node.data.cols,
     pitch: node.data.pitch,
@@ -1297,6 +1304,7 @@ function fromCanonicalBoard(board: CanonicalBoard): Node<BoardNodeData> {
       boardId: board.id,
       label: board.label,
       notes: board.notes,
+      surface: board.surface,
       rows: board.rows,
       cols: board.cols,
       pitch: board.pitch,

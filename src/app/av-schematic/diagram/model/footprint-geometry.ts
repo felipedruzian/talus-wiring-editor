@@ -2,6 +2,7 @@ import {
   holeLocalPoint,
   holeKey,
   isBoardHoleAvailable,
+  lowerBoardHalfStartRow,
   nearestAvailableHole,
   type BoardGrid,
   type BoardHoleClaim,
@@ -59,6 +60,95 @@ export function rotateCell(
     case 270:
       return { row: box.cols - 1 - cell.col, col: cell.row };
   }
+}
+
+/**
+ * `rotateCell` for a continuous point rather than a whole cell.
+ *
+ * Illustration shapes live between cells - a lead at `y: -0.3`, a body edge at
+ * `x: 1.5` - so they cannot go through `rotateCell`, but they have to land in
+ * exactly the same rotated frame its cells do or the drawing would come apart
+ * from the pins at 90 and 270 degrees.
+ */
+export function rotateFootprintPoint(
+  x: number,
+  y: number,
+  box: CellBox,
+  rotation: BoardRotation,
+): { x: number; y: number } {
+  switch (rotation) {
+    case 0:
+      return { x, y };
+    case 90:
+      return { x: box.rows - 1 - y, y: x };
+    case 180:
+      return { x: box.cols - 1 - x, y: box.rows - 1 - y };
+    case 270:
+      return { x: y, y: box.cols - 1 - x };
+  }
+}
+
+/**
+ * The host board's central channel, seen from a seated footprint's own anchor
+ * cell.
+ *
+ * A board with a `centerGap` is not a uniform grid: `holeLocalPoint` pushes
+ * every row at or below the split down by the whole gap. A footprint drawn as
+ * `cell.row * pitch` therefore agrees with its holes only while it stays on one
+ * side of the channel; a part that straddles the trench of an 830-point
+ * breadboard would have its lower half drawn a full `centerGap` above the holes
+ * its pins are actually in.
+ *
+ * This is the same piecewise mapping, expressed relative to the anchor so it
+ * composes with `placementNodePosition` (which already resolves the anchor
+ * through `holeLocalPoint` and must not be given an offset of its own).
+ *
+ * The cut is half a cell after the last row above the split - exactly where
+ * `boardCenterGap` starts drawing. The full `centerGap` is what moves; the
+ * narrower groove a breadboard *paints* inside that clearance is a surface
+ * detail and never enters this geometry.
+ */
+export interface FootprintChannel {
+  /** Cell-space Y at which the channel opens, measured from the anchor cell. */
+  cutY: number;
+  /** Channel height in cell units: `centerGap / pitch`. */
+  gapCells: number;
+  /** True when the anchor cell is already below the channel. */
+  anchorBelow: boolean;
+}
+
+export function footprintChannel(
+  board: Pick<BoardNodeData, 'rows' | 'pitch' | 'centerGap'>,
+  placement: Pick<DevicePlacement, 'anchor'>,
+): FootprintChannel | null {
+  const gap = board.centerGap ?? 0;
+  if (gap <= 0 || board.rows < 2 || board.pitch <= 0) return null;
+  const cutY = lowerBoardHalfStartRow(board) - placement.anchor.row - 0.5;
+  return { cutY, gapCells: gap / board.pitch, anchorBelow: cutY < 0 };
+}
+
+/**
+ * A footprint-local Y in the board's own piecewise space.
+ *
+ * `applyFootprintChannel(0)` is always 0, whichever side of the channel the
+ * anchor is on, which is what keeps cell (0, 0) pinned to the anchor hole.
+ */
+export function applyFootprintChannel(y: number, channel: FootprintChannel | null): number {
+  if (!channel) return y;
+  const below = y > channel.cutY ? channel.gapCells : 0;
+  return y + below - (channel.anchorBelow ? channel.gapCells : 0);
+}
+
+/** Rotation then channel: the one mapping every drawn part of a footprint takes. */
+export function footprintDrawPoint(
+  x: number,
+  y: number,
+  box: CellBox,
+  rotation: BoardRotation,
+  channel: FootprintChannel | null,
+): { x: number; y: number } {
+  const rotated = rotateFootprintPoint(x, y, box, rotation);
+  return { x: rotated.x, y: applyFootprintChannel(rotated.y, channel) };
 }
 
 /** Next rotation clockwise (or counter-clockwise for `step: -1`). */
@@ -236,17 +326,46 @@ export function anchorAfterRotation(
   };
 }
 
-/** Pixel size of a footprinted node's own box at a board's pitch. */
+/**
+ * The footprint's drawn extent in cell units, in the board's piecewise space.
+ *
+ * `top` is always `-FOOTPRINT_PADDING_CELLS` so cell (0, 0) keeps sitting one
+ * padding in from the node's corner - the invariant `placementNodePosition`
+ * relies on. `bottom` grows by the channel when the footprint straddles it,
+ * which is what stretches the body across the trench instead of tearing it
+ * away from its own pins.
+ */
+export function footprintDrawnExtent(
+  footprint: CellBox,
+  rotation: BoardRotation,
+  channel: FootprintChannel | null,
+): { top: number; bottom: number; left: number; right: number } {
+  const box = rotatedFootprintBox(footprint, rotation);
+  const pad = FOOTPRINT_PADDING_CELLS;
+  return {
+    top: -pad,
+    bottom: applyFootprintChannel(box.rows - 1 + pad, channel),
+    left: -pad,
+    right: box.cols - 1 + pad,
+  };
+}
+
+/**
+ * Pixel size of a footprinted node's own box at a board's pitch.
+ *
+ * A seated footprint that straddles its board's central channel is that much
+ * taller: its lower half really is a `centerGap` further down the board.
+ */
 export function footprintNodeSize(
   footprint: CellBox,
   rotation: BoardRotation,
   pitch: number,
+  channel: FootprintChannel | null = null,
 ): { width: number; height: number } {
-  const box = rotatedFootprintBox(footprint, rotation);
-  const pad = FOOTPRINT_PADDING_CELLS * pitch;
+  const extent = footprintDrawnExtent(footprint, rotation, channel);
   return {
-    width: (box.cols - 1) * pitch + pad * 2,
-    height: (box.rows - 1) * pitch + pad * 2,
+    width: (extent.right - extent.left) * pitch,
+    height: (extent.bottom - extent.top) * pitch,
   };
 }
 

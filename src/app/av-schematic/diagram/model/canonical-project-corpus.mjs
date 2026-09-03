@@ -162,6 +162,120 @@ const boardWithRowLabelsAndInternalTrace = basePhysicalProject();
 boardWithRowLabelsAndInternalTrace.layout.boards[0].rowLabels = ['J', '', 'A'];
 boardWithRowLabelsAndInternalTrace.layout.boards[0].traces[0].internal = true;
 
+// A board that persists the solderless-breadboard look: light plastic, a
+// moulded channel and printed +/- rails. Everything the renderer reads for
+// that surface has to be on the board itself, which is what the surface rules
+// below enforce.
+export function breadboardSurfaceProject() {
+  const raw = basePhysicalProject();
+  raw.layout.boards[0].surface = 'breadboard';
+  raw.layout.boards[0].centerGap = 12;
+  raw.layout.boards[0].rowLabels = ['top+', '', 'A'];
+  return raw;
+}
+
+const breadboardSurface = breadboardSurfaceProject();
+
+const perfboardSurface = basePhysicalProject();
+perfboardSurface.layout.boards[0].surface = 'perfboard';
+
+/**
+ * One ordinary wire landing on copper sealed inside a board body - a
+ * breadboard column clip. There is no `trace:<id>` pad for such a group, so
+ * the conductor has to name the hole it lands on with a tap index.
+ */
+function internalCopperLandingProject() {
+  const junctionId = 'copper:bb-1/trace%3Aclip';
+  return {
+    formatVersion: 2,
+    electrical: {
+      components: [
+        {
+          id: 'probe-1',
+          deviceId: 'PROBE-1',
+          manufacturer: 'project',
+          model: 'probe',
+          pins: [{ id: 'p', label: 'P', direction: 'output' }],
+        },
+      ],
+      junctions: [
+        { id: junctionId, label: 'B1-A1', kind: 'rail', wirevizName: junctionId },
+      ],
+      cables: [],
+      nets: [
+        {
+          id: 'net-probe',
+          name: 'PROBE',
+          endpoints: [
+            { kind: 'pin', componentId: 'probe-1', pinId: 'p' },
+            { kind: 'junction', junctionId },
+          ],
+          conductors: [
+            {
+              id: 'w-probe',
+              from: { kind: 'pin', componentId: 'probe-1', pinId: 'p' },
+              to: { kind: 'junction', junctionId },
+            },
+          ],
+        },
+      ],
+    },
+    layout: {
+      boards: [
+        {
+          id: 'bb-1',
+          label: 'Mini breadboard',
+          surface: 'breadboard',
+          rows: 4,
+          cols: 2,
+          pitch: 20,
+          centerGap: 40,
+          rowLabels: ['top+', 'B', 'A', 'top-'],
+          holes: [
+            { row: 0, col: 0 },
+            { row: 1, col: 0 },
+            { row: 2, col: 0 },
+            { row: 3, col: 0 },
+          ],
+          traces: [
+            {
+              id: 'clip',
+              label: 'B1-A1',
+              internal: true,
+              segments: [{ from: { row: 1, col: 0 }, to: { row: 2, col: 0 } }],
+            },
+          ],
+          position: { x: 0, y: 0 },
+        },
+      ],
+      components: [{ componentId: 'probe-1', position: { x: 400, y: 0 } }],
+      junctions: [
+        {
+          junctionId,
+          position: { x: -1, y: -1 },
+          taps: 2,
+          boardId: 'bb-1',
+          hole: { row: 1, col: 0 },
+          boardPort: 'trace:clip',
+        },
+      ],
+      conductors: [{ conductorId: 'w-probe', toTap: 1 }],
+    },
+  };
+}
+
+function internalCopper(change) {
+  const raw = internalCopperLandingProject();
+  change(raw);
+  return raw;
+}
+
+function breadboard(change) {
+  const raw = breadboardSurfaceProject();
+  change(raw);
+  return raw;
+}
+
 const emptyBoard = {
   formatVersion: 2,
   electrical: { components: [], junctions: [], cables: [], nets: [] },
@@ -203,6 +317,21 @@ export const canonicalValidationCorpus = [
     name: 'accepts printed row labels and copper grouped inside the board body',
     accepted: true,
     raw: boardWithRowLabelsAndInternalTrace,
+  },
+  {
+    name: 'accepts a persisted solderless-breadboard surface',
+    accepted: true,
+    raw: breadboardSurface,
+  },
+  {
+    name: 'accepts an explicitly declared perfboard surface',
+    accepted: true,
+    raw: perfboardSurface,
+  },
+  {
+    name: 'accepts a wire that names the internal-copper hole it lands on',
+    accepted: true,
+    raw: internalCopperLandingProject(),
   },
   {
     name: 'accepts an explicit empty hole list as a board with no holes',
@@ -312,6 +441,60 @@ export const canonicalValidationCorpus = [
   changed('rejects a non-boolean internal trace flag', (raw) => {
     raw.layout.boards[0].traces[0].internal = 'yes';
   }),
+  {
+    name: 'rejects a wire on internal copper with no tap, which renders no port',
+    accepted: false,
+    raw: internalCopper((raw) => {
+      delete raw.layout.conductors[0].toTap;
+    }),
+  },
+  {
+    name: 'rejects a wire on internal copper whose layout entry is missing entirely',
+    accepted: false,
+    raw: internalCopper((raw) => {
+      raw.layout.conductors = [];
+    }),
+  },
+  {
+    name: 'rejects a wire on internal copper with a tap past the end of the group',
+    accepted: false,
+    raw: internalCopper((raw) => {
+      raw.layout.conductors[0].toTap = 2;
+    }),
+  },
+  changed('rejects an unknown board surface', (raw) => {
+    raw.layout.boards[0].surface = 'protoboard';
+  }),
+  changed('rejects a misspelled board surface instead of falling back', (raw) => {
+    raw.layout.boards[0].surface = 'breadbord';
+  }),
+  changed('rejects a non-string board surface', (raw) => {
+    raw.layout.boards[0].surface = 2;
+  }),
+  changed('rejects an empty board surface', (raw) => {
+    raw.layout.boards[0].surface = '';
+  }),
+  {
+    name: 'rejects a breadboard surface with no printed row labels',
+    accepted: false,
+    raw: breadboard((raw) => {
+      delete raw.layout.boards[0].rowLabels;
+    }),
+  },
+  {
+    name: 'rejects a breadboard surface with no central channel',
+    accepted: false,
+    raw: breadboard((raw) => {
+      delete raw.layout.boards[0].centerGap;
+    }),
+  },
+  {
+    name: 'rejects a breadboard surface that names no power rail',
+    accepted: false,
+    raw: breadboard((raw) => {
+      raw.layout.boards[0].rowLabels = ['J', '', 'A'];
+    }),
+  },
   changed('rejects a diagonal trace', (raw) => {
     raw.layout.boards[0].traces[0].segments[0].to = { row: 1, col: 3 };
   }),

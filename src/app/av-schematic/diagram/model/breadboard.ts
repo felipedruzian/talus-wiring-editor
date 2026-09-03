@@ -234,15 +234,20 @@ export interface BreadboardOptions {
 /**
  * A complete 830-point breadboard as an ordinary `BoardNodeData`.
  *
- * `pitch` is the only scale: hole positions, the channel and every seated
- * footprint are derived from it, so the board is not pinned to any particular
- * pixel size.
+ * `pitch` is the only scale: hole positions, the channel, the printed markings
+ * and every seated footprint are derived from it, so the board is not pinned
+ * to any particular pixel size.
+ *
+ * `surface: 'breadboard'` is what carries the light plastic, the recessed
+ * channel and the rail bands across a save/reload - the renderer never guesses
+ * a board's kind from its dimensions.
  */
 export function createBreadboard830(options: BreadboardOptions): BoardNodeData {
   return {
     type: 'board',
     boardId: options.boardId,
     label: options.label,
+    surface: 'breadboard',
     ...(options.notes === undefined ? {} : { notes: options.notes }),
     rows: BREADBOARD_ROWS,
     cols: BREADBOARD_COLS,

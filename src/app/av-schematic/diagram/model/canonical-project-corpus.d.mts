@@ -6,3 +6,4 @@ export interface CanonicalValidationCorpusCase {
 
 export const canonicalValidationCorpus: readonly CanonicalValidationCorpusCase[];
 export function basePhysicalProject(): unknown;
+export function breadboardSurfaceProject(): unknown;

@@ -49,10 +49,13 @@ import {
   type FootprintShape,
 } from './footprint';
 import {
+  BOARD_SURFACES,
   type BoardHole,
   type BoardRotation,
+  type BoardSurface,
   type BoardTrace,
   type BoardTraceSegment,
+  isBoardSurface,
   type DevicePlacement,
   type JunctionKind,
   type PortDirection,
@@ -664,10 +667,7 @@ function validateLayout(
 
   const seenJunctionLayouts = new Set<string>();
   const tapsByJunction = new Map<string, number>();
-  const boardPortsByJunction = new Map<
-    string,
-    { boardId: string; portId: string; holes: BoardHole[]; netLabel?: string }
-  >();
+  const boardPortsByJunction = new Map<string, ResolvedBoardPort>();
   for (const layout of project.layout.junctions) {
     const label = `project.layout.junctions "${layout.junctionId}"`;
     if (seenJunctionLayouts.has(layout.junctionId)) {
@@ -737,6 +737,7 @@ function validateLayout(
         portId: layout.boardPort,
         holes,
         netLabel: trace?.net,
+        internal: trace?.internal === true,
       });
     }
     tapsByJunction.set(layout.junctionId, layout.taps);
@@ -777,7 +778,69 @@ function validateLayout(
     }
   }
 
+  validateInternalCopperTaps(project, boardPortsByJunction);
   validatePhysicalBindingCoverage(project);
+}
+
+/** A junction resolved to one board port: which copper, where, and how it is reachable. */
+interface ResolvedBoardPort {
+  boardId: string;
+  portId: string;
+  holes: BoardHole[];
+  netLabel?: string;
+  /** Copper inside the board body, which has no landing pad of its own. */
+  internal: boolean;
+}
+
+/**
+ * Copper sealed inside a board body has no pad to land on.
+ *
+ * `BoardNodeComponent` mints a `trace:<id>` port only for *exposed* copper, so
+ * a conductor that lands on an internal group - a breadboard column clip or
+ * one of its buses - has to say which of the group's holes it lands on. Its
+ * tap index is that answer, and without it `fromCanonicalProject` would rebuild
+ * the edge pointing at a `trace:<id>` port that is never rendered: a wire
+ * silently attached to nothing.
+ *
+ * Physical bindings already pin the exact tap (see `validatePhysicalBinding`);
+ * this covers every ordinary conductor, including one whose layout entry is
+ * missing entirely.
+ */
+function validateInternalCopperTaps(
+  project: CanonicalProjectV2,
+  boardPortsByJunction: ReadonlyMap<string, ResolvedBoardPort>,
+): void {
+  const layoutsByConductor = new Map(
+    project.layout.conductors.map((layout) => [layout.conductorId, layout]),
+  );
+  for (const net of project.electrical.nets) {
+    for (const conductor of net.conductors) {
+      const layout = layoutsByConductor.get(conductor.id);
+      const label = `project.layout.conductors "${conductor.id}"`;
+      requireInternalCopperTap(
+        conductor.from,
+        layout?.fromTap,
+        boardPortsByJunction,
+        `${label}.fromTap`,
+      );
+      requireInternalCopperTap(conductor.to, layout?.toTap, boardPortsByJunction, `${label}.toTap`);
+    }
+  }
+}
+
+function requireInternalCopperTap(
+  endpoint: CanonicalNetEndpoint,
+  tap: number | undefined,
+  boardPortsByJunction: ReadonlyMap<string, ResolvedBoardPort>,
+  label: string,
+): void {
+  if (endpoint.kind !== 'junction') return;
+  if (!boardPortsByJunction.get(endpoint.junctionId)?.internal) return;
+  if (tap !== undefined) return;
+  throw new CanonicalProjectError(
+    `${label}: copper inside the board body has no landing pad, so this end must name the ` +
+      `hole it lands on with a tap index`,
+  );
 }
 
 function validateCopperNetLabels(
@@ -807,6 +870,7 @@ function validateBoard(board: CanonicalBoard): void {
   if (board.holeDiameter !== undefined && board.holeDiameter > board.pitch) {
     throw new CanonicalProjectError(`${label}.holeDiameter: cannot exceed board pitch`);
   }
+  validateBoardSurface(board, label);
   if (board.rowLabels !== undefined && board.rowLabels.length !== board.rows) {
     throw new CanonicalProjectError(
       `${label}.rowLabels: ${board.rowLabels.length} entries for ${board.rows} rows`,
@@ -916,10 +980,7 @@ function validatePhysicalBinding(
   conductor: CanonicalConductor,
   componentLayouts: readonly CanonicalComponentLayout[],
   boardsById: ReadonlyMap<string, CanonicalBoard>,
-  boardPortsByJunction: ReadonlyMap<
-    string,
-    { boardId: string; portId: string; holes: BoardHole[]; netLabel?: string }
-  >,
+  boardPortsByJunction: ReadonlyMap<string, ResolvedBoardPort>,
   label: string,
 ): void {
   if (layout.routingMode !== undefined || layout.points !== undefined) {
@@ -1278,6 +1339,10 @@ function parseBoard(raw: unknown, label: string): CanonicalBoard {
     id: expectNonEmptyString(obj['id'], `${label}.id`),
     label: expectString(obj['label'], `${label}.label`),
     notes: expectOptionalString(obj['notes'], `${label}.notes`),
+    surface:
+      obj['surface'] === undefined
+        ? undefined
+        : parseBoardSurface(obj['surface'], `${label}.surface`),
     rows: expectBoundedPositiveInteger(
       obj['rows'],
       `${label}.rows`,
@@ -1402,6 +1467,47 @@ function parseDevicePlacement(raw: unknown, label: string): DevicePlacement {
     anchor: expectHole(obj['anchor'], `${label}.anchor`),
     rotation,
   };
+}
+
+/**
+ * A closed set, deliberately: an unknown surface is rejected rather than
+ * quietly falling back to `perfboard`. A save that says `breadbord` is a bug
+ * in whatever wrote it, and repainting the board brown would hide it.
+ */
+/**
+ * What a board must actually carry to be drawn as a solderless breadboard.
+ *
+ * The surface is a rendering claim, and the renderer takes it literally: the
+ * plastic, the moulded channel and the printed rail bands are all read off
+ * `centerGap` and `rowLabels`. A board that declares `breadboard` without them
+ * would come back as a blank light rectangle - silently wrong, and only
+ * visible to a human looking at the canvas. Rejecting it at the boundary keeps
+ * "estritamente validada" true for the variant itself, not just its spelling.
+ */
+function validateBoardSurface(board: CanonicalBoard, label: string): void {
+  if (board.surface !== 'breadboard') return;
+  if (board.rowLabels === undefined) {
+    throw new CanonicalProjectError(
+      `${label}.surface: a breadboard must print its rows via rowLabels`,
+    );
+  }
+  if (board.centerGap === undefined) {
+    throw new CanonicalProjectError(
+      `${label}.surface: a breadboard must declare its central channel via centerGap`,
+    );
+  }
+  if (!board.rowLabels.some((rowLabel) => rowLabel.endsWith('+') || rowLabel.endsWith('-'))) {
+    throw new CanonicalProjectError(
+      `${label}.surface: a breadboard must name at least one +/- power rail`,
+    );
+  }
+}
+
+function parseBoardSurface(raw: unknown, label: string): BoardSurface {
+  if (!isBoardSurface(raw)) {
+    throw new CanonicalProjectError(`${label}: expected one of ${BOARD_SURFACES.join(', ')}`);
+  }
+  return raw;
 }
 
 function parseBoardRotation(raw: unknown, label: string): BoardRotation {

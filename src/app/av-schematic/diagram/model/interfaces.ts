@@ -189,6 +189,33 @@ export interface BoardTrace {
 }
 
 /**
+ * How a board's body is physically built, and therefore how it is drawn.
+ *
+ * `perfboard` is a bare drilled board: opaque brown substrate, exposed copper
+ * on its face, nothing printed. `breadboard` is a solderless plastic block:
+ * light body, a recessed central channel, coloured power-rail bands and
+ * silk-screened row/column markings, with every conductor hidden as a spring
+ * clip inside the body.
+ *
+ * This is a *visual* variant only - it changes no address, no port and no
+ * electrical fact. It is persisted (a reopened project must look the way it
+ * was saved, without having to guess "830 holes therefore breadboard") and it
+ * is closed: a value outside this union is rejected by both validators rather
+ * than silently falling back, so a typo can never quietly repaint a board.
+ */
+export type BoardSurface = 'perfboard' | 'breadboard';
+
+/** Every accepted `BoardSurface`, in the order the validators report them. */
+export const BOARD_SURFACES: readonly BoardSurface[] = ['perfboard', 'breadboard'];
+
+/** The surface a board without an explicit one is drawn with. */
+export const DEFAULT_BOARD_SURFACE: BoardSurface = 'perfboard';
+
+export function isBoardSurface(value: unknown): value is BoardSurface {
+  return typeof value === 'string' && (BOARD_SURFACES as readonly string[]).includes(value);
+}
+
+/**
  * A physical board with an addressable rows x cols hole grid.
  *
  * Nothing here presumes a particular size or a particular kind of board: the
@@ -202,6 +229,12 @@ export interface BoardNodeData {
   type: 'board';
   boardId: string;
   label: string;
+  /**
+   * How the board body is drawn. Absent means `perfboard`, which is what every
+   * project saved before this field existed is - so an old save reopens
+   * looking exactly as it did.
+   */
+  surface?: BoardSurface;
   /** Human-facing assembly notes kept with the board across project saves. */
   notes?: string;
   rows: number;

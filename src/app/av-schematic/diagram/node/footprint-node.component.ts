@@ -8,16 +8,15 @@ import {
 import {
   DETACHED_FOOTPRINT_FALLBACK_PITCH,
   FOOTPRINT_PADDING_CELLS,
+  applyFootprintChannel,
+  footprintChannel,
+  footprintDrawPoint,
+  footprintDrawnExtent,
   footprintNodeSize,
   footprintPinHoles,
-  rotatedFootprintBox,
+  type FootprintChannel,
 } from '../model/footprint-geometry';
-import {
-  resolveFootprint,
-  type Footprint,
-  type FootprintPaint,
-  type FootprintShape,
-} from '../model/footprint';
+import { resolveFootprint, type Footprint, type FootprintPaint } from '../model/footprint';
 import { isBoardNode } from '../model/guards';
 import { type BoardRotation, type DeviceNodeData, type DevicePort } from '../model/interfaces';
 import { BoardPlacementService } from '../placement/board-placement.service';
@@ -32,11 +31,23 @@ export interface FootprintPinView {
   primary: boolean;
 }
 
+/**
+ * Where each pin is drawn inside the node, in node-local pixels.
+ *
+ * `channel` is the host board's central gap seen from this placement. Feeding
+ * it through here is what keeps the guarantee that matters:
+ *
+ *   node.position + pinView == board.position + holeLocalPoint(board, hole)
+ *
+ * A part straddling a breadboard's trench has its lower pins a whole
+ * `centerGap` further down the board, and its drawing has to follow them.
+ */
 export function footprintPinViews(
   footprint: Footprint,
   rotation: BoardRotation,
   pitch: number,
   ports: readonly DevicePort[],
+  channel: FootprintChannel | null = null,
 ): FootprintPinView[] {
   const portIds = new Set(ports.map((port) => port.id));
   const pinsById = new Map(footprint.pins.map((pin) => [pin.id, pin]));
@@ -45,10 +56,158 @@ export function footprintPinViews(
     id: pin.pinId,
     label: pin.label,
     x: pad + pin.cell.col * pitch,
-    y: pad + pin.cell.row * pitch,
+    y: pad + applyFootprintChannel(pin.cell.row, channel) * pitch,
     port: portIds.has(pin.pinId),
     primary: pinsById.get(pin.pinId)?.primary ?? false,
   }));
+}
+
+/** A pin pad drawn on the illustration, already rotated and channel-mapped. */
+export interface FootprintPadView {
+  id: string;
+  cx: number;
+  cy: number;
+  primary: boolean;
+}
+
+export function footprintPadViews(
+  footprint: Footprint,
+  rotation: BoardRotation,
+  channel: FootprintChannel | null,
+): FootprintPadView[] {
+  return footprint.pins.map((pin) => {
+    const point = footprintDrawPoint(pin.cell.col, pin.cell.row, footprint, rotation, channel);
+    return { id: pin.id, cx: point.x, cy: point.y, primary: pin.primary === true };
+  });
+}
+
+/**
+ * An illustration shape resolved into the drawn frame: rotated, mapped through
+ * the board's channel, and with its paint roles turned into CSS values.
+ *
+ * The rotation used to be a `matrix(...)` on the whole group, which cannot
+ * express the channel: the gap is a horizontal cut in *board* space, so it has
+ * to be applied after rotation, per point. Rects are rebuilt from the extremes
+ * of their four mapped corners, which is also what stretches one across the
+ * trench instead of leaving it behind.
+ */
+export type FootprintShapeView =
+  | {
+      kind: 'rect';
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      rx: number;
+      fill: string;
+      stroke: string;
+    }
+  | { kind: 'circle'; cx: number; cy: number; r: number; fill: string; stroke: string }
+  | { kind: 'line'; x1: number; y1: number; x2: number; y2: number; stroke: string; width: number }
+  | {
+      kind: 'text';
+      x: number;
+      y: number;
+      text: string;
+      size: number;
+      anchor: 'start' | 'middle' | 'end';
+      fill: string;
+      /** Turns the glyphs with the part, about the text's own origin. */
+      transform: string | null;
+    };
+
+/** Bounded palette of paint roles -> the stylesheet's custom properties. */
+export function footprintPaintValue(paint: FootprintPaint | undefined): string {
+  switch (paint ?? 'none') {
+    case 'none':
+      return 'none';
+    case 'body':
+      return 'var(--footprint-body)';
+    case 'body-alt':
+      return 'var(--footprint-body-alt)';
+    case 'accent':
+      return 'var(--footprint-accent)';
+    case 'lead':
+      return 'var(--footprint-lead)';
+    case 'silk':
+      return 'var(--footprint-silk)';
+    case 'polarity':
+      return 'var(--footprint-polarity)';
+  }
+}
+
+export const FOOTPRINT_TEXT_SIZE_CELLS = 0.42;
+export const FOOTPRINT_LINE_WIDTH_CELLS = 0.08;
+
+export function footprintShapeViews(
+  footprint: Footprint,
+  rotation: BoardRotation,
+  channel: FootprintChannel | null,
+): FootprintShapeView[] {
+  const at = (x: number, y: number) => footprintDrawPoint(x, y, footprint, rotation, channel);
+  return footprint.shapes.map((shape): FootprintShapeView => {
+    switch (shape.kind) {
+      case 'rect': {
+        const corners = [
+          at(shape.x, shape.y),
+          at(shape.x + shape.width, shape.y),
+          at(shape.x + shape.width, shape.y + shape.height),
+          at(shape.x, shape.y + shape.height),
+        ];
+        const xs = corners.map((corner) => corner.x);
+        const ys = corners.map((corner) => corner.y);
+        const x = Math.min(...xs);
+        const y = Math.min(...ys);
+        return {
+          kind: 'rect',
+          x,
+          y,
+          width: Math.max(...xs) - x,
+          height: Math.max(...ys) - y,
+          rx: shape.rx ?? 0,
+          fill: footprintPaintValue(shape.fill),
+          stroke: footprintPaintValue(shape.stroke),
+        };
+      }
+      case 'circle': {
+        const center = at(shape.cx, shape.cy);
+        return {
+          kind: 'circle',
+          cx: center.x,
+          cy: center.y,
+          r: shape.r,
+          fill: footprintPaintValue(shape.fill),
+          stroke: footprintPaintValue(shape.stroke),
+        };
+      }
+      case 'line': {
+        const from = at(shape.x1, shape.y1);
+        const to = at(shape.x2, shape.y2);
+        return {
+          kind: 'line',
+          x1: from.x,
+          y1: from.y,
+          x2: to.x,
+          y2: to.y,
+          stroke: footprintPaintValue(shape.stroke),
+          width: shape.width ?? FOOTPRINT_LINE_WIDTH_CELLS,
+        };
+      }
+      case 'text': {
+        const point = at(shape.x, shape.y);
+        return {
+          kind: 'text',
+          x: point.x,
+          y: point.y,
+          text: shape.text,
+          size: shape.size ?? FOOTPRINT_TEXT_SIZE_CELLS,
+          anchor: shape.anchor ?? 'start',
+          fill: footprintPaintValue(shape.fill),
+          transform: rotation === 0 ? null : `rotate(${rotation} ${point.x} ${point.y})`,
+        };
+      }
+    }
+  });
 }
 
 @Component({
@@ -73,51 +232,73 @@ export class FootprintNodeComponent implements NgDiagramNodeTemplate<DeviceNodeD
     () => this.data().placement?.rotation ?? this.data().footprintRotation ?? 0,
   );
 
-  protected readonly pitch = computed(() => {
+  /** The board this footprint is seated on, when it is seated at all. */
+  private readonly hostBoard = computed(() => {
     const placement = this.data().placement;
-    if (placement) {
-      const board = this.modelService
+    if (!placement) return null;
+    return (
+      this.modelService
         .nodes()
         .filter(isBoardNode)
-        .find((candidate) => candidate.data.boardId === placement.boardId);
-      if (board) return board.data.pitch;
-    }
-    return this.data().footprintPitch ?? DETACHED_FOOTPRINT_FALLBACK_PITCH;
+        .find((candidate) => candidate.data.boardId === placement.boardId) ?? null
+    );
+  });
+
+  protected readonly pitch = computed(
+    () =>
+      this.hostBoard()?.data.pitch ??
+      this.data().footprintPitch ??
+      DETACHED_FOOTPRINT_FALLBACK_PITCH,
+  );
+
+  /**
+   * The host board's central channel, seen from this placement.
+   *
+   * Null for a loose footprint and for any board without a `centerGap`, which
+   * is why nothing about a perfboard-seated part changes.
+   */
+  protected readonly channel = computed<FootprintChannel | null>(() => {
+    const board = this.hostBoard();
+    const placement = this.data().placement;
+    if (!board || !placement) return null;
+    return footprintChannel(board.data, placement);
   });
 
   protected readonly size = computed(() => {
     const footprint = this.footprint();
     if (!footprint) return { width: 0, height: 0 };
-    return footprintNodeSize(footprint, this.rotation(), this.pitch());
+    return footprintNodeSize(footprint, this.rotation(), this.pitch(), this.channel());
   });
 
   protected readonly viewBox = computed(() => {
     const footprint = this.footprint();
     if (!footprint) return '0 0 0 0';
-    const box = rotatedFootprintBox(footprint, this.rotation());
-    const pad = FOOTPRINT_PADDING_CELLS;
-    return `${-pad} ${-pad} ${box.cols - 1 + pad * 2} ${box.rows - 1 + pad * 2}`;
+    const extent = footprintDrawnExtent(footprint, this.rotation(), this.channel());
+    return `${extent.left} ${extent.top} ${extent.right - extent.left} ${extent.bottom - extent.top}`;
   });
 
-  protected readonly illustrationTransform = computed(() => {
+  protected readonly shapes = computed<FootprintShapeView[]>(() => {
     const footprint = this.footprint();
-    if (!footprint) return '';
-    switch (this.rotation()) {
-      case 0:
-        return '';
-      case 90:
-        return `matrix(0 1 -1 0 ${footprint.rows - 1} 0)`;
-      case 180:
-        return `matrix(-1 0 0 -1 ${footprint.cols - 1} ${footprint.rows - 1})`;
-      case 270:
-        return `matrix(0 -1 1 0 0 ${footprint.cols - 1})`;
-    }
+    if (!footprint) return [];
+    return footprintShapeViews(footprint, this.rotation(), this.channel());
+  });
+
+  protected readonly pads = computed<FootprintPadView[]>(() => {
+    const footprint = this.footprint();
+    if (!footprint) return [];
+    return footprintPadViews(footprint, this.rotation(), this.channel());
   });
 
   protected readonly pins = computed<FootprintPinView[]>(() => {
     const footprint = this.footprint();
     if (!footprint) return [];
-    return footprintPinViews(footprint, this.rotation(), this.pitch(), this.data().ports);
+    return footprintPinViews(
+      footprint,
+      this.rotation(),
+      this.pitch(),
+      this.data().ports,
+      this.channel(),
+    );
   });
 
   protected readonly conflictMessage = computed(() => {
@@ -135,18 +316,6 @@ export class FootprintNodeComponent implements NgDiagramNodeTemplate<DeviceNodeD
     return centerLeftPortBoxPosition(pin, this.portSize()).y;
   }
 
-  protected fill(shape: FootprintShape): string {
-    return this.paint(shape.kind === 'line' ? 'none' : shape.fill);
-  }
-
-  protected stroke(shape: FootprintShape): string {
-    return this.paint('stroke' in shape ? shape.stroke : undefined);
-  }
-
-  protected textSize(shape: Extract<FootprintShape, { kind: 'text' }>): number {
-    return shape.size ?? 0.42;
-  }
-
   protected async rotate(step: 1 | -1, event: Event): Promise<void> {
     event.stopPropagation();
     await this.placementService.rotate(this.node().id, step);
@@ -154,24 +323,5 @@ export class FootprintNodeComponent implements NgDiagramNodeTemplate<DeviceNodeD
 
   protected stopNodeGesture(event: Event): void {
     event.stopPropagation();
-  }
-
-  private paint(paint: FootprintPaint | undefined): string {
-    switch (paint ?? 'none') {
-      case 'none':
-        return 'none';
-      case 'body':
-        return 'var(--footprint-body)';
-      case 'body-alt':
-        return 'var(--footprint-body-alt)';
-      case 'accent':
-        return 'var(--footprint-accent)';
-      case 'lead':
-        return 'var(--footprint-lead)';
-      case 'silk':
-        return 'var(--footprint-silk)';
-      case 'polarity':
-        return 'var(--footprint-polarity)';
-    }
   }
 }

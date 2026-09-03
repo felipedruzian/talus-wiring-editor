@@ -2,13 +2,28 @@ import { ChangeDetectionStrategy, Component, computed, inject, input } from '@an
 import { NgDiagramPortComponent, type NgDiagramNodeTemplate, type Node } from 'ng-diagram';
 import {
   BOARD_MARGIN,
-  DEFAULT_HOLE_DIAMETER,
-  boardCenterGap,
   boardHoles,
   boardSize,
   holeKey,
   holeLocalPoint,
 } from '../model/board-geometry';
+import {
+  type BoardChannelRect,
+  type BoardRailBand,
+  type RailPolarity,
+  boardChannelRect,
+  boardHoleRadius,
+  boardHoleStrokeWidth,
+  boardMarkingFontSize,
+  boardMarkingGap,
+  boardRailBands,
+  boardRailBleed,
+  boardRailStripeOffset,
+  boardRowMarkText,
+  boardStripeWidth,
+  isBreadboard,
+  railPolarity,
+} from '../model/board-surface';
 import { boardHoleLabel, holePortId, tracePortId } from '../model/board-ports';
 import { traceHoles, traceSegmentHoles } from '../model/board-trace';
 import { type BoardHole, type BoardNodeData, type BoardTrace } from '../model/interfaces';
@@ -22,16 +37,21 @@ interface HoleView extends BoardHole {
   portId: string;
   /** Printed address, e.g. `L2-C5` or `J10` - what the tooltip shows. */
   address: string;
+  /** Polarity of the power rail this hole sits on, when it sits on one. */
+  polarity: RailPolarity | null;
+  /** Outline weight, heavier on a rail so its holes read as one run. */
+  strokeWidth: number;
   conflicted: boolean;
 }
 
 /** A row's printed name, drawn in both side margins the way a board silks it. */
 interface RowMarkingView {
   row: number;
+  /** Glyph actually silked: `+`/`-` for a rail, the row name otherwise. */
   label: string;
   y: number;
   /** `+`/`-` suffix of a power bus, which also gets a polarity guide line. */
-  polarity: 'positive' | 'negative' | null;
+  polarity: RailPolarity | null;
   guideY: number;
 }
 
@@ -122,10 +142,34 @@ export class BoardNodeComponent implements NgDiagramNodeTemplate<BoardNodeData> 
 
   protected readonly size = computed(() => boardSize(this.data()));
 
-  protected readonly centerGap = computed(() => boardCenterGap(this.data()));
+  /** Light plastic, rail bands and a moulded channel instead of bare substrate. */
+  protected readonly breadboard = computed(() => isBreadboard(this.data()));
 
-  protected readonly holeRadius = computed(
-    () => (this.data().holeDiameter ?? DEFAULT_HOLE_DIAMETER) / 2,
+  protected readonly channel = computed<BoardChannelRect | null>(() =>
+    boardChannelRect(this.data()),
+  );
+
+  /** The pale `+`/`-` bands a breadboard prints behind its power rails. */
+  protected readonly railBands = computed<BoardRailBand[]>(() => boardRailBands(this.data()));
+
+  protected readonly holeRadius = computed(() => boardHoleRadius(this.data()));
+
+  /** Every printed marking scales with the pitch, never with a pixel constant. */
+  protected readonly markingFontSize = computed(() => boardMarkingFontSize(this.data()));
+
+  protected readonly markingGap = computed(() => boardMarkingGap(this.data()));
+
+  protected readonly stripeWidth = computed(() => boardStripeWidth(this.data()));
+
+  /** A polarity stripe spans exactly the rail band it belongs to. */
+  protected readonly stripeX1 = computed(() => BOARD_MARGIN - boardRailBleed(this.data()));
+
+  protected readonly stripeX2 = computed(() => this.size().width - this.stripeX1());
+
+  protected readonly rowMarkLeftX = computed(() => BOARD_MARGIN - this.markingGap());
+
+  protected readonly rowMarkRightX = computed(
+    () => this.size().width - BOARD_MARGIN + this.markingGap(),
   );
 
   /** Hit area for a hole's port: generous enough to grab, never wider than the pitch. */
@@ -142,31 +186,38 @@ export class BoardNodeComponent implements NgDiagramNodeTemplate<BoardNodeData> 
     const conflicted = this.conflictedKeys();
     return boardHoles(data).map((hole) => {
       const key = holeKey(hole);
+      const polarity = railPolarity(data.rowLabels?.[hole.row]);
       return {
         ...hole,
         key,
         ...holeLocalPoint(data, hole),
         portId: holePortId(hole),
         address: boardHoleLabel(hole, data.rowLabels),
+        polarity,
+        strokeWidth: boardHoleStrokeWidth(data, polarity),
         conflicted: conflicted.has(key),
       };
     });
   });
 
-  protected readonly traces = computed<TraceView[]>(() =>
+  private readonly allTraces = computed<TraceView[]>(() =>
     (this.data().traces ?? []).map((trace) => this.toTraceView(trace)),
   );
 
   /**
-   * Traces that get a label and a `trace:<id>` port.
+   * The copper this board actually shows: drawn, labelled and given a
+   * `trace:<id>` port.
    *
-   * Internal grouping - a breadboard's column clips and buses - has no exposed
-   * pad to land on and would otherwise cover 130 of the board's own holes with
-   * a port box, so it is drawn and nothing more. Connecting to an internal
-   * group means connecting to one of its holes, exactly as on the hardware.
+   * Internal grouping - a breadboard's column clips and its four buses - is
+   * copper sealed inside the body. It has no visible run, no exposed pad to
+   * land on, and drawing it would put 130 phantom lines and 130 port boxes
+   * over the board's own holes. So normal rendering omits it entirely: the
+   * groups keep grouping (they are still one electrical point, still what a
+   * net is derived from), and connecting to one means connecting to one of its
+   * holes, exactly as on the hardware.
    */
   protected readonly exposedTraces = computed<TraceView[]>(() =>
-    this.traces().filter((trace) => !trace.internal),
+    this.allTraces().filter((trace) => !trace.internal),
   );
 
   /**
@@ -176,25 +227,30 @@ export class BoardNodeComponent implements NgDiagramNodeTemplate<BoardNodeData> 
    *
    * The first row of a block of adjacent `+`/`-` rows draws its guide above,
    * every following row draws it below. A bus pair therefore ends up bracketed
-   * by its two lines, which is how a breadboard silks them.
+   * by its two lines, which is how a breadboard silks them - and the offset is
+   * wide enough to clear the rail band drawn behind the row.
+   *
+   * A rail silks the bare `+`/`-` glyph rather than `top+`: that is what the
+   * plastic prints, and it is what fits in the side margin.
    */
   protected readonly rowMarkings = computed<RowMarkingView[]>(() => {
     const data = this.data();
     const labels = data.rowLabels;
     if (!labels) return [];
-    const offset = data.pitch * 0.42;
-    const polarityOf = (row: number): 'positive' | 'negative' | null => {
-      const label = labels[row];
-      if (!label) return null;
-      return label.endsWith('+') ? 'positive' : label.endsWith('-') ? 'negative' : null;
-    };
+    const offset = boardRailStripeOffset(data);
     const markings: RowMarkingView[] = [];
     labels.forEach((label, row) => {
       if (!label) return;
       const { y } = holeLocalPoint(data, { row, col: 0 });
-      const polarity = polarityOf(row);
-      const outward = polarity === null ? 0 : polarityOf(row - 1) === null ? -1 : 1;
-      markings.push({ row, label, y, polarity, guideY: y + outward * offset });
+      const polarity = railPolarity(label);
+      const outward = polarity === null ? 0 : railPolarity(labels[row - 1]) === null ? -1 : 1;
+      markings.push({
+        row,
+        label: boardRowMarkText(label),
+        y,
+        polarity,
+        guideY: y + outward * offset,
+      });
     });
     return markings;
   });

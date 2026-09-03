@@ -31,6 +31,63 @@
   }
 }
 
+// A solderless breadboard is a moulded block of light plastic, not a drilled
+// brown substrate: everything below repaints the same geometry for that body.
+// Scoping it to this modifier is what keeps a perfboard looking untouched.
+.board-node--breadboard {
+  background: var(--av-color-breadboard-surface, #faf8f4);
+
+  --board-hole-fill: var(--av-color-breadboard-hole, #d4cfc7);
+
+  .board-node__hole {
+    stroke: var(--av-color-breadboard-hole-stroke, #b8b2a8);
+    opacity: 1;
+  }
+
+  .board-node__hole--positive {
+    stroke: var(--av-color-bus-positive, #cc6666);
+  }
+
+  .board-node__hole--negative {
+    stroke: var(--av-color-bus-negative, #6666cc);
+  }
+
+  // The channel is a groove moulded into the plastic, so it reads as a recess
+  // rather than as a hole through the board.
+  .board-node__center-gap {
+    fill: var(--av-color-breadboard-channel, rgb(0 0 0 / 13%));
+    opacity: 1;
+  }
+
+  .board-node__row-mark,
+  .board-node__column-tick {
+    fill: var(--av-color-breadboard-marking, #b0a898);
+    opacity: 1;
+  }
+
+  .board-node__row-mark--positive {
+    fill: var(--av-color-bus-positive, #cc6666);
+    font-weight: 700;
+  }
+
+  .board-node__row-mark--negative {
+    fill: var(--av-color-bus-negative, #6666cc);
+    font-weight: 700;
+  }
+}
+
+.board-node__rail-band {
+  stroke: none;
+}
+
+.board-node__rail-band--positive {
+  fill: var(--av-color-breadboard-rail-positive, #fff2f2);
+}
+
+.board-node__rail-band--negative {
+  fill: var(--av-color-breadboard-rail-negative, #f2f2ff);
+}
+
 .board-node__label {
   position: absolute;
   top: -20px;
@@ -88,31 +145,21 @@
   fill: none;
 }
 
-// Grouping inside the body (a breadboard's clips) is a hint, not exposed
-// copper: it stays visible enough to read a column as one point without
-// competing with the holes drawn on top of it.
-.board-node__trace--internal {
-  .board-node__trace-run {
-    opacity: 0.22;
-  }
-
-  .board-node__trace-dot {
-    opacity: 0.3;
-  }
-}
+// Copper sealed inside the body - a breadboard's column clips and buses - is
+// not drawn at all (see `exposedTraces`), so there is no `--internal` rule
+// here: the plastic hides it exactly as the hardware does.
 
 .board-node__bus-guide {
-  stroke-width: 1.5;
   opacity: 0.75;
   fill: none;
 }
 
 .board-node__bus-guide--positive {
-  stroke: var(--av-color-bus-positive, #c02f2f);
+  stroke: var(--av-color-bus-positive, #cc6666);
 }
 
 .board-node__bus-guide--negative {
-  stroke: var(--av-color-bus-negative, #2f5bc0);
+  stroke: var(--av-color-bus-negative, #6666cc);
 }
 
 .board-node__row-mark,
@@ -130,12 +177,18 @@
 
 .board-node__hole {
   fill: var(--board-hole-fill);
+  stroke: none;
   opacity: 0.8;
 }
 
 .board-node__hole--conflicted {
   fill: var(--av-color-error, #d92d20);
   opacity: 1;
+}
+
+.board-node--breadboard .board-node__hole--conflicted {
+  fill: var(--av-color-error, #d92d20);
+  stroke: var(--av-color-error, #d92d20);
 }
 
 .board-node__trace-label {

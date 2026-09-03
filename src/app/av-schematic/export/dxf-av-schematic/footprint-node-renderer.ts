@@ -1,8 +1,14 @@
-import type { Point } from 'ng-diagram';
-import { FOOTPRINT_PADDING_CELLS, footprintNodeSize } from '../../diagram/model/footprint-geometry';
+import type { Node, Point } from 'ng-diagram';
+import {
+  FOOTPRINT_PADDING_CELLS,
+  footprintChannel,
+  footprintDrawPoint,
+  footprintNodeSize,
+  type FootprintChannel,
+} from '../../diagram/model/footprint-geometry';
 import { resolveFootprint, type FootprintShape } from '../../diagram/model/footprint';
 import { isBoardNode } from '../../diagram/model/guards';
-import type { BoardRotation, DeviceNodeData } from '../../diagram/model/interfaces';
+import type { BoardNodeData, BoardRotation, DeviceNodeData } from '../../diagram/model/interfaces';
 import { DxfCircle, DxfLwPolyline, DxfText } from '../dxf/dxf-entity';
 import type { DxfNodeRenderer, DxfRenderContext } from '../dxf/dxf-types';
 import { FONT_PHYSICAL_LABEL, LAYERS, LINE_WEIGHT, TEXT_STYLE } from './av-dxf-constants';
@@ -17,10 +23,15 @@ export const renderFootprintNode: DxfNodeRenderer = (ctx, node) => {
   if (!footprint) return;
 
   const rotation = data.placement?.rotation ?? data.footprintRotation ?? 0;
-  const pitch = resolvePitch(ctx, data);
+  const board = hostBoard(ctx, data);
+  // Same derived geometry as the canvas: the board's central channel moves the
+  // half of a seated footprint that sits below it, so a drawing that ignored
+  // the gap would put that half a whole `centerGap` away from its own holes.
+  const pitch = board?.data.pitch ?? data.footprintPitch ?? FALLBACK_PITCH;
+  const channel = board && data.placement ? footprintChannel(board.data, data.placement) : null;
   const pad = FOOTPRINT_PADDING_CELLS * pitch;
   const origin = { x: node.position.x + pad, y: node.position.y + pad };
-  const size = footprintNodeSize(footprint, rotation, pitch);
+  const size = footprintNodeSize(footprint, rotation, pitch, channel);
 
   addPolyline(
     ctx,
@@ -35,10 +46,18 @@ export const renderFootprintNode: DxfNodeRenderer = (ctx, node) => {
   );
 
   for (const shape of footprint.shapes) {
-    renderShape(ctx, shape, footprint, rotation, pitch, origin);
+    renderShape(ctx, shape, footprint, rotation, pitch, origin, channel);
   }
   for (const pin of footprint.pins) {
-    const center = shapePoint(pin.cell.col, pin.cell.row, footprint, rotation, pitch, origin);
+    const center = shapePoint(
+      pin.cell.col,
+      pin.cell.row,
+      footprint,
+      rotation,
+      pitch,
+      origin,
+      channel,
+    );
     const mapped = ctx.mapper.mapPoint(center.x, center.y);
     ctx.doc.addEntity(
       new DxfCircle(
@@ -66,13 +85,10 @@ export const renderFootprintNode: DxfNodeRenderer = (ctx, node) => {
   );
 };
 
-function resolvePitch(ctx: DxfRenderContext, data: DeviceNodeData): number {
+function hostBoard(ctx: DxfRenderContext, data: DeviceNodeData): Node<BoardNodeData> | null {
   const boardId = data.placement?.boardId;
-  if (!boardId) return data.footprintPitch ?? FALLBACK_PITCH;
-  return (
-    ctx.nodes.filter(isBoardNode).find((board) => board.data.boardId === boardId)?.data.pitch ??
-    FALLBACK_PITCH
-  );
+  if (!boardId) return null;
+  return ctx.nodes.filter(isBoardNode).find((board) => board.data.boardId === boardId) ?? null;
 }
 
 function renderShape(
@@ -82,14 +98,15 @@ function renderShape(
   rotation: BoardRotation,
   pitch: number,
   origin: Point,
+  channel: FootprintChannel | null,
 ): void {
   switch (shape.kind) {
     case 'line': {
       addPolyline(
         ctx,
         [
-          shapePoint(shape.x1, shape.y1, box, rotation, pitch, origin),
-          shapePoint(shape.x2, shape.y2, box, rotation, pitch, origin),
+          shapePoint(shape.x1, shape.y1, box, rotation, pitch, origin, channel),
+          shapePoint(shape.x2, shape.y2, box, rotation, pitch, origin, channel),
         ],
         false,
         LINE_WEIGHT.DETAIL,
@@ -100,10 +117,18 @@ function renderShape(
       addPolyline(
         ctx,
         [
-          shapePoint(shape.x, shape.y, box, rotation, pitch, origin),
-          shapePoint(shape.x + shape.width, shape.y, box, rotation, pitch, origin),
-          shapePoint(shape.x + shape.width, shape.y + shape.height, box, rotation, pitch, origin),
-          shapePoint(shape.x, shape.y + shape.height, box, rotation, pitch, origin),
+          shapePoint(shape.x, shape.y, box, rotation, pitch, origin, channel),
+          shapePoint(shape.x + shape.width, shape.y, box, rotation, pitch, origin, channel),
+          shapePoint(
+            shape.x + shape.width,
+            shape.y + shape.height,
+            box,
+            rotation,
+            pitch,
+            origin,
+            channel,
+          ),
+          shapePoint(shape.x, shape.y + shape.height, box, rotation, pitch, origin, channel),
         ],
         true,
         LINE_WEIGHT.DETAIL,
@@ -111,7 +136,7 @@ function renderShape(
       return;
     }
     case 'circle': {
-      const center = shapePoint(shape.cx, shape.cy, box, rotation, pitch, origin);
+      const center = shapePoint(shape.cx, shape.cy, box, rotation, pitch, origin, channel);
       const mapped = ctx.mapper.mapPoint(center.x, center.y);
       ctx.doc.addEntity(
         new DxfCircle(
@@ -126,7 +151,7 @@ function renderShape(
       return;
     }
     case 'text': {
-      const point = shapePoint(shape.x, shape.y, box, rotation, pitch, origin);
+      const point = shapePoint(shape.x, shape.y, box, rotation, pitch, origin, channel);
       const mapped = ctx.mapper.mapPoint(point.x, point.y);
       const halign = shape.anchor === 'middle' ? 1 : shape.anchor === 'end' ? 2 : 0;
       const dxfRotation = rotation === 0 ? undefined : (360 - rotation) % 360;
@@ -155,27 +180,10 @@ function shapePoint(
   rotation: BoardRotation,
   pitch: number,
   origin: Point,
+  channel: FootprintChannel | null,
 ): Point {
-  const rotated = rotatePoint(x, y, box, rotation);
-  return { x: origin.x + rotated.x * pitch, y: origin.y + rotated.y * pitch };
-}
-
-function rotatePoint(
-  x: number,
-  y: number,
-  box: { rows: number; cols: number },
-  rotation: BoardRotation,
-): Point {
-  switch (rotation) {
-    case 0:
-      return { x, y };
-    case 90:
-      return { x: box.rows - 1 - y, y: x };
-    case 180:
-      return { x: box.cols - 1 - x, y: box.rows - 1 - y };
-    case 270:
-      return { x: y, y: box.cols - 1 - x };
-  }
+  const drawn = footprintDrawPoint(x, y, box, rotation, channel);
+  return { x: origin.x + drawn.x * pitch, y: origin.y + drawn.y * pitch };
 }
 
 function addPolyline(
