@@ -1,10 +1,40 @@
 export const SVG_EXPORT_MIME_TYPE = 'image/svg+xml;charset=utf-8';
 export const MAX_SVG_EXPORT_BYTES = 5 * 1024 * 1024;
+export const MAX_SVG_EXPORT_DIMENSION = 8192;
+export const MAX_SVG_EXPORT_PIXELS = 16 * 1024 * 1024;
+
+export interface RasterExportSize {
+  width: number;
+  height: number;
+}
 
 export interface RasterSvgSnapshot {
   width: number;
   height: number;
   pngDataUrl: string;
+}
+
+/** Rejects unsafe raster allocations before html-to-image creates a canvas. */
+export function assertRasterExportSize(size: RasterExportSize, pixelRatio: number): void {
+  if (
+    !Number.isFinite(size.width) ||
+    size.width <= 0 ||
+    !Number.isFinite(size.height) ||
+    size.height <= 0 ||
+    !Number.isFinite(pixelRatio) ||
+    pixelRatio <= 0
+  ) {
+    throw new Error('SVG export dimensions and pixel ratio must be positive finite numbers');
+  }
+
+  const rasterWidth = Math.ceil(size.width * pixelRatio);
+  const rasterHeight = Math.ceil(size.height * pixelRatio);
+  if (rasterWidth > MAX_SVG_EXPORT_DIMENSION || rasterHeight > MAX_SVG_EXPORT_DIMENSION) {
+    throw new Error(`SVG export exceeds the ${MAX_SVG_EXPORT_DIMENSION}px dimension limit`);
+  }
+  if (rasterWidth * rasterHeight > MAX_SVG_EXPORT_PIXELS) {
+    throw new Error(`SVG export exceeds the ${MAX_SVG_EXPORT_PIXELS} pixel limit`);
+  }
 }
 
 /** Builds a compact SVG wrapper around the already-composited diagram raster. */

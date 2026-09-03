@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_SVG_EXPORT_BYTES, SVG_EXPORT_MIME_TYPE, buildRasterSvgSnapshot } from './raster-svg';
+import {
+  MAX_SVG_EXPORT_BYTES,
+  MAX_SVG_EXPORT_DIMENSION,
+  MAX_SVG_EXPORT_PIXELS,
+  SVG_EXPORT_MIME_TYPE,
+  assertRasterExportSize,
+  buildRasterSvgSnapshot,
+} from './raster-svg';
 
 describe('raster-backed SVG export', () => {
   it('wraps one composited PNG without foreignObject markup', () => {
@@ -31,5 +38,35 @@ describe('raster-backed SVG export', () => {
         pngDataUrl: 'data:image/svg+xml;base64,PHN2Zy8+',
       }),
     ).toThrow(/requires a PNG data URL/);
+  });
+
+  it('accepts a raster exactly at the dimension and pixel limits', () => {
+    expect(() => {
+      assertRasterExportSize(
+        {
+          width: MAX_SVG_EXPORT_DIMENSION,
+          height: MAX_SVG_EXPORT_PIXELS / MAX_SVG_EXPORT_DIMENSION,
+        },
+        1,
+      );
+    }).not.toThrow();
+  });
+
+  it('rejects a raster dimension before canvas allocation', () => {
+    expect(() => {
+      assertRasterExportSize({ width: MAX_SVG_EXPORT_DIMENSION + 1, height: 1 }, 1);
+    }).toThrow(/dimension limit/);
+  });
+
+  it('rejects an excessive raster pixel count before canvas allocation', () => {
+    expect(() => {
+      assertRasterExportSize(
+        {
+          width: MAX_SVG_EXPORT_DIMENSION,
+          height: MAX_SVG_EXPORT_PIXELS / MAX_SVG_EXPORT_DIMENSION + 1,
+        },
+        1,
+      );
+    }).toThrow(/pixel limit/);
   });
 });

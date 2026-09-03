@@ -274,6 +274,19 @@ export class DiagramComponent {
     this.manualWirePick.update((active) => !active);
   }
 
+  protected onCanvasPointerEnd(event: PointerEvent): void {
+    const target = event.target;
+    if (target instanceof Element && target.closest('.wire-pick-control')) return;
+    this.manualWirePick.set(false);
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  protected cancelManualWirePick(event: KeyboardEvent): void {
+    if (event.key !== 'Escape' || !this.manualWirePick()) return;
+    event.preventDefault();
+    this.manualWirePick.set(false);
+  }
+
   @HostListener('document:keydown', ['$event'])
   protected activateAltWirePick(event: KeyboardEvent): void {
     if (event.key === 'Alt') this.altWirePick.set(true);

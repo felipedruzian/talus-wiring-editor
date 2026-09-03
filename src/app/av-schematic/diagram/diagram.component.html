@@ -1,4 +1,9 @@
-<div class="diagram" [class.wire-pick-active]="wirePickActive()">
+<div
+  class="diagram"
+  [class.wire-pick-active]="wirePickActive()"
+  (pointerup)="onCanvasPointerEnd($event)"
+  (pointercancel)="onCanvasPointerEnd($event)"
+>
   <ng-diagram
     [model]="model"
     [config]="config"
