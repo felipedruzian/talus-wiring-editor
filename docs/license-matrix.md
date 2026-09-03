@@ -28,22 +28,42 @@ esta fatia especificamente fez com cada uma.
 ## Assets
 
 Nenhum asset de imagem, ícone ou footprint de terceiros foi adicionado
-nesta fatia. A protoboard de 830 pontos é desenhada pelo próprio
+nesta fatia. Três arquivos SVG integrais e originais foram adicionados em
+`src/assets/components/`: Nano Classic, GY-521/MPU6050 genérico e TB6612FNG
+Talus genérico. Eles são ligados ao catálogo pelo registro confiável e versionado em
+`diagram/artwork/trusted-component-artwork.ts`, implementado na issue #32.
+Esse registro é código imutável do aplicativo: aponta apenas para SVGs locais
+empacotados, declara revisão, licença, envelope e pinos em pitch e não aceita
+`dataUrl` nem `assetHash`. Uploads PNG/WebP continuam exclusivamente no
+`ArtworkAssetStore`, com seu contrato raster endereçado por conteúdo; os dois
+canais não compartilham persistência nem payload.
+
+Os três arquivos SVG usam o próprio `viewBox` como sistema físico em pitches.
+Cada marcador `data-pin-id` declara também `data-pin-x` e `data-pin-y`; seu
+centro é uma coordenada inteira pronta para ser sobreposta ao furo
+correspondente. O fundo externo é transparente e não há script, referência
+externa, `href`, imagem embutida nem folha de estilo. O teste
+`npm run test:assets` verifica essas invariantes, os envelopes, a revisão, a
+licença, a unicidade dos IDs e as coordenadas dos pinos.
+
+A placa de ensaio sem solda de 830 pontos é desenhada pelo próprio
 `BoardNodeComponent`, a partir da geometria descrita acima: círculos SVG para os
 furos, texto SVG para a régua de colunas e para os nomes das linhas, e linhas
-SVG para o cobre e para as guias de polaridade. A variante visual de protoboard
-reproduz as proporções e a paleta convencionais da peça (ver a matriz acima),
-mas nenhum SVG, sprite ou folha de estilo do `safaorhan/breadboard` foi
-importado; a grade de furos de qualquer
-placa continua sendo desenhada a partir de geometria pura
-(`board-geometry.ts`). Arduino Nano, Raspberry Pi 4,
-MPU6050/GY-521, TB6612FNG, LM2596S e Hall A3144/LM393 são representados por
-geometria SVG e CSS originais no `DeviceIllustrationComponent`, combinada à
-marcação de portas do próprio aplicativo. Nenhuma arte bitmap ou vetorial foi
-importada; em particular, as referências fotográficas privadas não existem no
-histórico Git. Se uma fatia futura adicionar arte realista de chip ou placa,
-ela precisa de sua própria entrada aqui (origem, licença e revisão) **antes**
-de ser mesclada, assim como código.
+SVG para o cobre e para as guias de polaridade. A variante visual da placa de
+ensaio reproduz as proporções e a paleta convencionais da peça (ver a matriz
+acima), mas nenhum SVG, sprite ou folha de estilo do
+`safaorhan/breadboard` foi importado; a grade de furos de qualquer placa
+continua sendo desenhada a partir de geometria pura (`board-geometry.ts`).
+Arduino Nano, Raspberry Pi 4, MPU6050/GY-521, TB6612FNG, LM2596S e Hall
+A3144/LM393 também possuem geometria SVG e CSS original no
+`DeviceIllustrationComponent`, combinada à marcação de portas do próprio
+aplicativo. Para Nano, GY-521 e TB6612FNG, os três novos arquivos integrais
+agora substituem esse desenho simplificado no canvas, na biblioteca e na
+pré-visualização. Nenhuma arte bitmap ou vetorial de terceiros foi importada;
+em particular, as referências fotográficas privadas não existem no histórico
+Git. Qualquer nova arte realista de chip ou placa precisa de sua própria
+entrada aqui (origem, licença e revisão) **antes** de ser mesclada, assim como
+código.
 
 ## Licença consolidada do repositório
 
@@ -97,4 +117,3 @@ worktree.
   lido diretamente para confirmar CC BY-SA 3.0, já que a detecção
   automática de licença do GitHub para esse repositório retorna
   `NOASSERTION`.
-

@@ -9,6 +9,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { ArtworkAssetStore } from '../../../diagram/artwork/artwork-asset.store';
+import { trustedArtworkForFootprintDefinition } from '../../../diagram/artwork/trusted-component-artwork';
 import { footprintDrawnExtent } from '../../../diagram/model/footprint-geometry';
 import {
   type Footprint,
@@ -71,6 +72,17 @@ export class PhysicalComponentEditorComponent {
       this.artworkAssets.asset(hash) ??
       null
     );
+  });
+  protected readonly previewArtwork = computed(() => {
+    const footprint = this.footprint();
+    if (!footprint) return null;
+    const raster = footprint.artwork;
+    const rasterAsset = this.asset();
+    if (raster && rasterAsset) {
+      return { source: rasterAsset.dataUrl, geometry: raster, trusted: false };
+    }
+    const trusted = trustedArtworkForFootprintDefinition(footprint);
+    return trusted ? { source: trusted.href, geometry: trusted.bounds, trusted: true } : null;
   });
   protected readonly extent = computed(() => {
     const footprint = this.footprint();

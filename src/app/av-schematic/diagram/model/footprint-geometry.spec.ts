@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ARDUINO_NANO_ARTWORK } from '../artwork/trusted-component-artwork';
 import {
   anchorAfterRotation,
   anchorForNodePosition,
@@ -18,7 +19,7 @@ import {
   syncPortHolesToPlacement,
   validatePlacement,
 } from './footprint-geometry';
-import { type Footprint } from './footprint';
+import { ARDUINO_NANO_FOOTPRINT, type Footprint } from './footprint';
 import { type BoardNodeData, type DeviceNodeData, type DevicePlacement } from './interfaces';
 
 const board: BoardNodeData = {
@@ -142,6 +143,49 @@ describe('pitch and snap', () => {
 });
 
 describe('bounds and occupancy', () => {
+  it('uses the bundled Nano bounds without converting the SVG into a raster upload', () => {
+    const extent = footprintDrawnExtent(ARDUINO_NANO_FOOTPRINT, 0, null);
+    expect(ARDUINO_NANO_FOOTPRINT.artwork).toBeUndefined();
+    expect(extent).toEqual({ left: -1.5, right: 15.5, top: -0.75, bottom: 6.75 });
+
+    for (const rotation of [0, 90, 180, 270] as const) {
+      const points = footprintArtworkPoints(
+        ARDUINO_NANO_FOOTPRINT,
+        ARDUINO_NANO_ARTWORK.bounds,
+        rotation,
+        null,
+      );
+      expect(
+        Math.hypot(points.horizontal.x - points.origin.x, points.horizontal.y - points.origin.y),
+      ).toBe(17);
+      expect(
+        Math.hypot(points.vertical.x - points.origin.x, points.vertical.y - points.origin.y),
+      ).toBe(7);
+    }
+  });
+
+  it('snaps, rotates and occupies the complete Nano body on integer holes', () => {
+    const moduleBoard: BoardNodeData = {
+      ...board,
+      rows: 20,
+      cols: 20,
+    };
+    const placement: DevicePlacement = {
+      boardId: moduleBoard.boardId,
+      anchor: { row: 2, col: 3 },
+      rotation: 90,
+    };
+
+    expect(isPlacementInBounds(moduleBoard, ARDUINO_NANO_FOOTPRINT, placement)).toBe(true);
+    expect(
+      validatePlacement('nano', moduleBoard, ARDUINO_NANO_FOOTPRINT, placement, []),
+    ).toBeNull();
+    expect(footprintOccupiedHoles(ARDUINO_NANO_FOOTPRINT, placement)).toHaveLength(7 * 15);
+    expect(
+      footprintPinHoles(ARDUINO_NANO_FOOTPRINT, placement).find((pin) => pin.pinId === 'd1'),
+    ).toMatchObject({ hole: { row: 16, col: 3 } });
+  });
+
   it('unites negative fractional artwork with node bounds without stretching it across a channel', () => {
     const artwork = {
       assetHash: 'a'.repeat(64),

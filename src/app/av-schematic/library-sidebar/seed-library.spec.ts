@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { deviceCategoryLabel } from '../diagram/model/device-categories';
+import { trustedArtworkForFootprint } from '../diagram/artwork/trusted-component-artwork';
 import { NodeTemplateType } from '../diagram/model/interfaces';
 import { CONNECTOR_TYPES } from '../shared/ui/ports-editor/connector-types';
 import { resolveDeviceIllustration } from '../shared/ui/device-illustration/device-illustration';
@@ -67,6 +68,53 @@ describe('Talus-Droid library catalog', () => {
         .template.ports.filter((port) => ['AO1', 'AO2', 'BO1', 'BO2'].includes(port.label))
         .every((port) => port.connectorType === 'Motor'),
     ).toBe(true);
+  });
+
+  it('ships Nano, GY-521 and TB6612FNG as complete physical palette modules', () => {
+    const expected = [
+      ['lib-arduino-nano', 7, 15, 30],
+      ['lib-mpu6050-gy521', 6, 8, 8],
+      ['lib-tb6612fng', 7, 8, 16],
+    ] as const;
+
+    for (const [libraryId, rows, cols, pinCount] of expected) {
+      const template = seed(libraryId).template;
+      const footprint = template.footprint;
+      expect(footprint).toMatchObject({ id: template.footprintId, rows, cols });
+      expect(footprint?.pins).toHaveLength(pinCount);
+      expect(footprint?.pins.map((pin) => pin.id)).toEqual(
+        template.ports.map((candidate) => candidate.id),
+      );
+      expect(trustedArtworkForFootprint(footprint?.id)).toBeDefined();
+      expect(footprint?.artwork).toBeUndefined();
+      expect(asDevicePaletteItem(template).type).toBe(NodeTemplateType.FootprintNode);
+    }
+  });
+
+  it('preserves the Talus Nano ids while making D1 the physical primary pin', () => {
+    const nano = seed('lib-arduino-nano').template;
+    expect(nano.ports.map((candidate) => candidate.id)).toEqual(
+      expect.arrayContaining([
+        'vin',
+        '5v',
+        'gnd',
+        'd2',
+        'd3',
+        'a4',
+        'a5',
+        'd0',
+        'd4',
+        'd5',
+        'd6',
+        'd7',
+        'd8',
+        'd9',
+        'd10',
+        'd11',
+        'd1',
+      ]),
+    );
+    expect(nano.footprint?.pins.filter((pin) => pin.primary).map((pin) => pin.id)).toEqual(['d1']);
   });
 
   it('models the exact module variants without conflating similar hardware', () => {

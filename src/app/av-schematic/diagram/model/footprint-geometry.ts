@@ -14,6 +14,7 @@ import {
   type FootprintCell,
   type FootprintShape,
 } from './footprint';
+import { trustedArtworkForFootprintDefinition } from '../artwork/trusted-component-artwork';
 import {
   type BoardHole,
   type BoardNodeData,
@@ -34,7 +35,9 @@ export interface CellBox {
 }
 
 export interface DrawableFootprint extends CellBox {
+  id?: string;
   artwork?: FootprintArtwork;
+  pins?: readonly Pick<Footprint['pins'][number], 'id' | 'cell' | 'primary'>[];
   shapes?: readonly FootprintShape[];
 }
 
@@ -404,10 +407,11 @@ export function anchorAfterRotation(
 /**
  * The footprint's drawn extent in cell units, in the board's piecewise space.
  *
- * The padded cell box is the baseline. Vector shapes and rigid raster artwork
- * may extend any side, including into negative fractional coordinates. The
- * bottom grows by the channel when the footprint straddles it, while artwork
- * is translated as one rigid rectangle rather than stretched across the cut.
+ * The padded cell box is the baseline. Vector shapes and rigid artwork (a
+ * bundled trusted SVG or an explicit raster upload) may extend any side,
+ * including into negative fractional coordinates. The bottom grows by the
+ * channel when the footprint straddles it, while artwork is translated as one
+ * rigid rectangle rather than stretched across the cut.
  */
 export function footprintDrawnExtent(
   footprint: DrawableFootprint,
@@ -486,7 +490,7 @@ export function footprintDrawnExtent(
       }
     }
   }
-  const artwork = footprint.artwork;
+  const artwork = footprint.artwork ?? trustedArtworkForFootprintDefinition(footprint)?.bounds;
   if (!artwork) return extent;
   const points = footprintArtworkPoints(footprint, artwork, rotation, channel);
   const corners = [points.origin, points.horizontal, points.vertical, points.opposite];

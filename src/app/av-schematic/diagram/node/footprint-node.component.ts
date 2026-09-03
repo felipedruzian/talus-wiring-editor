@@ -27,6 +27,7 @@ import { type BoardRotation, type DeviceNodeData, type DevicePort } from '../mod
 import { BoardPlacementService } from '../placement/board-placement.service';
 import { centerLeftPortBoxPosition } from '../edge-reshaping/logic/port-position';
 import { ArtworkAssetStore } from '../artwork/artwork-asset.store';
+import { trustedArtworkForFootprintDefinition } from '../artwork/trusted-component-artwork';
 
 export interface FootprintPinView {
   id: string;
@@ -153,7 +154,7 @@ export interface FootprintArtworkView {
 /** Affine image transform from artwork-local coordinates into the rotated footprint frame. */
 export function footprintArtworkView(
   footprint: Footprint,
-  artwork: FootprintArtwork,
+  artwork: Pick<FootprintArtwork, 'x' | 'y' | 'width' | 'height' | 'preserveAspectRatio'>,
   rotation: BoardRotation,
   channel: FootprintChannel | null,
 ): FootprintArtworkView {
@@ -330,17 +331,37 @@ export class FootprintNodeComponent implements NgDiagramNodeTemplate<DeviceNodeD
 
   protected readonly artwork = computed(() => {
     const footprint = this.footprint();
-    const definition = footprint?.artwork;
-    if (!footprint || !definition) return null;
-    const asset = this.artworkAssets.asset(definition.assetHash);
-    if (!asset) return null;
+    if (!footprint) return null;
+    const rasterDefinition = footprint.artwork;
+    if (rasterDefinition) {
+      const asset = this.artworkAssets.asset(rasterDefinition.assetHash);
+      if (!asset) return null;
+      return {
+        kind: 'uploaded-raster' as const,
+        href: asset.dataUrl,
+        width: rasterDefinition.width,
+        height: rasterDefinition.height,
+        artworkId: null,
+        revision: null,
+        ...footprintArtworkView(footprint, rasterDefinition, this.rotation(), this.channel()),
+      };
+    }
+    const trusted = trustedArtworkForFootprintDefinition(footprint);
+    if (!trusted) return null;
     return {
-      href: asset.dataUrl,
-      width: definition.width,
-      height: definition.height,
-      ...footprintArtworkView(footprint, definition, this.rotation(), this.channel()),
+      kind: trusted.kind,
+      href: trusted.href,
+      width: trusted.bounds.width,
+      height: trusted.bounds.height,
+      artworkId: trusted.id,
+      revision: trusted.revision,
+      ...footprintArtworkView(footprint, trusted.bounds, this.rotation(), this.channel()),
     };
   });
+
+  protected readonly integralArtwork = computed(
+    () => this.artwork()?.kind === 'trusted-component-svg',
+  );
 
   protected readonly pads = computed<FootprintPadView[]>(() => {
     const footprint = this.footprint();

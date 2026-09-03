@@ -50,21 +50,31 @@
   </div>
 
   <ng-diagram-palette-item-preview>
-    <div class="device-preview">
-      <div class="device-preview__header">
-        @if (artworkUrl(); as imageUrl) {
-          <img class="device-preview__illustration" [src]="imageUrl" alt="" />
-        } @else {
-          <app-device-illustration
-            class="device-preview__illustration"
-            [device]="device().template"
-            [decorative]="true"
-          />
-        }
-        <span class="device-preview__id">{{ device().template.deviceId || '—' }}</span>
-        <span class="device-preview__info">{{ device().template.manufacturer }}</span>
-        <span class="device-preview__info">{{ device().template.model }}</span>
+    @if (trustedArtwork(); as trusted) {
+      <div class="physical-device-preview">
+        <img
+          class="physical-device-preview__illustration"
+          [src]="trusted.href"
+          [alt]="device().template.model"
+        />
       </div>
-    </div>
+    } @else {
+      <div class="device-preview">
+        <div class="device-preview__header">
+          @if (artworkUrl(); as imageUrl) {
+            <img class="device-preview__illustration" [src]="imageUrl" alt="" />
+          } @else {
+            <app-device-illustration
+              class="device-preview__illustration"
+              [device]="device().template"
+              [decorative]="true"
+            />
+          }
+          <span class="device-preview__id">{{ device().template.deviceId || '—' }}</span>
+          <span class="device-preview__info">{{ device().template.manufacturer }}</span>
+          <span class="device-preview__info">{{ device().template.model }}</span>
+        </div>
+      </div>
+    }
   </ng-diagram-palette-item-preview>
 </ng-diagram-palette-item>

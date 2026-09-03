@@ -9,7 +9,13 @@ import {
   footprintPinHoles,
   placementNodePosition,
 } from '../../diagram/model/footprint-geometry';
-import { RESISTOR_1K_FOOTPRINT, type Footprint } from '../../diagram/model/footprint';
+import {
+  ARDUINO_NANO_FOOTPRINT,
+  GY_521_MPU6050_FOOTPRINT,
+  RESISTOR_1K_FOOTPRINT,
+  TB6612FNG_FOOTPRINT,
+  type Footprint,
+} from '../../diagram/model/footprint';
 import {
   EdgeTemplateType,
   NodeTemplateType,
@@ -306,6 +312,68 @@ describe('illustrated footprint DXF origin', () => {
       });
 
       expect(pads.map((pad) => ({ x: pad.x, y: pad.y }))).toEqual(expected);
+    },
+  );
+});
+
+describe('bundled module DXF geometry', () => {
+  const bounds = { x: 0, y: 0, width: 900, height: 600 };
+  const mapper = CoordinateMapper.fromScale(bounds, DXF_SCALE_MM_PER_PX, DIAGRAM_PADDING);
+
+  it.each([ARDUINO_NANO_FOOTPRINT, GY_521_MPU6050_FOOTPRINT, TB6612FNG_FOOTPRINT])(
+    'exports $id with the same rotated bounds and terminals as the canvas',
+    (module) => {
+      const pitch = 17;
+      const rotation = 90 as const;
+      const position = { x: 120, y: 90 };
+      const node: Node<DeviceNodeData> = {
+        id: module.id,
+        type: NodeTemplateType.FootprintNode,
+        position,
+        data: {
+          type: 'device',
+          deviceId: module.id,
+          manufacturer: 'Talus',
+          model: module.label,
+          footprintId: module.id,
+          footprint: module,
+          footprintRotation: rotation,
+          footprintPitch: pitch,
+          ports: module.pins.map((pin) => ({
+            id: pin.id,
+            label: pin.label,
+            direction: 'input',
+          })),
+        },
+      };
+      const moduleDoc = new DxfExporter(buildAvDxfConfig()).export([node], [], bounds);
+      const entities = moduleDoc.getEntities();
+      const pads = entities.filter(
+        (entity): entity is DxfCircle =>
+          entity instanceof DxfCircle && entity.layerName === LAYERS.FOOTPRINTS,
+      );
+      const outline = entities.find(
+        (entity): entity is DxfLwPolyline =>
+          entity instanceof DxfLwPolyline &&
+          entity.layerName === LAYERS.FOOTPRINTS &&
+          entity.closed,
+      );
+      const extent = footprintDrawnExtent(module, rotation, null);
+      const expectedPads = module.pins.map((pin) => {
+        const point = footprintDrawPoint(pin.cell.col, pin.cell.row, module, rotation, null);
+        return mapper.mapPoint(
+          position.x + (point.x - extent.left) * pitch,
+          position.y + (point.y - extent.top) * pitch,
+        );
+      });
+      const size = footprintNodeSize(module, rotation, pitch);
+      if (!outline) throw new Error(`${module.id}: missing DXF outline`);
+      const xs = outline.points.map((point) => point.x);
+      const ys = outline.points.map((point) => point.y);
+
+      expect(pads.map((pad) => ({ x: pad.x, y: pad.y }))).toEqual(expectedPads);
+      expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(mapper.mapLength(size.width));
+      expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(mapper.mapLength(size.height));
     },
   );
 });

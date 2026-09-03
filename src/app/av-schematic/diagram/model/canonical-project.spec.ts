@@ -1,6 +1,8 @@
 import { type Edge, type Node } from 'ng-diagram';
 import { describe, expect, it } from 'vitest';
 import { diagramModel } from '../data';
+import { trustedArtworkForFootprint } from '../artwork/trusted-component-artwork';
+import { SEED_LIBRARY } from '../../library-sidebar/seed-library';
 import {
   CanonicalProjectError,
   buildNets,
@@ -664,6 +666,37 @@ describe('canonical project round-trip', () => {
     expect(rebuilt.data.footprintRotation).toBe(90);
     expect(rebuilt.data.footprintPitch).toBe(17);
     expect(toCanonicalProject(reopened.nodes, reopened.edges)).toEqual(saved);
+  });
+
+  it('round-trips every bundled physical module with its trusted definition and rotation', () => {
+    const modules = SEED_LIBRARY.filter((candidate) =>
+      ['lib-arduino-nano', 'lib-mpu6050-gy521', 'lib-tb6612fng'].includes(candidate.libraryId),
+    );
+
+    for (const [index, module] of modules.entries()) {
+      const node: Node<DeviceNodeData> = {
+        id: `module-${index}`,
+        type: NodeTemplateType.FootprintNode,
+        position: { x: 100 + index * 25.5, y: 200 - index * 13.25 },
+        data: {
+          ...clone(module.template),
+          deviceId: `MODULE-${index}`,
+          footprintRotation: 90,
+          footprintPitch: 17,
+        },
+      };
+      const saved = toCanonicalProject([node], []);
+      const reopened = fromCanonicalProject(parseCanonicalProject(clone(saved)));
+      const rebuilt = must(reopened.nodes.find(isDeviceNode));
+
+      expect(rebuilt.type).toBe(NodeTemplateType.FootprintNode);
+      expect(rebuilt.position).toEqual(node.position);
+      expect(rebuilt.data.footprintRotation).toBe(90);
+      expect(rebuilt.data.footprintPitch).toBe(17);
+      expect(rebuilt.data.footprint).toEqual(node.data.footprint);
+      expect(trustedArtworkForFootprint(rebuilt.data.footprint?.id)).toBeDefined();
+      expect(toCanonicalProject(reopened.nodes, reopened.edges)).toEqual(saved);
+    }
   });
 
   it('keeps a component without a footprint on the generic renderer', () => {

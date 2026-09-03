@@ -3,6 +3,11 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { NgDiagramModelService, NgDiagramPortComponent, type Node, type Point } from 'ng-diagram';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ArtworkAssetStore, type RasterArtworkAsset } from '../artwork/artwork-asset.store';
+import {
+  ARDUINO_NANO_ARTWORK,
+  GY_521_MPU6050_ARTWORK,
+  TB6612FNG_ARTWORK,
+} from '../artwork/trusted-component-artwork';
 import { holeLocalPoint } from '../model/board-geometry';
 import { breadboardRowIndex, createBreadboard830 } from '../model/breadboard';
 import {
@@ -19,6 +24,7 @@ import {
 } from '../model/interfaces';
 import { BoardPlacementService } from '../placement/board-placement.service';
 import { FootprintNodeComponent, footprintPinViews } from './footprint-node.component';
+import { SEED_LIBRARY } from '../../library-sidebar/seed-library';
 
 const footprint: Footprint = {
   id: 'link',
@@ -378,5 +384,60 @@ describe('FootprintNodeComponent raster artwork', () => {
     expect(
       Number.parseFloat(host.querySelector<HTMLElement>('.footprint-node')?.style.width ?? '0'),
     ).toBe(80);
+  });
+});
+
+describe('FootprintNodeComponent bundled physical modules', () => {
+  const cases = [
+    {
+      libraryId: 'lib-arduino-nano',
+      artwork: ARDUINO_NANO_ARTWORK,
+      viewBox: '-1.5 -0.75 17 7.5',
+      ports: 30,
+    },
+    {
+      libraryId: 'lib-mpu6050-gy521',
+      artwork: GY_521_MPU6050_ARTWORK,
+      viewBox: '-0.75 -0.75 8.5 6.5',
+      ports: 8,
+    },
+    {
+      libraryId: 'lib-tb6612fng',
+      artwork: TB6612FNG_ARTWORK,
+      viewBox: '-0.75 -0.75 8.5 7.5',
+      ports: 16,
+    },
+  ] as const;
+
+  it.each(cases)('renders $libraryId as one deterministic physical figure', (testCase) => {
+    const seed = SEED_LIBRARY.find((candidate) => candidate.libraryId === testCase.libraryId);
+    if (!seed) throw new Error(`Missing seed ${testCase.libraryId}`);
+    const node: Node<DeviceNodeData> = {
+      id: testCase.libraryId,
+      type: NodeTemplateType.FootprintNode,
+      position: { x: 0, y: 0 },
+      data: {
+        ...structuredClone(seed.template),
+        deviceId: testCase.libraryId,
+      },
+    };
+
+    const { host } = render(node);
+    const box = host.querySelector('.footprint-node');
+    const svg = host.querySelector('svg');
+    const image = svg?.querySelector('image');
+
+    expect(box?.classList.contains('footprint-node--integral')).toBe(true);
+    expect(svg?.getAttribute('viewBox')).toBe(testCase.viewBox);
+    expect(image?.getAttribute('href')).toBe(testCase.artwork.href);
+    expect(image?.getAttribute('width')).toBe(String(testCase.artwork.bounds.width));
+    expect(image?.getAttribute('height')).toBe(String(testCase.artwork.bounds.height));
+    expect(image?.getAttribute('transform')).toBe(
+      `matrix(1 0 0 1 ${testCase.artwork.bounds.x} ${testCase.artwork.bounds.y})`,
+    );
+    expect(image?.getAttribute('data-artwork-id')).toBe(testCase.artwork.id);
+    expect(image?.getAttribute('data-asset-revision')).toBe(testCase.artwork.revision);
+    expect(svg?.querySelector('.footprint-node__pin-pad')).toBeNull();
+    expect(host.querySelectorAll('.footprint-node__port')).toHaveLength(testCase.ports);
   });
 });

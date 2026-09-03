@@ -236,6 +236,43 @@ describe('LibraryService', () => {
     });
   });
 
+  it('upgrades former generic module seeds without erasing matching local port edits', () => {
+    const storage = new MemoryStorage();
+    const oldNano = {
+      libraryId: 'lib-arduino-nano',
+      template: {
+        ...createBlankTemplate(),
+        manufacturer: 'Arduino',
+        model: 'Nano local',
+        ports: [
+          { id: 'd9', label: 'D9 personalizado', direction: 'output' as const },
+          { id: 'gnd', label: 'GND', direction: 'input' as const },
+        ],
+      },
+    };
+    storage.setItem(
+      LIBRARY_STORAGE_KEY,
+      JSON.stringify({ version: LIBRARY_STORAGE_VERSION, devices: [oldNano], assets: {} }),
+    );
+
+    const loaded = loadLibraryCatalog(storage);
+    const nano = loaded.devices[0]?.template;
+
+    expect(nano).toMatchObject({
+      model: 'Nano local',
+      footprintId: 'arduino-nano',
+      footprint: { rows: 7, cols: 15 },
+    });
+    expect(nano?.ports).toHaveLength(30);
+    expect(nano?.ports.find((port) => port.id === 'd9')?.label).toBe('D9 personalizado');
+    const persisted = JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? '{}') as {
+      devices?: unknown[];
+    };
+    expect(persisted.devices?.[0]).toMatchObject({
+      template: { footprintId: 'arduino-nano', footprint: { rows: 7, cols: 15 } },
+    });
+  });
+
   it('deduplicates artwork by hash and restores a physical custom component', async () => {
     const storage = new MemoryStorage();
     vi.stubGlobal('localStorage', storage);

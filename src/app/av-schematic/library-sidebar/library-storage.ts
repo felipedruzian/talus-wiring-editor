@@ -236,6 +236,11 @@ function recoverDevices(
       continue;
     }
     const device = structuredClone(candidate);
+    const upgradedTemplate = upgradeBundledPhysicalTemplate(device);
+    if (upgradedTemplate) {
+      device.template = upgradedTemplate;
+      wasRepaired = true;
+    }
     const footprint = device.template.footprint;
     const artwork = footprint?.artwork;
     if (footprint && artwork && !availableHashes.has(artwork.assetHash)) {
@@ -250,6 +255,36 @@ function recoverDevices(
   }
   if (devices.length === 0) return { devices: cloneSeedLibrary(), wasRepaired: true };
   return { devices, wasRepaired };
+}
+
+/** Upgrade only the former generic built-ins; already-physical user edits remain owned by the user. */
+function upgradeBundledPhysicalTemplate(device: LibraryDevice): DeviceNodeData | null {
+  if (device.template.footprint) return null;
+  const current = SEED_LIBRARY.find(
+    (candidate) =>
+      candidate.libraryId === device.libraryId && candidate.template.footprint !== undefined,
+  );
+  const currentFootprint = current?.template.footprint;
+  if (!current || !currentFootprint) return null;
+  const oldPorts = new Map(device.template.ports.map((port) => [port.id, port]));
+  const ports = current.template.ports.map((seedPort) => ({
+    ...structuredClone(seedPort),
+    ...structuredClone(oldPorts.get(seedPort.id)),
+    id: seedPort.id,
+    hole: undefined,
+  }));
+  return {
+    ...structuredClone(current.template),
+    ...structuredClone(device.template),
+    notes: device.template.notes ?? current.template.notes,
+    boardId: undefined,
+    placement: undefined,
+    footprintId: currentFootprint.id,
+    footprint: structuredClone(currentFootprint),
+    footprintRotation: device.template.footprintRotation ?? current.template.footprintRotation ?? 0,
+    footprintPitch: device.template.footprintPitch ?? current.template.footprintPitch ?? 20,
+    ports,
+  };
 }
 
 function recoverAsset(hash: string, value: unknown): RasterArtworkAsset | null {
