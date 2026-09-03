@@ -265,7 +265,29 @@ export interface FootprintPinResolution {
   missingPinIds: string[];
 }
 
-const PHYSICAL_POINT_EPSILON = 1e-6;
+export interface DuplicateResolvedPinHole {
+  firstPinId: string;
+  secondPinId: string;
+  hole: BoardHole;
+}
+
+export const PHYSICAL_POINT_EPSILON = 1e-6;
+
+/** Find two distinct footprint pins that electrically collapse onto one board hole. */
+export function findDuplicateResolvedPinHole(
+  pins: readonly Pick<FootprintPinHole, 'pinId' | 'hole'>[],
+): DuplicateResolvedPinHole | null {
+  const firstPinByHole = new Map<string, string>();
+  for (const pin of pins) {
+    const key = holeKey(pin.hole);
+    const firstPinId = firstPinByHole.get(key);
+    if (firstPinId !== undefined) {
+      return { firstPinId, secondPinId: pin.pinId, hole: pin.hole };
+    }
+    firstPinByHole.set(key, pin.pinId);
+  }
+  return null;
+}
 
 function exactHoleAtPoint(
   board: PhysicalBoardGrid,
@@ -831,6 +853,16 @@ export function validatePlacement(
       boardId: board.boardId,
       holes: [],
       blockedBy: resolvedPins.missingPinIds,
+    };
+  }
+  const duplicatePinHole = findDuplicateResolvedPinHole(resolvedPins.pins);
+  if (duplicatePinHole) {
+    return {
+      kind: 'incompatible-grid',
+      nodeId,
+      boardId: board.boardId,
+      holes: [duplicatePinHole.hole],
+      blockedBy: [duplicatePinHole.firstPinId, duplicatePinHole.secondPinId],
     };
   }
   const occupied = footprintOccupiedHoles(footprint, placement, board);

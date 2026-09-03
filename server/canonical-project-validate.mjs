@@ -1168,6 +1168,14 @@ function validateV2Layout(
           `${label}.placement: rigid pin markers do not match board holes (${pinResolution.missingPinIds.join(', ')})`,
         );
       }
+      const duplicateMarkerHole = duplicateResolvedMarkerHole(pinResolution.pins);
+      if (duplicateMarkerHole) {
+        throw new CanonicalProjectValidationError(
+          `${label}.placement: rigid pin markers "${duplicateMarkerHole.firstPinId}" and ` +
+            `"${duplicateMarkerHole.secondPinId}" resolve to the same board hole ` +
+            `{row: ${duplicateMarkerHole.hole.row}, col: ${duplicateMarkerHole.hole.col}}`,
+        );
+      }
       if (!rigidArtworkFitsBoard(board, layout.footprint, layout.placement)) {
         throw new CanonicalProjectValidationError(
           `${label}.placement: rigid physical bounds extend beyond board "${board.id}"`,
@@ -1851,6 +1859,20 @@ function resolveFootprintPinHoles(footprint, placement, board) {
     });
   }
   return { pins, missingPinIds };
+}
+
+/** Keep this tolerance-aware board-hole dedupe in parity with the client parser. */
+function duplicateResolvedMarkerHole(pins) {
+  const firstPinByHole = new Map();
+  for (const pin of pins) {
+    const key = holeKey(pin.hole);
+    const firstPinId = firstPinByHole.get(key);
+    if (firstPinId !== undefined) {
+      return { firstPinId, secondPinId: pin.pinId, hole: pin.hole };
+    }
+    firstPinByHole.set(key, pin.pinId);
+  }
+  return null;
 }
 
 function legacyFootprintPinHoles(footprint, placement) {

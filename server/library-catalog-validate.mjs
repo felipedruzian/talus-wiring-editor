@@ -27,6 +27,7 @@ const FOOTPRINT_PAINTS = new Set([
   'silk',
   'polarity',
 ]);
+const PHYSICAL_POINT_EPSILON = 1e-6;
 
 export class LibraryCatalogValidationError extends Error {
   constructor(message) {
@@ -159,7 +160,7 @@ function validateFootprint(value, label, footprintId, referencedAssets) {
 
   const pinIds = new Set();
   const pinCells = new Set();
-  const pinPoints = new Set();
+  const pinPoints = [];
   const rigid =
     footprint.physicalBounds !== undefined ||
     pins.some(
@@ -189,11 +190,16 @@ function validateFootprint(value, label, footprintId, referencedAssets) {
     pinCells.add(key);
     if (rigid) {
       const point = artworkPoint ?? { x: cell.col, y: cell.row };
-      const pointKey = `${point.x}:${point.y}`;
-      if (pinPoints.has(pointKey)) {
-        fail(`${pinLabel}.artworkPoint: another pin already occupies ${pointKey}`);
+      if (
+        pinPoints.some(
+          (existing) =>
+            Math.abs(existing.x - point.x) <= PHYSICAL_POINT_EPSILON &&
+            Math.abs(existing.y - point.y) <= PHYSICAL_POINT_EPSILON,
+        )
+      ) {
+        fail(`${pinLabel}.artworkPoint: another pin already occupies this marker`);
       }
-      pinPoints.add(pointKey);
+      pinPoints.push(point);
     }
     if (record.primary !== undefined && typeof record.primary !== 'boolean') {
       fail(`${pinLabel}.primary: expected boolean`);

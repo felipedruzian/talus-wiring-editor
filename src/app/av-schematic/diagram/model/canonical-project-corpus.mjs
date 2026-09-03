@@ -616,6 +616,17 @@ export const canonicalValidationCorpus = [
       return raw;
     })(),
   },
+  ...[0, 90, 180, 270].map((rotation) => ({
+    name: `rejects rigid markers that resolve to one board hole at rotation ${rotation}`,
+    accepted: false,
+    raw: (() => {
+      const raw = rigidGapProject();
+      delete raw.layout.boards[0].centerGap;
+      raw.layout.components[0].footprint.pins[1].artworkPoint = { x: 5e-7, y: 0 };
+      raw.layout.components[0].placement.rotation = rotation;
+      return raw;
+    })(),
+  })),
   {
     name: 'rejects rigid physical bounds that extend past the board edge',
     accepted: false,

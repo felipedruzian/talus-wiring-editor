@@ -45,6 +45,7 @@ import {
   footprintOccupiedHoles,
   footprintPinPoint,
   footprintPinHoles,
+  findDuplicateResolvedPinHole,
   isRigidFootprint,
   placementNodePosition,
   resolveFootprintPinHoles,
@@ -734,6 +735,14 @@ function validateLayout(
       if (pinResolution.missingPinIds.length > 0) {
         throw new CanonicalProjectError(
           `${label}.placement: rigid pin markers do not match board holes (${pinResolution.missingPinIds.join(', ')})`,
+        );
+      }
+      const duplicateMarkerHole = findDuplicateResolvedPinHole(pinResolution.pins);
+      if (duplicateMarkerHole) {
+        throw new CanonicalProjectError(
+          `${label}.placement: rigid pin markers "${duplicateMarkerHole.firstPinId}" and ` +
+            `"${duplicateMarkerHole.secondPinId}" resolve to the same board hole ` +
+            `{row: ${duplicateMarkerHole.hole.row}, col: ${duplicateMarkerHole.hole.col}}`,
         );
       }
       if (

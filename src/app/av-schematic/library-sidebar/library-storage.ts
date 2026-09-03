@@ -9,6 +9,7 @@ import {
   type FootprintArtwork,
   type FootprintCell,
 } from '../diagram/model/footprint';
+import { PHYSICAL_POINT_EPSILON } from '../diagram/model/footprint-geometry';
 import {
   assertValidRasterArtworkAsset,
   MAX_ARTWORK_OUTPUT_BYTES,
@@ -511,7 +512,7 @@ function isFootprint(value: unknown): value is Footprint {
   const cols = value['cols'];
   const pinIds = new Set<string>();
   const pinCells = new Set<string>();
-  const pinPoints = new Set<string>();
+  const pinPoints: { x: number; y: number }[] = [];
   const rigid =
     value['physicalBounds'] !== undefined ||
     value['pins'].some((pin) => isRecord(pin) && pin['artworkPoint'] !== undefined);
@@ -534,9 +535,16 @@ function isFootprint(value: unknown): value is Footprint {
       pinCells.add(cellKey(pin['cell']));
       if (rigid) {
         const point = pin['artworkPoint'] ?? { x: pin['cell'].col, y: pin['cell'].row };
-        const pointKey = `${point.x}:${point.y}`;
-        if (pinPoints.has(pointKey)) return false;
-        pinPoints.add(pointKey);
+        if (
+          pinPoints.some(
+            (existing) =>
+              Math.abs(existing.x - point.x) <= PHYSICAL_POINT_EPSILON &&
+              Math.abs(existing.y - point.y) <= PHYSICAL_POINT_EPSILON,
+          )
+        ) {
+          return false;
+        }
+        pinPoints.push(point);
       }
       return true;
     }) ||
