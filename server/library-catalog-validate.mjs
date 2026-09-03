@@ -133,11 +133,13 @@ export function parseLibraryCatalog(raw) {
   };
 }
 
-/** Upgrade an on-disk v2 catalog without trusting or mutating the input. */
-export function migrateLibraryCatalogV2(raw) {
+/** Upgrade a pre-category catalog without trusting or mutating the input. */
+export function migrateLegacyLibraryCatalog(raw) {
   rejectDangerousKeys(raw, 'library');
   const root = expectRecord(raw, 'library');
-  if (root.version !== 2) fail('library.version: expected 2 for migration');
+  const isV2 = root.version === 2;
+  const isShortV3 = root.version === 3 && !Object.hasOwn(root, 'categories');
+  if (!isV2 && !isShortV3) fail('library.version: expected 2 or short v3 for migration');
   const sourceDevices = expectArray(root.devices, 'library.devices');
   const assets = expectRecord(root.assets, 'library.assets');
   const categories = structuredClone([UNCATEGORIZED_CATEGORY, ...LEGACY_CATEGORIES]);
@@ -151,7 +153,7 @@ export function migrateLibraryCatalogV2(raw) {
     const label = `library.devices[${index}]`;
     const device = expectRecord(value, label);
     const template = expectRecord(device.template, `${label}.template`);
-    const legacyValue = template.category;
+    const legacyValue = template.category ?? template.categoryId;
     if (legacyValue !== undefined && typeof legacyValue !== 'string') {
       fail(`${label}.template.category: invalid string`);
     }
@@ -179,6 +181,11 @@ export function migrateLibraryCatalogV2(raw) {
     devices,
     assets,
   });
+}
+
+/** Compatibility export retained for callers that explicitly migrate v2. */
+export function migrateLibraryCatalogV2(raw) {
+  return migrateLegacyLibraryCatalog(raw);
 }
 
 function validateCategories(values) {

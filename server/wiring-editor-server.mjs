@@ -40,7 +40,7 @@ import {
 } from './canonical-project-validate.mjs';
 import {
   LibraryCatalogValidationError,
-  migrateLibraryCatalogV2,
+  migrateLegacyLibraryCatalog,
   parseLibraryCatalog,
 } from './library-catalog-validate.mjs';
 
@@ -417,8 +417,8 @@ async function readLibraryState(cfg) {
 
   try {
     const parsed = JSON.parse(body);
-    if (parsed?.version === 2) {
-      body = JSON.stringify(migrateLibraryCatalogV2(parsed));
+    if (parsed?.version === 2 || (parsed?.version === 3 && !Object.hasOwn(parsed, 'categories'))) {
+      body = JSON.stringify(migrateLegacyLibraryCatalog(parsed));
     } else {
       parseLibraryCatalog(parsed);
     }

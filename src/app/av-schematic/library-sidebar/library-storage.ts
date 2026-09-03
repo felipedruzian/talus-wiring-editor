@@ -272,21 +272,14 @@ function recoverPersistedLibrary(
   wasRepaired ||= recoveredDevices.wasRepaired;
   const seedRevision = recoverSeedRevision(value['seedRevision'], recoveredDevices.devices);
   wasRepaired ||= seedRevision.wasRepaired;
-  // A current revision is user-owned: a deleted seed category must not come
-  // back merely because the catalog is opened. Only an older seed revision
-  // receives the categories needed by seeds added in that revision.
-  const categories =
-    seedRevision.revision < LIBRARY_SEED_REVISION
-      ? ensurePassiveSeedCategories(recoveredCategories.categories)
-      : recoveredCategories.categories;
+  // A v3 catalog has an explicit category inventory. Missing seed categories
+  // are user deletions, even while a later seed revision still needs adding.
+  const categories = recoveredCategories.categories;
   const devices =
     seedRevision.revision < LIBRARY_SEED_REVISION
-      ? appendMissingPassiveSeeds(recoveredDevices.devices, seedRevision.revision, categories)
+      ? appendMissingPassiveSeeds(recoveredDevices.devices, seedRevision.revision, categories, true)
       : recoveredDevices.devices;
-  const wasMigrated =
-    recoveredDevices.wasMigrated ||
-    seedRevision.revision < LIBRARY_SEED_REVISION ||
-    categories.length !== recoveredCategories.categories.length;
+  const wasMigrated = recoveredDevices.wasMigrated || seedRevision.revision < LIBRARY_SEED_REVISION;
   return {
     catalog: {
       // Loading must not garbage-collect valid assets. An unreferenced upload may
@@ -356,6 +349,7 @@ function appendMissingPassiveSeeds(
   devices: readonly LibraryDevice[],
   fromRevision: number,
   categories: readonly LibraryCategory[],
+  useFallbackForMissingCategory = false,
 ): LibraryDevice[] {
   const ids = new Set(devices.map((device) => device.libraryId));
   const categoryIds = new Set(categories.map((category) => category.id));
@@ -364,9 +358,16 @@ function appendMissingPassiveSeeds(
       PASSIVE_LIBRARY_IDS.has(device.libraryId) &&
       (PASSIVE_SEED_REVISION_BY_ID.get(device.libraryId) ?? LIBRARY_SEED_REVISION) > fromRevision &&
       !ids.has(device.libraryId) &&
-      categoryIds.has(device.template.categoryId),
+      (categoryIds.has(device.template.categoryId) || useFallbackForMissingCategory),
+  ).map((device) =>
+    categoryIds.has(device.template.categoryId)
+      ? structuredClone(device)
+      : {
+          ...structuredClone(device),
+          template: { ...structuredClone(device.template), categoryId: UNCATEGORIZED_CATEGORY_ID },
+        },
   );
-  return [...devices, ...structuredClone(additions)];
+  return [...devices, ...additions];
 }
 
 function recoverPersistedLibraryV2(
@@ -381,9 +382,9 @@ function recoverPersistedLibraryV2(
   const migrated = migrateLegacyDeviceCategories(recovered.devices);
   const categories = ensurePassiveSeedCategories(migrated.categories);
   const canonical = recoverDevices(migrated.devices, availableHashes, categories);
-  // v2 had no authoritative seed revision. Treat its absence as revision zero
-  // so upgrading it cannot claim revision 3 before the incremental seeds exist.
-  const seedRevision = recoverSeedRevision(value['seedRevision'] ?? 0, canonical.devices);
+  // Older schemas may not carry a revision. Infer it from their known seed
+  // inventory so a complete short-v3 catalog is not expanded again.
+  const seedRevision = recoverSeedRevision(value['seedRevision'], canonical.devices);
   return {
     catalog: {
       categories,

@@ -657,10 +657,7 @@ function canonicalProjectCategories(
   resources: Record<string, CanonicalCategoryResource>;
 } {
   const inventory = new Map<string, LibraryCategory>(
-    [...SEED_LIBRARY_CATEGORIES, ...categoryInventory].map((category) => [
-      category.id,
-      structuredClone(category),
-    ]),
+    categoryInventory.map((category) => [category.id, structuredClone(category)]),
   );
   const byNodeId = new Map<string, string>();
   const resources: Record<string, CanonicalCategoryResource> = {};

@@ -87,6 +87,9 @@ const SEED_CATEGORY_BY_ID = new Map(
     ['motor-driver', 'Drivers de motor', 'DRV'],
     ['voltage-regulator', 'Reguladores de tensão', 'REG'],
     ['hall-sensor', 'Sensores Hall', 'HALL'],
+    ['buzzer', 'Buzzers', 'BUZ'],
+    ['resistor', 'Resistores', 'RES'],
+    ['capacitor', 'Capacitores', 'CAP'],
   ].map((value) => {
     const category = Array.isArray(value)
       ? { id: value[0], name: value[1], prefix: value[2] }
@@ -263,7 +266,10 @@ function migrateV1(legacy) {
     ),
   };
   const layout = {
-    boards: legacy.boards,
+    boards: legacy.boards.map((board) => ({
+      ...board,
+      visualPlane: DEFAULT_VISUAL_PLANES.board,
+    })),
     components: legacy.components.map((component) => {
       const pinHoles = component.pins
         .filter((pin) => pin.hole !== undefined)
@@ -358,7 +364,7 @@ function buildLegacyNets(conductors, nameHints) {
         .map((item) => nameHints.get(item.id))
         .filter(Boolean)
         .sort();
-      const id = `net-${keys[0]}`;
+      const id = `net-${stableIdFragment(keys[0])}`;
       return {
         id,
         name: hints[0] ?? id,
@@ -367,6 +373,15 @@ function buildLegacyNets(conductors, nameHints) {
       };
     })
     .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function stableIdFragment(value) {
+  const parts = [];
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint !== undefined) parts.push(codePoint.toString(16));
+  }
+  return parts.join('-') || '0';
 }
 
 function parseV2(root, migrateVisualPlanes, readBoardJumpers, readResources, readCategories) {
@@ -491,7 +506,6 @@ function parseCategoryResources(raw) {
     );
   }
   const categories = {};
-  const normalizedNames = new Set();
   for (const [id, value] of entries) {
     const label = `project.resources.categories.${id}`;
     const resource = expectRecord(value, label);
@@ -500,17 +514,14 @@ function parseCategoryResources(raw) {
       name: expectString(resource['name'], `${label}.name`),
       prefix: expectString(resource['prefix'], `${label}.prefix`),
     };
-    const normalizedName = normalizeCategoryName(category.name);
     if (
       !isCanonicalCategory(category) ||
-      normalizedNames.has(normalizedName) ||
       (category.id === UNCATEGORIZED_CATEGORY.id &&
         (category.name !== UNCATEGORIZED_CATEGORY.name ||
           category.prefix !== UNCATEGORIZED_CATEGORY.prefix))
     ) {
       throw new CanonicalProjectValidationError(`${label}: invalid category definition`);
     }
-    normalizedNames.add(normalizedName);
     categories[id] = { name: category.name, prefix: category.prefix };
   }
   return categories;
@@ -586,7 +597,8 @@ function migrateProjectCategories(electrical, resources) {
       categoriesByNormalizedName.set(normalizedName, category);
       categoriesById.set(category.id, category);
     }
-    return { ...component, categoryId: category.id };
+    const { category: _legacyCategory, ...canonical } = component;
+    return { ...canonical, categoryId: category.id };
   });
   const referenced = new Set(components.map((component) => component.categoryId));
   const categories = Object.fromEntries(

@@ -284,7 +284,6 @@ function parseCategoryResources(raw: unknown): CanonicalResources['categories'] 
     throw new CanonicalProjectError('project.resources.categories: accepts at most 512 categories');
   }
   const categories: CanonicalResources['categories'] = {};
-  const parsedCategories: LibraryCategory[] = [];
   for (const [id, value] of entries) {
     const label = `project.resources.categories.${id}`;
     const resource = expectRecord(value, label);
@@ -295,14 +294,12 @@ function parseCategoryResources(raw: unknown): CanonicalResources['categories'] 
     };
     if (
       !isCanonicalLibraryCategory(category) ||
-      categoryValidationError(category, parsedCategories) ||
       (category.id === UNCATEGORIZED_CATEGORY.id &&
         (category.name !== UNCATEGORIZED_CATEGORY.name ||
           category.prefix !== UNCATEGORIZED_CATEGORY.prefix))
     ) {
       throw new CanonicalProjectError(`${label}: invalid category definition`);
     }
-    parsedCategories.push(category);
     categories[id] = { name: category.name, prefix: category.prefix };
   }
   return categories;
@@ -332,7 +329,8 @@ function migrateProjectCategories(
   const categoriesById = new Map(migrated.categories.map((category) => [category.id, category]));
   const nextComponents = components.map((component) => {
     const categoryId = categoryByComponentId.get(component.id) ?? UNCATEGORIZED_CATEGORY.id;
-    return { ...component, categoryId };
+    const { category: _legacyCategory, ...canonical } = component;
+    return { ...canonical, categoryId };
   });
   const categoryIds = new Set(nextComponents.map((component) => component.categoryId));
   const categories = Object.fromEntries(

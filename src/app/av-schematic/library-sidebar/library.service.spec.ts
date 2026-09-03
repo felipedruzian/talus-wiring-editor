@@ -433,6 +433,31 @@ describe('LibraryService', () => {
     expect(loaded.needsRepair).toBe(false);
   });
 
+  it('adds a later passive seed to uncategorized without restoring deleted seed categories', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      LIBRARY_STORAGE_KEY,
+      JSON.stringify({
+        version: LIBRARY_STORAGE_VERSION,
+        seedRevision: 2,
+        categories: [UNCATEGORIZED_CATEGORY],
+        devices: [],
+        assets: {},
+      }),
+    );
+
+    const loaded = loadLibraryCatalog(storage);
+
+    expect(loaded.catalog.categories).toEqual([UNCATEGORIZED_CATEGORY]);
+    expect(loaded.catalog.devices).toMatchObject([
+      {
+        libraryId: 'lib-capacitor-electrolytic-470uf-16v',
+        template: { categoryId: UNCATEGORIZED_CATEGORY_ID },
+      },
+    ]);
+    expect(loaded.needsUpgrade).toBe(true);
+  });
+
   it('does not PUT or restore a deleted passive in a current central catalog', async () => {
     const storage = new MemoryStorage();
     const without16V = SEED_LIBRARY.filter(

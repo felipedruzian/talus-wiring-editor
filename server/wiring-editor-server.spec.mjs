@@ -446,6 +446,52 @@ describe('wiring-editor-server', () => {
       expect(second.headers.get('etag')).toBe(first.headers.get('etag'));
     });
 
+    it('upgrades a short v3 catalog on GET and accepts its ETag on PUT', async () => {
+      const shortV3 = {
+        version: 3,
+        seedRevision: 2,
+        devices: [
+          {
+            libraryId: 'lib-resistor-1k',
+            template: {
+              type: 'device',
+              deviceId: '',
+              manufacturer: 'Talus',
+              model: 'Resistor',
+              categoryId: 'resistor',
+              ports: [],
+            },
+          },
+        ],
+        assets: {},
+      };
+      await writeFile(join(libraryDir, 'catalog.json'), JSON.stringify(shortV3), 'utf8');
+
+      const loaded = await fetch(`${server.baseUrl}/api/library`);
+      const body = await loaded.text();
+      const catalog = JSON.parse(body);
+
+      expect(loaded.status).toBe(200);
+      expect(loaded.headers.get('etag')).toBe(strongEtag(body));
+      expect(catalog).toMatchObject({
+        version: 3,
+        seedRevision: 2,
+        categories: expect.arrayContaining([{ id: 'resistor', name: 'Resistores', prefix: 'RES' }]),
+        devices: [expect.objectContaining({ libraryId: 'lib-resistor-1k' })],
+      });
+      expect(catalog.devices[0].template.categoryId).toBe('resistor');
+
+      const saved = await fetch(`${server.baseUrl}/api/library`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'If-Match': loaded.headers.get('etag'),
+        },
+        body,
+      });
+      expect(saved.status).toBe(200);
+    });
+
     it('migrates all passive v2 categories to their seeded IDs without legacy aliases', async () => {
       const passiveCategories = [
         ['lib-buzzer-active-12mm', 'buzzer'],
@@ -1544,5 +1590,44 @@ describe('wiring-editor-server', () => {
       });
       expect(res.status).toBe(200);
     });
+  });
+
+  it('keeps passive categories and board planes deterministic while migrating legacy projects', () => {
+    const v5 = emptyV2Payload();
+    v5.formatVersion = 5;
+    v5.electrical.components = [
+      {
+        id: 'resistor',
+        deviceId: 'R1',
+        manufacturer: 'Talus',
+        model: 'Resistor',
+        category: 'resistor',
+        pins: [],
+      },
+    ];
+    v5.layout.components = [{ componentId: 'resistor', position: { x: 0, y: 0 }, visualPlane: 10 }];
+    v5.resources = { artworkAssets: {} };
+    const migratedV5 = parseCanonicalProjectOnServer(v5);
+    expect(migratedV5.electrical.components[0]).toMatchObject({ categoryId: 'resistor' });
+    expect(migratedV5.electrical.components[0].category).toBeUndefined();
+    expect(migratedV5.resources.categories.resistor).toEqual({
+      name: 'Resistores',
+      prefix: 'RES',
+    });
+
+    const v1 = legacyProjectPayload();
+    v1.boards = [
+      {
+        id: 'board',
+        label: 'Board',
+        rows: 1,
+        cols: 1,
+        pitch: 20,
+        position: { x: 0, y: 0 },
+      },
+    ];
+    const migratedV1 = parseCanonicalProjectOnServer(v1);
+    expect(migratedV1.layout.boards[0]?.visualPlane).toBe(0);
+    expect(parseCanonicalProjectOnServer(migratedV1)).toEqual(migratedV1);
   });
 });
