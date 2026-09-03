@@ -782,6 +782,49 @@ describe('parseCanonicalProject', () => {
     expect(parseCanonicalProject(validRaw)).toEqual(validProject);
   });
 
+  it('drops a tolerated legacy category field from a v6 component', () => {
+    const v6 = clone(validProject);
+    const component = must(v6.electrical.components[0]);
+    component.category = 'Legado';
+
+    expect(parseCanonicalProject(v6).electrical.components[0]?.category).toBeUndefined();
+  });
+
+  it('preserves same-named project category resources with distinct IDs', () => {
+    const project = emptyV2();
+    project.electrical.components = [
+      {
+        id: 'seed-resistor',
+        deviceId: 'R1',
+        manufacturer: '',
+        model: '',
+        categoryId: 'resistor',
+        pins: [],
+      },
+      {
+        id: 'portable-resistor',
+        deviceId: 'R2',
+        manufacturer: '',
+        model: '',
+        categoryId: 'category-portable-resistor',
+        pins: [],
+      },
+    ];
+    project.layout.components = project.electrical.components.map((component) => ({
+      componentId: component.id,
+      position: { x: 0, y: 0 },
+      visualPlane: 10,
+    }));
+    project.resources.categories = {
+      resistor: { name: 'Resistores', prefix: 'RES' },
+      'category-portable-resistor': { name: 'Resistores', prefix: 'LAB' },
+    };
+
+    expect(parseCanonicalProject(project).resources.categories).toEqual(
+      project.resources.categories,
+    );
+  });
+
   it('accepts an empty v2 project', () => {
     const empty = emptyV2();
     expect(parseCanonicalProject(clone(empty))).toEqual(empty);

@@ -458,6 +458,25 @@ describe('LibraryService', () => {
     expect(loaded.needsUpgrade).toBe(true);
   });
 
+  it('infers a complete short-v3 seed revision without restoring a deleted buzzer', () => {
+    const storage = new MemoryStorage();
+    const capacitor16V = SEED_LIBRARY.find(
+      (device) => device.libraryId === 'lib-capacitor-electrolytic-470uf-16v',
+    );
+    if (!capacitor16V) throw new Error('Expected the 16 V capacitor seed');
+    storage.setItem(
+      LIBRARY_STORAGE_KEY,
+      JSON.stringify({ version: 3, devices: [capacitor16V], assets: {} }),
+    );
+
+    const loaded = loadLibraryCatalog(storage);
+
+    expect(loaded.catalog.devices.map((device) => device.libraryId)).toEqual([
+      'lib-capacitor-electrolytic-470uf-16v',
+    ]);
+    expect(loaded.needsUpgrade).toBe(true);
+  });
+
   it('does not PUT or restore a deleted passive in a current central catalog', async () => {
     const storage = new MemoryStorage();
     const without16V = SEED_LIBRARY.filter(

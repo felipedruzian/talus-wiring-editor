@@ -210,6 +210,7 @@ describe('buildImportedProject junction taps', () => {
           manufacturer: 'Talus',
           model: 'Portátil',
           categoryId: 'category-portable',
+          category: 'Legado',
           pins: [],
         },
         {
@@ -232,6 +233,7 @@ describe('buildImportedProject junction taps', () => {
       'category-portable',
       'uncategorized',
     ]);
+    expect(rebuilt.electrical.components[0]?.category).toBeUndefined();
     expect(rebuilt.resources.categories).toEqual({
       'category-portable': { name: 'Laboratório portátil', prefix: 'LAB' },
       uncategorized: { name: 'Não categorizado', prefix: 'DEV' },

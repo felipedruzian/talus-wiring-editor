@@ -1614,6 +1614,45 @@ describe('wiring-editor-server', () => {
       name: 'Resistores',
       prefix: 'RES',
     });
+    const v6WithLegacyCategory = JSON.parse(JSON.stringify(migratedV5));
+    v6WithLegacyCategory.electrical.components[0].category = 'Legado';
+    expect(
+      parseCanonicalProjectOnServer(v6WithLegacyCategory).electrical.components[0].category,
+    ).toBeUndefined();
+
+    const v6WithPortableCollision = emptyV2Payload();
+    v6WithPortableCollision.formatVersion = 6;
+    v6WithPortableCollision.electrical.components = [
+      {
+        id: 'seed-resistor',
+        deviceId: 'R1',
+        manufacturer: '',
+        model: '',
+        categoryId: 'resistor',
+        pins: [],
+      },
+      {
+        id: 'portable-resistor',
+        deviceId: 'R2',
+        manufacturer: '',
+        model: '',
+        categoryId: 'category-portable-resistor',
+        pins: [],
+      },
+    ];
+    v6WithPortableCollision.layout.components = v6WithPortableCollision.electrical.components.map(
+      (component) => ({ componentId: component.id, position: { x: 0, y: 0 }, visualPlane: 10 }),
+    );
+    v6WithPortableCollision.resources = {
+      artworkAssets: {},
+      categories: {
+        resistor: { name: 'Resistores', prefix: 'RES' },
+        'category-portable-resistor': { name: 'Resistores', prefix: 'LAB' },
+      },
+    };
+    expect(parseCanonicalProjectOnServer(v6WithPortableCollision).resources.categories).toEqual(
+      v6WithPortableCollision.resources.categories,
+    );
 
     const v1 = legacyProjectPayload();
     v1.boards = [
@@ -1628,6 +1667,18 @@ describe('wiring-editor-server', () => {
     ];
     const migratedV1 = parseCanonicalProjectOnServer(v1);
     expect(migratedV1.layout.boards[0]?.visualPlane).toBe(0);
+    v1.boards[0].visualPlane = 42;
+    expect(parseCanonicalProjectOnServer(v1).layout.boards[0]?.visualPlane).toBe(42);
     expect(parseCanonicalProjectOnServer(migratedV1)).toEqual(migratedV1);
+  });
+
+  it('uses stable hex net IDs for connected v1 projects with Unicode endpoint IDs', () => {
+    const legacy = legacyConnectedProjectPayload();
+    legacy.components[0].id = 'á';
+    legacy.nets[0].source.componentId = 'á';
+
+    const migrated = parseCanonicalProjectOnServer(legacy);
+
+    expect(migrated.electrical.nets[0]?.id).toBe('net-70-69-6e-3a-25-43-33-25-41-31-2f-6f-75-74');
   });
 });

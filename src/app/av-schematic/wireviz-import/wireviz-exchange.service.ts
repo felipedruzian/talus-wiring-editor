@@ -278,13 +278,16 @@ export function buildImportedProject(
   // canonical project always makes the deterministic fallback explicit.
   const electrical: CanonicalElectrical = {
     ...boundElectrical,
-    components: boundElectrical.components.map((component) => ({
-      ...component,
-      categoryId:
-        component.categoryId && previous.resources.categories[component.categoryId]
-          ? component.categoryId
-          : UNCATEGORIZED_CATEGORY.id,
-    })),
+    components: boundElectrical.components.map((component) => {
+      const { category: _legacyCategory, ...canonical } = component;
+      return {
+        ...canonical,
+        categoryId:
+          component.categoryId && previous.resources.categories[component.categoryId]
+            ? component.categoryId
+            : UNCATEGORIZED_CATEGORY.id,
+      };
+    }),
   };
   const previousComponents = new Map(
     previous.layout.components.map((layout) => [layout.componentId, layout]),

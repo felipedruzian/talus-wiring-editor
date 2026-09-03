@@ -1510,6 +1510,7 @@ function parseComponent(
   requireCategoryId: boolean,
 ): CanonicalComponent {
   const obj = expectRecord(raw, label);
+  const legacyCategory = expectOptionalString(obj['category'], `${label}.category`);
   const pins = expectArray(obj['pins'], `${label}.pins`).map((p, i) =>
     parsePin(p, `${label}.pins[${i}]`),
   );
@@ -1530,7 +1531,7 @@ function parseComponent(
     categoryId: requireCategoryId
       ? expectNonEmptyString(obj['categoryId'], `${label}.categoryId`)
       : (expectOptionalString(obj['categoryId'], `${label}.categoryId`) ?? ''),
-    category: expectOptionalString(obj['category'], `${label}.category`),
+    ...(!requireCategoryId ? { category: legacyCategory } : {}),
     location: expectOptionalString(obj['location'], `${label}.location`),
     wirevizName: expectOptionalString(obj['wirevizName'], `${label}.wirevizName`),
     wirevizType: expectOptionalString(obj['wirevizType'], `${label}.wirevizType`),

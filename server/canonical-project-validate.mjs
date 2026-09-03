@@ -149,7 +149,7 @@ export function parseCanonicalProject(raw) {
 function parseV1(root) {
   preflightV1(root);
   const boards = expectArray(root['boards'], 'project.boards').map((b, i) =>
-    parseBoard(b, `project.boards[${i}]`),
+    parseBoard(b, `project.boards[${i}]`, true, DEFAULT_VISUAL_PLANES.board),
   );
   const components = expectArray(root['components'], 'project.components').map((c, i) =>
     parseLegacyComponent(c, `project.components[${i}]`),
@@ -266,10 +266,7 @@ function migrateV1(legacy) {
     ),
   };
   const layout = {
-    boards: legacy.boards.map((board) => ({
-      ...board,
-      visualPlane: DEFAULT_VISUAL_PLANES.board,
-    })),
+    boards: legacy.boards,
     components: legacy.components.map((component) => {
       const pinHoles = component.pins
         .filter((pin) => pin.hole !== undefined)
@@ -877,6 +874,7 @@ function preflightV2(electricalRaw, layoutRaw) {
 
 function parseV2Component(raw, label, requireCategoryId) {
   const obj = expectRecord(raw, label);
+  const legacyCategory = expectOptionalString(obj['category'], `${label}.category`);
   const pins = expectArray(obj['pins'], `${label}.pins`).map((value, index) =>
     parseV2Pin(value, `${label}.pins[${index}]`),
   );
@@ -889,7 +887,7 @@ function parseV2Component(raw, label, requireCategoryId) {
     categoryId: requireCategoryId
       ? expectNonEmptyString(obj['categoryId'], `${label}.categoryId`)
       : (expectOptionalString(obj['categoryId'], `${label}.categoryId`) ?? ''),
-    category: expectOptionalString(obj['category'], `${label}.category`),
+    ...(!requireCategoryId ? { category: legacyCategory } : {}),
     location: expectOptionalString(obj['location'], `${label}.location`),
     wirevizName: expectOptionalString(obj['wirevizName'], `${label}.wirevizName`),
     wirevizType: expectOptionalString(obj['wirevizType'], `${label}.wirevizType`),
