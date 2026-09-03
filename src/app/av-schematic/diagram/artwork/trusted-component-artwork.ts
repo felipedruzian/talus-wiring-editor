@@ -176,6 +176,7 @@ export interface TrustedFootprintDefinition {
   readonly id?: string;
   readonly rows: number;
   readonly cols: number;
+  readonly physicalBounds?: Readonly<{ x: number; y: number; width: number; height: number }>;
   readonly pins?: readonly {
     readonly id: string;
     readonly cell: Readonly<{ row: number; col: number }>;
@@ -195,6 +196,10 @@ export function trustedArtworkForFootprintDefinition(
   if (
     footprint.rows !== artwork.grid.rows ||
     footprint.cols !== artwork.grid.cols ||
+    footprint.physicalBounds?.x !== artwork.bounds.x ||
+    footprint.physicalBounds?.y !== artwork.bounds.y ||
+    footprint.physicalBounds?.width !== artwork.bounds.width ||
+    footprint.physicalBounds?.height !== artwork.bounds.height ||
     footprint.pins?.length !== artwork.pins.length
   ) {
     return undefined;

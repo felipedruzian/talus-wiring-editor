@@ -43,11 +43,12 @@ import { type RasterArtworkAsset } from '../artwork/artwork-asset.store';
 import { assertValidRasterArtworkAsset } from '../../library-sidebar/artwork-import';
 import {
   footprintOccupiedHoles,
+  footprintPinPoint,
   footprintPinHoles,
-  isPlacementInBounds,
   isRigidFootprint,
   placementNodePosition,
   resolveFootprintPinHoles,
+  rigidArtworkFitsBoard,
 } from './footprint-geometry';
 import {
   type Footprint,
@@ -736,7 +737,7 @@ function validateLayout(
       }
       if (
         isRigidFootprint(layout.footprint) &&
-        !isPlacementInBounds(board, layout.footprint, layout.placement)
+        !rigidArtworkFitsBoard(board, layout.footprint, layout.placement)
       ) {
         throw new CanonicalProjectError(
           `${label}.placement: rigid physical bounds extend beyond board "${board.id}"`,
@@ -1158,6 +1159,8 @@ function validateBoard(board: CanonicalBoard): void {
 function validateFootprint(footprint: Footprint, label: string): void {
   const pinIds = new Set<string>();
   const occupiedPinCells = new Set<string>();
+  const occupiedPhysicalPoints = new Map<string, string>();
+  const rigid = isRigidFootprint(footprint);
   for (const pin of footprint.pins) {
     if (pinIds.has(pin.id)) {
       throw new CanonicalProjectError(`${label}.pins: duplicate id "${pin.id}"`);
@@ -1177,6 +1180,17 @@ function validateFootprint(footprint: Footprint, label: string): void {
       throw new CanonicalProjectError(`${label}.pins: two pins occupy cell "${cellKey}"`);
     }
     occupiedPinCells.add(cellKey);
+    if (rigid) {
+      const point = footprintPinPoint(pin);
+      const pointKey = `${point.x}:${point.y}`;
+      const otherPinId = occupiedPhysicalPoints.get(pointKey);
+      if (otherPinId) {
+        throw new CanonicalProjectError(
+          `${label}.pins: pins "${otherPinId}" and "${pin.id}" share physical marker "${pointKey}"`,
+        );
+      }
+      occupiedPhysicalPoints.set(pointKey, pin.id);
+    }
   }
   const bodyCells = new Set<string>();
   for (const cell of footprint.bodyCells ?? []) {

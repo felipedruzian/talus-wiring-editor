@@ -16,7 +16,6 @@ import {
   type FootprintCell,
   type FootprintShape,
 } from './footprint';
-import { trustedArtworkForFootprintDefinition } from '../artwork/trusted-component-artwork';
 import {
   type BoardHole,
   type BoardNodeData,
@@ -46,13 +45,11 @@ export interface DrawableFootprint extends CellBox {
 
 export type PhysicalBoardGrid = BoardGrid & Pick<BoardNodeData, 'pitch' | 'centerGap'>;
 
-/** A raster or reviewed SVG is one physical object and may never be channel-stretched. */
+/** Explicit physical markers/bounds opt a footprint into rigid, non-stretched geometry. */
 export function isRigidFootprint(footprint: DrawableFootprint): boolean {
   return (
-    footprint.artwork !== undefined ||
     footprint.physicalBounds !== undefined ||
-    footprint.pins?.some((pin) => pin.artworkPoint !== undefined) === true ||
-    trustedArtworkForFootprintDefinition(footprint) !== undefined
+    footprint.pins?.some((pin) => pin.artworkPoint !== undefined) === true
   );
 }
 
@@ -399,12 +396,9 @@ export function footprintOccupiedHoles(
     // Artwork is physical body too. Conservatively claim every hole whose
     // center is under its rotated rectangle, including overhang beyond the
     // logical header grid (the Nano USB end extends 1.5 pitches each side).
-    const artwork =
-      footprint.artwork ??
-      footprint.physicalBounds ??
-      trustedArtworkForFootprintDefinition(footprint)?.bounds;
-    if (artwork) {
-      const points = footprintArtworkPoints(footprint, artwork, placement.rotation, null);
+    const bounds = footprint.physicalBounds ?? footprint.artwork;
+    if (bounds) {
+      const points = footprintArtworkPoints(footprint, bounds, placement.rotation, null);
       const xs = [points.origin.x, points.horizontal.x, points.vertical.x, points.opposite.x];
       const ys = [points.origin.y, points.horizontal.y, points.vertical.y, points.opposite.y];
       const minX = Math.min(...xs) - PHYSICAL_POINT_EPSILON;
@@ -452,23 +446,20 @@ export function isPlacementInBounds(
   );
 }
 
-function rigidArtworkFitsBoard(
+export function rigidArtworkFitsBoard(
   board: PhysicalBoardGrid,
   footprint: Footprint,
   placement: Pick<DevicePlacement, 'anchor' | 'rotation'>,
 ): boolean {
-  const artwork =
-    footprint.artwork ??
-    footprint.physicalBounds ??
-    trustedArtworkForFootprintDefinition(footprint)?.bounds;
-  if (!artwork) return true;
+  const bounds = footprint.physicalBounds ?? footprint.artwork;
+  if (!bounds) return true;
   const anchor = holeLocalPoint(board, placement.anchor);
-  const points = footprintArtworkPoints(footprint, artwork, placement.rotation, null);
-  const maxX = (board.cols - 1) * board.pitch;
-  const maxY = (board.rows - 1) * board.pitch + (board.centerGap ?? 0);
+  const points = footprintArtworkPoints(footprint, bounds, placement.rotation, null);
+  const maxX = (board.cols - 1) * board.pitch + BOARD_MARGIN * 2;
+  const maxY = (board.rows - 1) * board.pitch + (board.centerGap ?? 0) + BOARD_MARGIN * 2;
   return [points.origin, points.horizontal, points.vertical, points.opposite].every((point) => {
-    const x = anchor.x + point.x * board.pitch - BOARD_MARGIN;
-    const y = anchor.y + point.y * board.pitch - BOARD_MARGIN;
+    const x = anchor.x + point.x * board.pitch;
+    const y = anchor.y + point.y * board.pitch;
     const tolerance = board.pitch * PHYSICAL_POINT_EPSILON;
     return x >= -tolerance && x <= maxX + tolerance && y >= -tolerance && y <= maxY + tolerance;
   });
@@ -687,14 +678,11 @@ export function footprintDrawnExtent(
       }
     }
   }
-  const artwork =
-    footprint.artwork ??
-    footprint.physicalBounds ??
-    trustedArtworkForFootprintDefinition(footprint)?.bounds;
-  if (!artwork) return extent;
-  const points = footprintArtworkPoints(footprint, artwork, rotation, channel);
-  const corners = [points.origin, points.horizontal, points.vertical, points.opposite];
-  includePoints(corners);
+  for (const bounds of [footprint.physicalBounds, footprint.artwork]) {
+    if (!bounds) continue;
+    const points = footprintArtworkPoints(footprint, bounds, rotation, channel);
+    includePoints([points.origin, points.horizontal, points.vertical, points.opposite]);
+  }
   return extent;
 }
 

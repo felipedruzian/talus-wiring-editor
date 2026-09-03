@@ -40,6 +40,19 @@ describe('canonical physical validation corpus', () => {
       }
     });
   }
+
+  it('normalizes pre-rigid v5 raster pins with their legacy channel mapping', () => {
+    const legacy = canonicalValidationCorpus.find(
+      (testCase) =>
+        testCase.name === 'accepts legacy v5 raster footprints without rigid marker metadata',
+    );
+    const parsed = parseCanonicalProjectOnServer(JSON.parse(JSON.stringify(legacy.raw)));
+
+    expect(parsed.layout.components[0].pinHoles).toEqual([
+      { pinId: 'a', hole: { row: 1, col: 1 } },
+      { pinId: 'b', hole: { row: 2, col: 1 } },
+    ]);
+  });
 });
 
 /**
@@ -465,6 +478,56 @@ describe('wiring-editor-server', () => {
         body: JSON.stringify(base),
       });
       expect(forged.status).toBe(400);
+    });
+
+    it('rejects a library footprint whose rigid pins share one marker', async () => {
+      const initial = await fetch(`${server.baseUrl}/api/library`);
+      const etag = initial.headers.get('etag');
+      const catalog = await initial.json();
+      catalog.devices.push({
+        libraryId: 'lib-duplicate-marker',
+        template: {
+          type: 'device',
+          deviceId: '',
+          manufacturer: 'Talus',
+          model: 'Marcadores duplicados',
+          ports: [
+            { id: 'a', label: 'A', direction: 'input' },
+            { id: 'b', label: 'B', direction: 'output' },
+          ],
+          footprintId: 'duplicate-marker',
+          footprint: {
+            id: 'duplicate-marker',
+            label: 'Duplicate marker',
+            rows: 1,
+            cols: 2,
+            pins: [
+              {
+                id: 'a',
+                label: 'A',
+                cell: { row: 0, col: 0 },
+                artworkPoint: { x: 0, y: 0 },
+              },
+              {
+                id: 'b',
+                label: 'B',
+                cell: { row: 0, col: 1 },
+                artworkPoint: { x: 0, y: 0 },
+              },
+            ],
+            shapes: [],
+            physicalBounds: { x: -0.5, y: -0.5, width: 2, height: 1 },
+          },
+        },
+      });
+
+      const response = await fetch(`${server.baseUrl}/api/library`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'If-Match': etag },
+        body: JSON.stringify(catalog),
+      });
+
+      expect(response.status).toBe(400);
     });
 
     it('does not route nested library paths to the Angular index', async () => {

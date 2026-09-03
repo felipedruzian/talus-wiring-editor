@@ -435,6 +435,10 @@ function isFootprint(value: unknown): value is Footprint {
   const cols = value['cols'];
   const pinIds = new Set<string>();
   const pinCells = new Set<string>();
+  const pinPoints = new Set<string>();
+  const rigid =
+    value['physicalBounds'] !== undefined ||
+    value['pins'].some((pin) => isRecord(pin) && pin['artworkPoint'] !== undefined);
   if (
     !value['pins'].every((pin) => {
       if (
@@ -452,6 +456,12 @@ function isFootprint(value: unknown): value is Footprint {
       }
       pinIds.add(pin['id']);
       pinCells.add(cellKey(pin['cell']));
+      if (rigid) {
+        const point = pin['artworkPoint'] ?? { x: pin['cell'].col, y: pin['cell'].row };
+        const pointKey = `${point.x}:${point.y}`;
+        if (pinPoints.has(pointKey)) return false;
+        pinPoints.add(pointKey);
+      }
       return true;
     }) ||
     !value['shapes'].every(isFootprintShape)

@@ -82,6 +82,28 @@ describe('canonical physical validation corpus', () => {
     });
     expect(parsed.layout.components[0]?.position).toEqual({ x: 30.25, y: 69.25 });
   });
+
+  it('keeps the pre-rigid v5 raster contract readable across a board channel', () => {
+    const legacy = must(
+      canonicalValidationCorpus.find(
+        (testCase) =>
+          testCase.name === 'accepts legacy v5 raster footprints without rigid marker metadata',
+      ),
+    );
+    const parsed = parseCanonicalProject(clone(legacy.raw));
+
+    expect(parsed.formatVersion).toBe(5);
+    expect(parsed.layout.components[0]).toMatchObject({
+      pinHoles: [
+        { pinId: 'a', hole: { row: 1, col: 1 } },
+        { pinId: 'b', hole: { row: 2, col: 1 } },
+      ],
+    });
+    expect(parsed.layout.components[0]?.footprint?.pins).toEqual([
+      { id: 'a', label: 'A', cell: { row: 0, col: 0 }, primary: true },
+      { id: 'b', label: 'B', cell: { row: 1, col: 0 } },
+    ]);
+  });
 });
 
 function canonicalCableBudgetProject(total: number): CanonicalProjectV2 {

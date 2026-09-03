@@ -63,4 +63,15 @@ describe('trusted component artwork contract', () => {
     expect(trustedArtworkForFootprintDefinition(ARDUINO_NANO_FOOTPRINT)).toBe(ARDUINO_NANO_ARTWORK);
     expect(trustedArtworkForFootprintDefinition(changed)).toBeUndefined();
   });
+
+  it('requires the persisted physical bounds to match the reviewed figure', () => {
+    const withoutBounds = cloneFootprint(ARDUINO_NANO_FOOTPRINT);
+    delete withoutBounds.physicalBounds;
+    const changedBounds = cloneFootprint(ARDUINO_NANO_FOOTPRINT);
+    if (!changedBounds.physicalBounds) throw new Error('Missing Nano physical bounds');
+    changedBounds.physicalBounds.width += 0.1;
+
+    expect(trustedArtworkForFootprintDefinition(withoutBounds)).toBeUndefined();
+    expect(trustedArtworkForFootprintDefinition(changedBounds)).toBeUndefined();
+  });
 });

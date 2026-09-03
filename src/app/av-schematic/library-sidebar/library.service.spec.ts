@@ -162,6 +162,57 @@ describe('LibraryService', () => {
     expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
   });
 
+  it('repairs a catalog entry whose rigid pins share one physical marker', () => {
+    const storage = new MemoryStorage();
+    const invalid = {
+      libraryId: 'lib-duplicate-marker',
+      template: {
+        ...createBlankTemplate(),
+        manufacturer: 'Talus',
+        model: 'Marcadores duplicados',
+        ports: [
+          { id: 'a', label: 'A', direction: 'input' as const },
+          { id: 'b', label: 'B', direction: 'output' as const },
+        ],
+        footprintId: 'duplicate-marker',
+        footprint: {
+          id: 'duplicate-marker',
+          label: 'Duplicate marker',
+          rows: 1,
+          cols: 2,
+          pins: [
+            {
+              id: 'a',
+              label: 'A',
+              cell: { row: 0, col: 0 },
+              artworkPoint: { x: 0, y: 0 },
+            },
+            {
+              id: 'b',
+              label: 'B',
+              cell: { row: 0, col: 1 },
+              artworkPoint: { x: 0, y: 0 },
+            },
+          ],
+          shapes: [],
+          physicalBounds: { x: -0.5, y: -0.5, width: 2, height: 1 },
+        },
+      },
+    };
+    const serialized = JSON.stringify({
+      version: LIBRARY_STORAGE_VERSION,
+      devices: [invalid],
+      assets: {},
+    });
+    storage.setItem(LIBRARY_STORAGE_KEY, serialized);
+
+    const loaded = loadLibraryCatalog(storage);
+
+    expect(loaded.catalog.devices).toEqual(SEED_LIBRARY);
+    expect(loaded.needsRepair).toBe(true);
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
+  });
+
   it('preserves an intentionally empty persisted catalog', () => {
     const storage = new MemoryStorage();
     storage.setItem(

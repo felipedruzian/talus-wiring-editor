@@ -408,6 +408,31 @@ describe('breadboard DXF rendering', () => {
     bodyCells: [],
   };
 
+  const separatedMarkerFootprint: Footprint = {
+    id: 'separated-marker',
+    label: 'Separated marker',
+    rows: 4,
+    cols: 1,
+    pins: [
+      {
+        id: 'top',
+        label: 'TOP',
+        cell: { row: 0, col: 0 },
+        artworkPoint: { x: 0, y: 0 },
+        primary: true,
+      },
+      {
+        id: 'bottom',
+        label: 'BOTTOM',
+        cell: { row: 1, col: 0 },
+        artworkPoint: { x: 0, y: 3 },
+      },
+    ],
+    shapes: [{ kind: 'line', x1: 0, y1: 0, x2: 0, y2: 3, stroke: 'lead' }],
+    physicalBounds: { x: -0.25, y: -0.25, width: 0.5, height: 3.5 },
+    bodyCells: [],
+  };
+
   const straddlePlacement = {
     boardId: 'bb',
     anchor: { row: breadboardRowIndex('F'), col: 4 },
@@ -576,6 +601,132 @@ describe('breadboard DXF rendering', () => {
     });
     expect(pads.map((pad) => ({ x: pad.x, y: pad.y }))).toEqual(expected);
   });
+
+  it.each([0, 180] as const)(
+    'uses physical markers instead of logical cells across the channel at %s degrees',
+    (rotation) => {
+      const placement = {
+        boardId: breadboardNode.data.boardId,
+        anchor: { row: breadboardRowIndex('F'), col: 20 },
+        rotation,
+      };
+      const node: Node<DeviceNodeData> = {
+        id: `separated-channel-${rotation}`,
+        type: NodeTemplateType.FootprintNode,
+        position: placementNodePosition(
+          { board: breadboardNode.data, position: breadboardNode.position },
+          placement,
+          separatedMarkerFootprint,
+        ),
+        data: {
+          type: 'device',
+          deviceId: `SEP-${rotation}`,
+          manufacturer: 'test',
+          model: 'separated marker',
+          boardId: breadboardNode.data.boardId,
+          footprintId: separatedMarkerFootprint.id,
+          footprint: separatedMarkerFootprint,
+          placement,
+          ports: separatedMarkerFootprint.pins.map((pin) => ({
+            id: pin.id,
+            label: pin.label,
+            direction: 'input',
+          })),
+        },
+      };
+      const exported = new DxfExporter(buildAvDxfConfig()).export(
+        [breadboardNode, node],
+        [],
+        bounds,
+      );
+      const pads = exported
+        .getEntities()
+        .filter(
+          (entity): entity is DxfCircle =>
+            entity instanceof DxfCircle && entity.layerName === LAYERS.FOOTPRINTS,
+        );
+      const expected = resolveFootprintPinHoles(
+        separatedMarkerFootprint,
+        placement,
+        breadboardNode.data,
+      ).pins.map(({ hole }) => {
+        const point = holeLocalPoint(breadboardNode.data, hole);
+        return mapper.mapPoint(
+          breadboardNode.position.x + point.x,
+          breadboardNode.position.y + point.y,
+        );
+      });
+
+      expect(pads.map(({ x, y }) => ({ x, y }))).toEqual(expected);
+      expect(expected).toHaveLength(2);
+    },
+  );
+
+  it.each([90, 270] as const)(
+    'uses separated physical markers on a uniform board at %s degrees',
+    (rotation) => {
+      const uniformNode: Node<BoardNodeData> = {
+        ...breadboardNode,
+        id: 'uniform-dxf',
+        position: { x: 60, y: 40 },
+        data: {
+          type: 'board',
+          boardId: 'uniform-dxf',
+          label: 'Uniform DXF',
+          rows: 12,
+          cols: 12,
+          pitch: PITCH,
+        },
+      };
+      const placement = {
+        boardId: uniformNode.data.boardId,
+        anchor: { row: 3, col: 3 },
+        rotation,
+      };
+      const node: Node<DeviceNodeData> = {
+        id: `separated-uniform-${rotation}`,
+        type: NodeTemplateType.FootprintNode,
+        position: placementNodePosition(
+          { board: uniformNode.data, position: uniformNode.position },
+          placement,
+          separatedMarkerFootprint,
+        ),
+        data: {
+          type: 'device',
+          deviceId: `SEP-${rotation}`,
+          manufacturer: 'test',
+          model: 'separated marker',
+          boardId: uniformNode.data.boardId,
+          footprintId: separatedMarkerFootprint.id,
+          footprint: separatedMarkerFootprint,
+          placement,
+          ports: separatedMarkerFootprint.pins.map((pin) => ({
+            id: pin.id,
+            label: pin.label,
+            direction: 'input',
+          })),
+        },
+      };
+      const exported = new DxfExporter(buildAvDxfConfig()).export([uniformNode, node], [], bounds);
+      const pads = exported
+        .getEntities()
+        .filter(
+          (entity): entity is DxfCircle =>
+            entity instanceof DxfCircle && entity.layerName === LAYERS.FOOTPRINTS,
+        );
+      const expected = resolveFootprintPinHoles(
+        separatedMarkerFootprint,
+        placement,
+        uniformNode.data,
+      ).pins.map(({ hole }) => {
+        const point = holeLocalPoint(uniformNode.data, hole);
+        return mapper.mapPoint(uniformNode.position.x + point.x, uniformNode.position.y + point.y);
+      });
+
+      expect(pads.map(({ x, y }) => ({ x, y }))).toEqual(expected);
+      expect(expected).toHaveLength(2);
+    },
+  );
 
   it('stretches the exported body across the trench instead of leaving it behind', () => {
     const lead = doc

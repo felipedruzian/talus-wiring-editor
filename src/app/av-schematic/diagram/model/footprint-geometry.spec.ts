@@ -427,6 +427,67 @@ describe('rigid module geometry on non-uniform boards', () => {
     }
   });
 
+  it('uses the rendered board margin as physical surface at every rotation', () => {
+    const uniform: BoardNodeData = {
+      type: 'board',
+      boardId: 'uniform-margin',
+      label: 'Uniform with margin',
+      rows: 6,
+      cols: 6,
+      pitch: 20,
+    };
+    const marginFootprint: Footprint = {
+      id: 'margin-rigid',
+      label: 'Margin rigid',
+      rows: 2,
+      cols: 3,
+      pins: [
+        {
+          id: 'a',
+          label: 'A',
+          cell: { row: 0, col: 0 },
+          artworkPoint: { x: 0, y: 0 },
+        },
+        {
+          id: 'b',
+          label: 'B',
+          cell: { row: 1, col: 2 },
+          artworkPoint: { x: 2, y: 1 },
+        },
+      ],
+      shapes: [],
+      physicalBounds: { x: -0.5, y: -0.5, width: 3, height: 2 },
+    };
+
+    for (const rotation of [0, 90, 180, 270] as const) {
+      expect(
+        validatePlacement(
+          `margin-${rotation}`,
+          uniform,
+          marginFootprint,
+          { boardId: uniform.boardId, anchor: { row: 0, col: 0 }, rotation },
+          [],
+        ),
+      ).toBeNull();
+    }
+  });
+
+  it('allows the Nano body to use the plastic margin at column one', () => {
+    expect(
+      validatePlacement(
+        'nano-margin',
+        breadboard,
+        ARDUINO_NANO_FOOTPRINT,
+        {
+          boardId: breadboard.boardId,
+          anchor: { row: 5, col: 1 },
+          rotation: 0,
+        },
+        [],
+      ),
+    ).toBeNull();
+  });
+
   it('claims holes below the Nano artwork overhang, not only its 7 x 15 header grid', () => {
     const placement: DevicePlacement = {
       boardId: breadboard.boardId,
