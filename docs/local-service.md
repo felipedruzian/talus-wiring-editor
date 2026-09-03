@@ -75,14 +75,14 @@ abaixo é implementada explicitamente no próprio `wiring-editor-server.mjs`
   uma reimplementação em JavaScript puro (sem build/bundler ligando o
   servidor ao TypeScript do Angular) das mesmas regras de
   `diagram/model/canonical-project-parse.ts::parseCanonicalProject`. Um corpo
-  que não seja um projeto canônico v1, v2 ou v3 válido (tipos errados, ids
+  que não seja um projeto canônico v1, v2, v3 ou v4 válido (tipos errados, ids
   duplicados, referências inexistentes, nets desconectadas, furos ou taps
   fora dos limites, endpoints v1 iguais, conflitos de cor v1, loops inválidos
   ou extras capazes de sobrescrever campos canônicos etc.) é rejeitado com
   `400 invalid_project` antes de
   qualquer gravação. O servidor mantém snapshots v1 na versão v1, após
-  normalizar somente os campos reconhecidos; o frontend os migra para v3 ao
-  abrir. As implementações de validação permanecem separadas, mas importam a
+  normalizar somente os campos reconhecidos; o frontend os migra para v4 ao
+  abrir. Snapshots v2 e v3 são normalizados para v4 pelo servidor. As implementações de validação permanecem separadas, mas importam a
   mesma fonte auditável de limites operacionais em
   `diagram/model/operational-limits.mjs`; `canonical-project.spec.ts`
   (cliente) e `wiring-editor-server.spec.mjs` (servidor) exercitam o mesmo
@@ -106,12 +106,12 @@ configuração de CORS — deliberadamente, já que acesso entre origens nunca
 foi um requisito e adicioná-lo só ampliaria a superfície de ataque sem
 benefício).
 
-| Método   | Caminho             | Corpo                                                                 | Resposta                                                                   |
-| -------- | ------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `GET`    | `/api/projects`     | —                                                                     | `{ projects: [{ id, name, updatedAt }] }`                                  |
-| `GET`    | `/api/projects/:id` | —                                                                     | O projeto canônico v1, v2 ou v3 normalizado e armazenado em JSON, ou `404` |
-| `PUT`    | `/api/projects/:id` | Um objeto JSON canônico v1, v2 ou v3 validado (ver "Validação" acima) | `{ id, saved: true }`, ou `400 invalid_project` se a validação falhar      |
-| `DELETE` | `/api/projects/:id` | —                                                                     | `{ id, deleted: true }`, ou `404`                                          |
+| Método   | Caminho             | Corpo                                                                     | Resposta                                                               |
+| -------- | ------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `GET`    | `/api/projects`     | —                                                                         | `{ projects: [{ id, name, updatedAt }] }`                              |
+| `GET`    | `/api/projects/:id` | —                                                                         | O projeto canônico v1 ou v4 normalizado e armazenado em JSON, ou `404` |
+| `PUT`    | `/api/projects/:id` | Um objeto JSON canônico v1, v2, v3 ou v4 validado (ver "Validação" acima) | `{ id, saved: true }`, ou `400 invalid_project` se a validação falhar  |
+| `DELETE` | `/api/projects/:id` | —                                                                         | `{ id, deleted: true }`, ou `404`                                      |
 
 Gravações são atômicas: o corpo é escrito em um arquivo de rascunho no
 mesmo diretório e depois `rename()`ado sobre o alvo, então um leitor

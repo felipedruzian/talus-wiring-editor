@@ -1,7 +1,8 @@
 # Edição de rotas e endpoints de fios
 
-Os fios do canvas são arestas ortogonais que o usuário pode editar, reconectar
-ou deixar com uma extremidade solta. São três funcionalidades separadas: a
+Os fios globais do canvas são arestas ortogonais; jumpers da protoboard são
+polilinhas livres, inicialmente retas. Ambos podem ser editados e reconectados,
+mas somente fios globais podem ficar com uma extremidade solta. São três funcionalidades separadas: a
 edição de rota segue o pipeline interação → comando → middleware → modelo; a
 reconexão e a criação de fios pendentes mantêm ciclos próprios e compartilham
 somente a geometria pura.
@@ -10,11 +11,14 @@ Há duas formas de roteamento:
 
 - automático: o `ng-diagram` calcula o traçado e o projeto não persiste pontos;
 - manual: a ligação possui `routingMode: 'manual'` e uma lista explícita de
-  `points` em `layout.conductors` do `CanonicalProjectV3`.
+  `points` em `layout.conductors` do `CanonicalProjectV4` para fios globais;
+- jumper local: `boardJumper` persiste apenas `boardId` e as dobras intermediárias
+  locais; os endpoints continuam derivados dos furos.
 
-A rota pertence ao condutor selecionado. Restaurar o roteamento automático
-remove apenas `routingMode` e `points` desse condutor; cor, metadados,
-endpoints e as demais ligações da net permanecem intactos.
+A rota pertence ao condutor selecionado. Restaurar um fio global remove
+`routingMode` e `points`; restaurar um jumper remove suas dobras e volta à reta
+entre os dois furos. Cor, owner, metadados, endpoints e as demais ligações da net
+permanecem intactos.
 
 ## Interações disponíveis
 
@@ -33,6 +37,12 @@ Ao selecionar um fio, o overlay apresenta controles de segmento e de dobra:
 O snap usa a mesma configuração da grade aplicada aos nodes. Com snap ativo,
 dobras, segmentos e extremidades soltas são alinhados à grade; com snap
 desativado, o movimento permanece livre.
+
+No jumper, cada segmento oferece inserção de uma dobra livre e cada ponto
+intermediário pode ser arrastado ou removido. O gesto preserva a polilinha sem
+ortogonalizá-la e não aplica o grid global. Arraste de node, dobra, segmento ou
+endpoint abre um único grupo de histórico; todos os frames do gesto viram um só
+passo de undo.
 
 ## Nova ancoragem e simplificação
 

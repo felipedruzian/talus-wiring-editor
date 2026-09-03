@@ -12,6 +12,7 @@ import {
 } from '../logic';
 import { anchorEndpointToPort } from './reshape-edge';
 import type { InsertBendCommand, MoveBendCommand, RemoveBendCommand } from './types';
+import { isBoardJumperEdge } from '../../model/board-jumper';
 
 /**
  * Bend-editing writes. Same contract as `reshape-edge.ts`: the geometry is
@@ -23,15 +24,27 @@ import type { InsertBendCommand, MoveBendCommand, RemoveBendCommand } from './ty
 
 // Create a bend on a segment. The route is normalized first so the segment
 // indices the overlay handed out match the points actually being edited.
-export const applyInsertBend = (model: NgDiagramModelService, command: InsertBendCommand): void => {
+export const applyInsertBend = (
+  model: NgDiagramModelService,
+  command: InsertBendCommand,
+): Promise<void> => {
   const edge = model.getEdgeById(command.edgeId);
+  if (isBoardJumperEdge(edge) && edge.points) {
+    if (command.segmentIndex < 0 || command.segmentIndex >= edge.points.length - 1) {
+      return Promise.resolve();
+    }
+    const points = edge.points.map((point) => ({ ...point }));
+    points.splice(command.segmentIndex + 1, 0, snapFreePoint(command.at, command.grid));
+    anchorFreeRoute(model, command.edgeId, points);
+    return model.updateEdge(command.edgeId, { points, routing: 'polyline', routingMode: 'manual' });
+  }
   const points = normalizeRoute(edge?.points);
-  if (points.length < 2) return;
+  if (points.length < 2) return Promise.resolve();
 
   const next = insertBendAt(points, command.segmentIndex, command.at, command.grid);
-  if (!next) return;
+  if (!next) return Promise.resolve();
 
-  void model.updateEdge(command.edgeId, {
+  return model.updateEdge(command.edgeId, {
     points: simplifyRoute(anchorRoute(model, command.edgeId, next)),
     routingMode: 'manual',
   });
@@ -39,14 +52,27 @@ export const applyInsertBend = (model: NgDiagramModelService, command: InsertBen
 
 // Delete a bend. `removeBendAt` returns null when the bend is structural (an L
 // between two fixed ports) -- then the route is left exactly as it was.
-export const applyRemoveBend = (model: NgDiagramModelService, command: RemoveBendCommand): void => {
+export const applyRemoveBend = (
+  model: NgDiagramModelService,
+  command: RemoveBendCommand,
+): Promise<void> => {
   const edge = model.getEdgeById(command.edgeId);
-  if (!edge?.points) return;
+  if (!edge?.points) return Promise.resolve();
+
+  if (isBoardJumperEdge(edge)) {
+    if (command.bendIndex < 1 || command.bendIndex >= edge.points.length - 1) {
+      return Promise.resolve();
+    }
+    const points = edge.points.map((point) => ({ ...point }));
+    points.splice(command.bendIndex, 1);
+    anchorFreeRoute(model, command.edgeId, points);
+    return model.updateEdge(command.edgeId, { points, routing: 'polyline', routingMode: 'manual' });
+  }
 
   const next = removeBendAt(edge.points, command.bendIndex);
-  if (!next) return;
+  if (!next) return Promise.resolve();
 
-  void model.updateEdge(command.edgeId, {
+  return model.updateEdge(command.edgeId, {
     points: simplifyRoute(anchorRoute(model, command.edgeId, next)),
     routingMode: 'manual',
   });
@@ -54,9 +80,26 @@ export const applyRemoveBend = (model: NgDiagramModelService, command: RemoveBen
 
 // Apply one live bend drag: the bend follows the cursor from where it started,
 // recomputed from `initialPoints` each move so drags never accumulate error.
-export const applyMoveBend = (model: NgDiagramModelService, command: MoveBendCommand): void => {
+export const applyMoveBend = (
+  model: NgDiagramModelService,
+  command: MoveBendCommand,
+): Promise<void> => {
   const origin = command.initialPoints[command.bendIndex] as Point | undefined;
-  if (!origin) return;
+  if (!origin) return Promise.resolve();
+
+  const edge = model.getEdgeById(command.edgeId);
+  if (isBoardJumperEdge(edge)) {
+    if (command.bendIndex < 1 || command.bendIndex >= command.initialPoints.length - 1) {
+      return Promise.resolve();
+    }
+    const points = command.initialPoints.map((point) => ({ ...point }));
+    points[command.bendIndex] = snapFreePoint(
+      { x: origin.x + command.dxWorld, y: origin.y + command.dyWorld },
+      command.grid,
+    );
+    anchorFreeRoute(model, command.edgeId, points);
+    return model.updateEdge(command.edgeId, { points, routing: 'polyline', routingMode: 'manual' });
+  }
 
   const next = moveBendTo(
     command.initialPoints,
@@ -64,9 +107,9 @@ export const applyMoveBend = (model: NgDiagramModelService, command: MoveBendCom
     { x: origin.x + command.dxWorld, y: origin.y + command.dyWorld },
     command.grid,
   );
-  if (!next) return;
+  if (!next) return Promise.resolve();
 
-  void model.updateEdge(command.edgeId, {
+  return model.updateEdge(command.edgeId, {
     points: anchorRoute(model, command.edgeId, next),
     routingMode: 'manual',
   });
@@ -95,3 +138,16 @@ const anchorRoute = (
 
 const simplifyRoute = (points: readonly Point[]): Point[] =>
   dropSameAxisBends(collapseCollinearBends(points));
+
+const snapFreePoint = (point: Point, grid: { x: number; y: number } | null): Point =>
+  grid
+    ? {
+        x: Math.round(point.x / grid.x) * grid.x,
+        y: Math.round(point.y / grid.y) * grid.y,
+      }
+    : { ...point };
+
+const anchorFreeRoute = (model: NgDiagramModelService, edgeId: string, points: Point[]): void => {
+  anchorEndpointToPort(model, points, edgeId, 'source');
+  anchorEndpointToPort(model, points, edgeId, 'target');
+};

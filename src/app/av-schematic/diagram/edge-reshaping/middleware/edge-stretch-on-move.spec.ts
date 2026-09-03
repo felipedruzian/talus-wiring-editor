@@ -9,6 +9,162 @@ interface EdgePointsPatch {
 }
 
 describe('applyEdgeStretchOnSelectionMoved', () => {
+  it('translates every bend rigidly when a jumper owner board moves', async () => {
+    const board: Node<BoardNodeData> = {
+      id: 'board-node-instance',
+      type: NodeTemplateType.BoardNode,
+      position: { x: 130, y: 180 },
+      data: {
+        type: 'board',
+        boardId: 'breadboard-domain',
+        label: 'Protoboard',
+        surface: 'breadboard',
+        rows: 10,
+        cols: 12,
+        pitch: 10,
+      },
+      measuredPorts: [
+        {
+          id: 'hole:0:0',
+          nodeId: 'board-node-instance',
+          type: 'both',
+          side: 'left',
+          position: { x: 16, y: 9 },
+          size: { width: 14, height: 14 },
+        },
+        {
+          id: 'hole:2:4',
+          nodeId: 'board-node-instance',
+          type: 'both',
+          side: 'left',
+          position: { x: 56, y: 29 },
+          size: { width: 14, height: 14 },
+        },
+      ],
+    };
+    const edge: Edge = {
+      id: 'jumper-1',
+      source: board.id,
+      sourcePort: 'hole:0:0',
+      target: board.id,
+      targetPort: 'hole:2:4',
+      routingMode: 'manual',
+      points: [
+        { x: 116, y: 216 },
+        { x: 136, y: 216 },
+        { x: 136, y: 236 },
+        { x: 156, y: 236 },
+      ],
+      data: { type: 'wire', wireId: 'W1', jumperBoardId: board.data.boardId },
+    };
+    const updateEdges = vi.fn<(patches: EdgePointsPatch[]) => void>();
+    const modelService = {
+      getModel: () => ({ getNodes: () => [board], getEdges: () => [edge] }),
+      getNodeById: () => board,
+      updateEdges,
+    } as unknown as NgDiagramModelService;
+
+    await applyEdgeStretchOnSelectionMoved(modelService, new Set([board.id]), true);
+
+    expect(updateEdges).toHaveBeenCalledWith([
+      {
+        id: edge.id,
+        points: [
+          { x: 146, y: 196 },
+          { x: 166, y: 196 },
+          { x: 166, y: 216 },
+          { x: 186, y: 216 },
+        ],
+      },
+    ]);
+  });
+
+  it('does not alter a board jumper when an external item moves', async () => {
+    const edge: Edge = {
+      id: 'jumper-1',
+      source: 'breadboard',
+      sourcePort: 'hole:0:0',
+      target: 'breadboard',
+      targetPort: 'hole:2:4',
+      routingMode: 'manual',
+      points: [
+        { x: 16, y: 16 },
+        { x: 56, y: 16 },
+        { x: 56, y: 36 },
+      ],
+      data: { type: 'wire', wireId: 'W1', jumperBoardId: 'breadboard' },
+    };
+    const updateEdges = vi.fn();
+    const modelService = {
+      getModel: () => ({ getNodes: () => [], getEdges: () => [edge] }),
+      updateEdges,
+    } as unknown as NgDiagramModelService;
+
+    await applyEdgeStretchOnSelectionMoved(modelService, new Set(['external']), true);
+
+    expect(updateEdges).not.toHaveBeenCalled();
+  });
+
+  it('does not simplify a jumper already translated by the model adapter', async () => {
+    const board: Node<BoardNodeData> = {
+      id: 'board-node-instance',
+      type: NodeTemplateType.BoardNode,
+      position: { x: 130, y: 180 },
+      data: {
+        type: 'board',
+        boardId: 'breadboard-domain',
+        label: 'Protoboard',
+        surface: 'breadboard',
+        rows: 3,
+        cols: 4,
+        pitch: 20,
+      },
+      measuredPorts: [
+        {
+          id: 'hole:0:0',
+          nodeId: 'board-node-instance',
+          type: 'both',
+          side: 'left',
+          position: { x: 16, y: 9 },
+          size: { width: 14, height: 14 },
+        },
+        {
+          id: 'hole:1:2',
+          nodeId: 'board-node-instance',
+          type: 'both',
+          side: 'left',
+          position: { x: 56, y: 29 },
+          size: { width: 14, height: 14 },
+        },
+      ],
+    };
+    const translated: Edge = {
+      id: 'jumper-1',
+      source: board.id,
+      sourcePort: 'hole:0:0',
+      target: board.id,
+      targetPort: 'hole:1:2',
+      routingMode: 'manual',
+      points: [
+        { x: 146, y: 196 },
+        { x: 166, y: 206 },
+        { x: 186, y: 216 },
+      ],
+      data: { type: 'wire', wireId: 'W1', jumperBoardId: board.data.boardId },
+    };
+    const updateEdges = vi.fn();
+    const modelService = {
+      getModel: () => ({ getNodes: () => [board], getEdges: () => [translated] }),
+      getNodeById: () => board,
+      updateEdges,
+    } as unknown as NgDiagramModelService;
+
+    await applyEdgeStretchOnSelectionMoved(modelService, new Set([board.id]), true);
+
+    expect(updateEdges).not.toHaveBeenCalled();
+    expect(translated.points).toHaveLength(3);
+  });
+
   it('re-anchors only incident manual wires and preserves their internal route', async () => {
     const route = [
       { x: 0, y: 0 },

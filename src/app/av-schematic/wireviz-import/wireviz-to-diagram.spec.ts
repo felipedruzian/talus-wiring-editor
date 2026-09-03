@@ -253,7 +253,7 @@ describe('wirevizToElectrical', () => {
     const electrical = importMultidrop().electrical;
     const net = electrical.nets[0];
     const project: CanonicalProjectV2 = {
-      formatVersion: 3,
+      formatVersion: 4,
       electrical,
       layout: {
         boards: [],

@@ -48,9 +48,11 @@ export const renderWireEdge: DxfEdgeRenderer = (ctx, edge) => {
   }
 
   const mapped = adjusted.map((point) => ctx.mapper.mapPoint(point.x, point.y));
-  ctx.doc.addEntity(new DxfLwPolyline(LAYERS.WIRES, mapped, false, undefined, LINE_WEIGHT.WIRE));
+  const data = edge.data as WireEdgeData;
+  const layer = data.jumperBoardId ? LAYERS.JUMPERS : LAYERS.WIRES;
+  ctx.doc.addEntity(new DxfLwPolyline(layer, mapped, false, undefined, LINE_WEIGHT.WIRE));
 
-  renderWireLabels(ctx, adjusted, edge.data as WireEdgeData);
+  renderWireLabels(ctx, adjusted, data, layer);
 };
 
 const isPhysicalEndpoint = (ctx: DxfRenderContext, nodeId: string | null): boolean => {
@@ -62,32 +64,24 @@ const renderWireLabels = (
   ctx: DxfRenderContext,
   points: readonly Point[],
   data: WireEdgeData,
+  layer: string,
 ): void => {
   const wireId = data?.wireId;
   if (!wireId) return;
 
   const sourceAnchor = pointAtDistance(points, WIRE_LABEL_DISTANCE_FROM_END, false);
   const targetAnchor = pointAtDistance(points, WIRE_LABEL_DISTANCE_FROM_END, true);
-  if (sourceAnchor) renderLabel(ctx, sourceAnchor, wireId);
-  if (targetAnchor) renderLabel(ctx, targetAnchor, wireId);
+  if (sourceAnchor) renderLabel(ctx, sourceAnchor, wireId, layer);
+  if (targetAnchor) renderLabel(ctx, targetAnchor, wireId, layer);
 };
 
-const renderLabel = (ctx: DxfRenderContext, anchor: Point, text: string): void => {
+const renderLabel = (ctx: DxfRenderContext, anchor: Point, text: string, layer: string): void => {
   const mappedPoint = ctx.mapper.mapPoint(anchor.x, anchor.y);
   const heightMm = ctx.mapper.mapLength(FONT_WIRE_LABEL);
   // halign=1 (center), valign=1 (bottom) - text sits centered above the wire,
   // bottom edge of the glyphs flush with the wire line.
   ctx.doc.addEntity(
-    new DxfText(
-      LAYERS.WIRES,
-      text,
-      mappedPoint.x,
-      mappedPoint.y,
-      heightMm,
-      TEXT_STYLE.STANDARD,
-      1,
-      1,
-    ),
+    new DxfText(layer, text, mappedPoint.x, mappedPoint.y, heightMm, TEXT_STYLE.STANDARD, 1, 1),
   );
 };
 

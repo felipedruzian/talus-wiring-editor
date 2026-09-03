@@ -78,6 +78,27 @@ describe('wire form colors', () => {
 });
 
 describe('wire form data mapping', () => {
+  it('edits a jumper color without losing its board owner', () => {
+    const existing: WireEdgeData = {
+      type: 'wire',
+      wireId: 'J1',
+      wireType: 'jumper',
+      jumperBoardId: 'breadboard',
+    };
+    const form = wireDataToFormData(existing);
+
+    expect(
+      formDataToWireData(
+        { ...form, colorChoice: CUSTOM_COLOR_CHOICE, customColor: '#123456' },
+        existing,
+      ),
+    ).toMatchObject({
+      jumperBoardId: 'breadboard',
+      color: '#123456',
+      colorCode: '#123456',
+    });
+  });
+
   it('round-trips all editable wire metadata through the single wire model', () => {
     const existing: WireEdgeData = { type: 'wire', wireId: 'old', netId: 'derived-net' };
     const data = formDataToWireData(baseForm(), existing);

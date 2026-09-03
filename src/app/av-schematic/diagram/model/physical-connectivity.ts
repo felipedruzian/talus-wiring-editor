@@ -33,6 +33,10 @@ export interface PhysicalEdgeNet {
   conflict: string[];
 }
 
+export interface PhysicalConnectionAssessment extends PhysicalEdgeNet {
+  sameCopper: boolean;
+}
+
 export interface PhysicalGraphConflict {
   conflict: string[];
   conductorIds: string[];
@@ -108,6 +112,21 @@ export function physicalEdgeNet(
   const starts = graph.registerEdge(edge);
   const unique = labelsForComponent(graph, collectComponent(graph, starts));
   return unique.length > 1 ? { conflict: unique } : { netLabel: unique[0], conflict: [] };
+}
+
+/** Evaluates a prospective connection once, including net conflict and copper identity. */
+export function assessPhysicalConnection(
+  nodes: readonly Node[],
+  edge: PhysicalEdgeLike,
+  contextEdges: readonly PhysicalEdgeLike[] = [],
+): PhysicalConnectionAssessment {
+  const net = physicalEdgeNet(nodes, edge, contextEdges);
+  const source = physicalEndpoint(nodes, edge.source, edge.sourcePort);
+  const target = physicalEndpoint(nodes, edge.target, edge.targetPort);
+  return {
+    ...net,
+    sameCopper: !!source && !!target && physicalCopperKey(source) === physicalCopperKey(target),
+  };
 }
 
 /**

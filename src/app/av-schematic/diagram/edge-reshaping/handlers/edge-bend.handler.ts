@@ -9,6 +9,8 @@ import {
 import { edgeGridReferenceNode, resolveEdgeGrid, snapPointToGrid } from '../logic';
 import { PointerDragController } from '../directives/pointer-drag-controller';
 import { EdgeCommandDispatcher } from '../commands';
+import { isBoardJumperEdge } from '../../model/board-jumper';
+import { beginModelHistoryGroup } from '../../model/model-history-group';
 
 const DRAG_THRESHOLD_PX = 3;
 
@@ -49,6 +51,8 @@ export class EdgeBendHandler {
   readonly gestureActive = signal(false);
   /** Where the dragged bend currently sits, in flow coords; null when idle. */
   readonly dragPreview = signal<BendStartDescriptor | null>(null);
+  private endHistoryGroup = (): void => undefined;
+  private pendingMutation: Promise<void> = Promise.resolve();
 
   // 'document' + frame coalescing: a bend edit can change the point count, so
   // the handle element may be recycled mid-drag -- document listeners survive it.
@@ -62,29 +66,35 @@ export class EdgeBendHandler {
         const scale = this.viewportService.scale() || 1;
         const dxWorld = dxClient / scale;
         const dyWorld = dyClient / scale;
-        this.dispatcher.dispatch({
-          kind: 'move-bend',
-          edgeId: state.edgeId,
-          initialPoints: state.initialPoints,
-          bendIndex: state.bendIndex,
-          grid: state.grid,
-          dxWorld,
-          dyWorld,
-        });
+        this.pendingMutation = this.pendingMutation.then(() =>
+          this.dispatcher.dispatch({
+            kind: 'move-bend',
+            edgeId: state.edgeId,
+            initialPoints: state.initialPoints,
+            bendIndex: state.bendIndex,
+            grid: state.grid,
+            dxWorld,
+            dyWorld,
+          }),
+        );
         this.dragPreview.set({
           edgeId: state.edgeId,
           bendIndex: state.bendIndex,
           point: this.previewPoint(state, dxWorld, dyWorld),
         });
       },
-      onEnd: (event, state) => {
+      onEnd: async (event, state) => {
+        await this.pendingMutation;
         if (state.hasMoved) {
-          this.dispatcher.dispatch({ kind: 'reshape-finish', edgeId: state.edgeId });
+          await this.dispatcher.dispatch({ kind: 'reshape-finish', edgeId: state.edgeId });
         }
         // Prevent the trailing click from deselecting the edge.
         event.stopPropagation();
       },
       onTeardown: () => {
+        this.endHistoryGroup();
+        this.endHistoryGroup = () => undefined;
+        this.pendingMutation = Promise.resolve();
         this.gestureActive.set(false);
         this.dragPreview.set(null);
       },
@@ -102,6 +112,8 @@ export class EdgeBendHandler {
     if (!edge?.points || edge.points.length < 3) return;
     if (descriptor.bendIndex < 1 || descriptor.bendIndex > edge.points.length - 2) return;
 
+    this.endHistoryGroup = beginModelHistoryGroup(this.modelService);
+    this.pendingMutation = Promise.resolve();
     this.gestureActive.set(true);
     this.dragPreview.set(descriptor);
     this.drag.begin(event, handleEl, {
@@ -116,7 +128,7 @@ export class EdgeBendHandler {
   }
 
   removeBend(edgeId: string, bendIndex: number): void {
-    this.dispatcher.dispatch({ kind: 'remove-bend', edgeId, bendIndex });
+    void this.dispatcher.dispatch({ kind: 'remove-bend', edgeId, bendIndex });
   }
 
   /** Create a bend on `segmentIndex` at a client-space point (a double-click). */
@@ -137,7 +149,7 @@ export class EdgeBendHandler {
   insertBendAtFlowPoint(edgeId: string, segmentIndex: number, at: Point): void {
     const edge = this.modelService.getEdgeById(edgeId);
     if (!edge) return;
-    this.dispatcher.dispatch({
+    void this.dispatcher.dispatch({
       kind: 'insert-bend',
       edgeId,
       segmentIndex,
@@ -159,6 +171,7 @@ export class EdgeBendHandler {
   // Same rule as reshaping: the edge snaps exactly when its reference node
   // would snap on drag; null means snapping is off and the bend moves freely.
   private gridForEdge(edge: Edge): { x: number; y: number } | null {
+    if (isBoardJumperEdge(edge)) return null;
     const refNode = edgeGridReferenceNode(this.modelService.nodes(), edge);
     return resolveEdgeGrid(this.diagramService, refNode) ?? null;
   }

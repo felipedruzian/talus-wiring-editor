@@ -10,6 +10,7 @@ import {
 import { visualPlaneOf, type VisualElementKind } from '../diagram/model/visual-planes';
 import { describeWireEndpoints, type WireEndpointInfo } from '../diagram/model/wire-endpoints';
 import { NetHighlightService } from '../diagram/net-highlight/net-highlight.service';
+import { boardJumperLengthLabel } from '../diagram/model/board-jumper';
 
 export type SidebarState =
   | 'empty'
@@ -37,6 +38,8 @@ export interface SelectedWireDetails {
   netSize: number;
   netId: string;
   netName: string;
+  /** Derived board-local polyline length; null for ordinary conductors. */
+  jumperLength: string | null;
 }
 
 /** Manages sidebar visibility and exposes selection-derived data. */
@@ -134,6 +137,7 @@ export class PropertiesSidebarService {
       netSize: net?.edgeIds.length ?? 0,
       netId: net?.id ?? '',
       netName: net?.name ?? '',
+      jumperLength: boardJumperLengthLabel(this.modelService.nodes(), edge),
     };
   });
 

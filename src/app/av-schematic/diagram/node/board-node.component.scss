@@ -186,6 +186,18 @@
   opacity: 1;
 }
 
+.board-node--jumper-mode {
+  .board-node__port-hit {
+    cursor: crosshair;
+  }
+
+  .board-node__hole--jumper-source {
+    fill: var(--av-color-accent);
+    stroke: #000;
+    stroke-width: 3px;
+  }
+}
+
 .board-node--breadboard .board-node__hole--conflicted {
   fill: var(--av-color-error, #d92d20);
   stroke: var(--av-color-error, #d92d20);

@@ -4,6 +4,7 @@ import { rowTrace } from './board-trace';
 import { type Footprint } from './footprint';
 import {
   boardPortsResolveToSameCopper,
+  assessPhysicalConnection,
   initialNetNameFromCopper,
   physicalEdgeNet,
   physicalEndpoint,
@@ -167,6 +168,22 @@ describe('physical connectivity', () => {
 
     expect(boardPortsResolveToSameCopper(nodes, sameTrace)).toBe(true);
     expect(boardPortsResolveToSameCopper(nodes, pinToTrace)).toBe(false);
+  });
+
+  it('returns conflict, label and same-copper in one physical assessment', () => {
+    const sameTrace: Edge<WireEdgeData> = {
+      id: 'assessment-same-trace',
+      source: board.id,
+      sourcePort: 'hole:0:1',
+      target: board.id,
+      targetPort: 'trace:vcc',
+      data: { type: 'wire', wireId: 'assessment' },
+    };
+    expect(assessPhysicalConnection(nodes, sameTrace)).toMatchObject({
+      netLabel: 'VCC',
+      conflict: [],
+      sameCopper: true,
+    });
   });
 
   it('detects copper conflicts inherited through an existing multi-drop graph', () => {

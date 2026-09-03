@@ -7,6 +7,7 @@ import { boardHoleRadius, boardRailBands } from '../model/board-surface';
 import { NodeTemplateType, type BoardNodeData } from '../model/interfaces';
 import { BoardPlacementService } from '../placement/board-placement.service';
 import { BoardNodeComponent } from './board-node.component';
+import { BoardJumperCreationService } from '../board-jumper-creation.service';
 
 const PITCH = 20;
 
@@ -104,7 +105,13 @@ function render(data: BoardNodeData): {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     imports: [BoardNodeComponent],
-    providers: [{ provide: BoardPlacementService, useClass: PlacementStub }],
+    providers: [
+      { provide: BoardPlacementService, useClass: PlacementStub },
+      {
+        provide: BoardJumperCreationService,
+        useValue: { handles: () => false, isStart: () => false, selectHole: () => false },
+      },
+    ],
   });
   TestBed.overrideComponent(BoardNodeComponent, {
     remove: { imports: [NgDiagramPortComponent] },

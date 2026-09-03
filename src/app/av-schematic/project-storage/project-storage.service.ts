@@ -7,7 +7,7 @@ import {
   fromCanonicalProject,
   toCanonicalProject,
   type CanonicalCable,
-  type CanonicalProjectV3,
+  type CanonicalProjectV4,
 } from '../diagram/model/canonical-project';
 import { parseCanonicalProject } from '../diagram/model/canonical-project-parse';
 import {
@@ -15,6 +15,7 @@ import {
   type PhysicalDiagnostic,
 } from '../diagram/model/physical-diagnostics';
 import { NodeVisibilityConfigService } from '../diagram/node-visibility/node-visibility-config.service';
+import { beginModelHistoryGroup } from '../diagram/model/model-history-group';
 
 /**
  * Same-origin project persistence client for the local wiring-editor service
@@ -125,7 +126,7 @@ export class ProjectStorageService {
   }
 
   /** Captures the current project, including disconnected cables and visual planes. */
-  snapshotProject(): CanonicalProjectV3 {
+  snapshotProject(): CanonicalProjectV4 {
     const committedModel = this.modelService.getModel();
     this.refreshPhysicalDiagnostics();
     const project = parseCanonicalProject(
@@ -140,7 +141,7 @@ export class ProjectStorageService {
    * Existing edges and cable inventory are deliberately discarded, so a
    * dangling draft edge cannot prevent a valid replacement from loading.
    */
-  snapshotImportSkeleton(): CanonicalProjectV3 {
+  snapshotImportSkeleton(): CanonicalProjectV4 {
     const committedModel = this.modelService.getModel();
     return toCanonicalProject(committedModel.getNodes(), [], []);
   }
@@ -167,11 +168,13 @@ export class ProjectStorageService {
   }
 
   /** Replaces the live canvas and its non-visual cable inventory atomically from one project. */
-  async replaceProject(project: CanonicalProjectV3): Promise<void> {
+  async replaceProject(project: CanonicalProjectV4): Promise<void> {
     const parsed = parseCanonicalProject(project);
     const { nodes, edges } = fromCanonicalProject(parsed);
     await this.replaceModel(nodes, edges);
     this.cableInventory = parsed.electrical.cables.map(cloneCable);
+    const model = this.modelService.getModel() as { resetHistory?: () => void };
+    model.resetHistory?.();
     this.refreshPhysicalDiagnostics();
   }
 
@@ -189,25 +192,30 @@ export class ProjectStorageService {
    * added back after (new edges reference the freshly added node ids).
    */
   private async replaceModel(nodes: Node[], edges: Edge[]): Promise<void> {
+    const endHistoryGroup = beginModelHistoryGroup(this.modelService);
     const committedModel = this.modelService.getModel();
     const currentEdgeIds = committedModel.getEdges().map((edge) => edge.id);
     const currentNodeIds = committedModel.getNodes().map((node) => node.id);
 
-    if (currentEdgeIds.length > 0) await this.modelService.deleteEdges(currentEdgeIds);
-    if (currentNodeIds.length > 0) await this.modelService.deleteNodes(currentNodeIds);
+    try {
+      if (currentEdgeIds.length > 0) await this.modelService.deleteEdges(currentEdgeIds);
+      if (currentNodeIds.length > 0) await this.modelService.deleteNodes(currentNodeIds);
 
-    // Manual edge routes depend on measured port coordinates. Wait for the
-    // freshly rendered nodes before restoring those edges.
-    if (nodes.length > 0) {
-      await this.modelService.addNodes(nodes, { waitForMeasurements: true });
-    }
-    if (edges.length > 0) {
-      await this.modelService.addEdges(edges);
-      await applyEdgeStretchOnSelectionMoved(
-        this.modelService,
-        new Set(nodes.map((node) => node.id)),
-        true,
-      );
+      // Manual edge routes depend on measured port coordinates. Wait for the
+      // freshly rendered nodes before restoring those edges.
+      if (nodes.length > 0) {
+        await this.modelService.addNodes(nodes, { waitForMeasurements: true });
+      }
+      if (edges.length > 0) {
+        await this.modelService.addEdges(edges);
+        await applyEdgeStretchOnSelectionMoved(
+          this.modelService,
+          new Set(nodes.map((node) => node.id)),
+          true,
+        );
+      }
+    } finally {
+      endHistoryGroup();
     }
   }
 

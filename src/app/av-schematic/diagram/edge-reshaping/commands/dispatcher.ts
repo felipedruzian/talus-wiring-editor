@@ -14,26 +14,20 @@ import type { EdgeCommand } from './types';
 export class EdgeCommandDispatcher {
   private readonly model = inject(NgDiagramModelService);
 
-  dispatch(command: EdgeCommand): void {
+  dispatch(command: EdgeCommand): Promise<void> {
     switch (command.kind) {
       case 'set-edge-route':
-        setEdgeRoute(this.model, command);
-        return;
+        return setEdgeRoute(this.model, command);
       case 'reshape-move':
-        applyReshapeMove(this.model, command);
-        return;
+        return applyReshapeMove(this.model, command);
       case 'reshape-finish':
-        finishReshape(this.model, command);
-        return;
+        return finishReshape(this.model, command);
       case 'insert-bend':
-        applyInsertBend(this.model, command);
-        return;
+        return applyInsertBend(this.model, command);
       case 'remove-bend':
-        applyRemoveBend(this.model, command);
-        return;
+        return applyRemoveBend(this.model, command);
       case 'move-bend':
-        applyMoveBend(this.model, command);
-        return;
+        return applyMoveBend(this.model, command);
     }
   }
 }

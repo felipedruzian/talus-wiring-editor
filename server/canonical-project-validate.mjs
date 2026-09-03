@@ -91,11 +91,12 @@ export function parseCanonicalProject(raw) {
   const version = root['formatVersion'];
 
   if (version === 1) return parseV1(root);
-  if (version === 2) return parseV2(root, true);
-  if (version === 3) return parseV2(root, false);
+  if (version === 2) return parseV2(root, true, false);
+  if (version === 3) return parseV2(root, false, false);
+  if (version === 4) return parseV2(root, false, true);
 
   throw new CanonicalProjectValidationError(
-    `project.formatVersion: expected 1, 2 or 3, got ${JSON.stringify(version)}`,
+    `project.formatVersion: expected 1, 2, 3 or 4, got ${JSON.stringify(version)}`,
   );
 }
 
@@ -182,7 +183,7 @@ function parseV1(root) {
   return { formatVersion: 1, boards, components, nets };
 }
 
-function parseV2(root, migrateVisualPlanes) {
+function parseV2(root, migrateVisualPlanes, readBoardJumpers) {
   const electricalRaw = expectRecord(root['electrical'], 'project.electrical');
   const layoutRaw = expectRecord(root['layout'], 'project.layout');
   preflightV2(electricalRaw, layoutRaw);
@@ -232,11 +233,12 @@ function parseV2(root, migrateVisualPlanes) {
           value,
           `project.layout.conductors[${index}]`,
           migrateVisualPlanes ? DEFAULT_VISUAL_PLANES.conductor : undefined,
+          readBoardJumpers,
         ),
     ),
   };
 
-  const project = { formatVersion: 3, electrical, layout };
+  const project = { formatVersion: 4, electrical, layout };
   validateV2Project(project);
   return project;
 }
@@ -493,6 +495,16 @@ function preflightV2(electricalRaw, layoutRaw) {
     if (layout['points'] !== undefined) {
       budget.add(expectArray(layout['points'], label).length, label);
     }
+    if (layout['boardJumper'] !== undefined) {
+      const jumper = expectRecord(
+        layout['boardJumper'],
+        `project.layout.conductors[${index}].boardJumper`,
+      );
+      if (jumper['bends'] !== undefined) {
+        const bendsLabel = `project.layout.conductors[${index}].boardJumper.bends`;
+        budget.add(expectArray(jumper['bends'], bendsLabel).length, bendsLabel);
+      }
+    }
   });
 }
 
@@ -741,7 +753,7 @@ function parseV2JunctionLayout(raw, label, fallbackVisualPlane) {
   };
 }
 
-function parseV2ConductorLayout(raw, label, fallbackVisualPlane) {
+function parseV2ConductorLayout(raw, label, fallbackVisualPlane, readBoardJumpers = true) {
   const obj = expectRecord(raw, label);
   const routingMode =
     obj['routingMode'] === undefined
@@ -754,9 +766,24 @@ function parseV2ConductorLayout(raw, label, fallbackVisualPlane) {
           expectPoint(value, `${label}.points[${index}]`),
         );
   const points = validateManualRoute(routingMode, parsedPoints, label);
+  if (readBoardJumpers && obj['boardId'] !== undefined) {
+    throw new CanonicalProjectValidationError(
+      `${label}.boardId: use boardJumper.boardId for board-local conductors`,
+    );
+  }
+  const boardJumper =
+    readBoardJumpers && obj['boardJumper'] !== undefined
+      ? parseBoardJumperLayout(obj['boardJumper'], `${label}.boardJumper`)
+      : undefined;
+  if (boardJumper && (routingMode !== undefined || points !== undefined)) {
+    throw new CanonicalProjectValidationError(
+      `${label}: boardJumper derives endpoints and cannot contain routingMode or points`,
+    );
+  }
   return {
     conductorId: expectNonEmptyString(obj['conductorId'], `${label}.conductorId`),
     visualPlane: parseVisualPlane(obj['visualPlane'], `${label}.visualPlane`, fallbackVisualPlane),
+    boardJumper,
     routingMode,
     points,
     fromTap:
@@ -768,6 +795,20 @@ function parseV2ConductorLayout(raw, label, fallbackVisualPlane) {
         ? undefined
         : expectNonNegativeInteger(obj['toTap'], `${label}.toTap`),
     physicalBinding: expectOptionalBoolean(obj['physicalBinding'], `${label}.physicalBinding`),
+  };
+}
+
+function parseBoardJumperLayout(raw, label) {
+  const obj = expectRecord(raw, label);
+  const bends =
+    obj['bends'] === undefined
+      ? undefined
+      : expectArray(obj['bends'], `${label}.bends`).map((point, index) =>
+          expectPoint(point, `${label}.bends[${index}]`),
+        );
+  return {
+    boardId: expectNonEmptyString(obj['boardId'], `${label}.boardId`),
+    bends: bends?.length ? bends : undefined,
   };
 }
 
@@ -1208,9 +1249,76 @@ function validateV2Layout(
         label,
       );
     }
+    if (layout.boardJumper) {
+      if (!conductor) {
+        throw new CanonicalProjectValidationError(`${label}: missing conductor`);
+      }
+      validateV2BoardJumper(layout, conductor, boardsById, boardPortsByJunction, label);
+    }
   }
   validateV2InternalCopperTaps(project, boardPortsByJunction);
   validateV2PhysicalBindingCoverage(project);
+}
+
+function validateV2BoardJumper(layout, conductor, boardsById, boardPortsByJunction, label) {
+  const boardId = layout.boardJumper?.boardId;
+  const board = boardId ? boardsById.get(boardId) : undefined;
+  if (!board) {
+    throw new CanonicalProjectValidationError(
+      `${label}.boardJumper.boardId: no board "${boardId ?? ''}"`,
+    );
+  }
+  if (board.surface !== 'breadboard') {
+    throw new CanonicalProjectValidationError(
+      `${label}.boardJumper.boardId: board "${board.id}" is not a breadboard`,
+    );
+  }
+  if (layout.physicalBinding) {
+    throw new CanonicalProjectValidationError(
+      `${label}: a board jumper cannot be a physical binding`,
+    );
+  }
+  if (layout.routingMode !== undefined || layout.points !== undefined) {
+    throw new CanonicalProjectValidationError(
+      `${label}: boardJumper derives endpoints and cannot contain routingMode or points`,
+    );
+  }
+  if (layout.visualPlane <= board.visualPlane) {
+    throw new CanonicalProjectValidationError(
+      `${label}.visualPlane: a board jumper must be strictly above its board`,
+    );
+  }
+
+  boardJumperEndpointHole(
+    conductor.from,
+    layout.fromTap,
+    board,
+    boardPortsByJunction,
+    `${label}.from`,
+  );
+  boardJumperEndpointHole(conductor.to, layout.toTap, board, boardPortsByJunction, `${label}.to`);
+}
+
+function boardJumperEndpointHole(endpoint, tap, board, boardPortsByJunction, label) {
+  if (endpoint.kind !== 'junction') {
+    throw new CanonicalProjectValidationError(
+      `${label}: a board jumper endpoint must be a board hole`,
+    );
+  }
+  const resolved = boardPortsByJunction.get(endpoint.junctionId);
+  if (!resolved || resolved.boardId !== board.id) {
+    throw new CanonicalProjectValidationError(`${label}: endpoint is not on board "${board.id}"`);
+  }
+  if (resolved.holes.length > 1 && tap === undefined) {
+    throw new CanonicalProjectValidationError(
+      `${label}: endpoint must identify one hole with a tap index`,
+    );
+  }
+  const hole = resolved.holes[tap ?? 0];
+  if (!hole) {
+    throw new CanonicalProjectValidationError(`${label}: endpoint hole cannot be resolved`);
+  }
+  return hole;
 }
 
 /**
@@ -1403,7 +1511,11 @@ function validateV2PhysicalBinding(
   boardPortsByJunction,
   label,
 ) {
-  if (layout.routingMode !== undefined || layout.points !== undefined) {
+  if (
+    layout.routingMode !== undefined ||
+    layout.points !== undefined ||
+    layout.boardJumper !== undefined
+  ) {
     throw new CanonicalProjectValidationError(
       `${label}: a physical binding cannot have a visible route`,
     );

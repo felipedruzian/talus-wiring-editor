@@ -255,7 +255,7 @@ aplicada a endpoints de placa ou footprint.
 
 ## Persistência
 
-O projeto usa o formato canônico v3, evolução compatível do v2 introduzido pela issue #2. A seção
+O projeto usa o formato canônico v4, evolução compatível do v3 introduzido pela issue #29. A seção
 `electrical` continua contendo componentes, junções, cabos, nets multi-drop e
 condutores; a seção `layout` contém placas, footprints, placements e geometria.
 Não existe `CanonicalNet` v1 paralelo. Snapshots v1 anteriores continuam sendo
@@ -269,6 +269,9 @@ Os campos físicos opcionais são:
   `placement`; quando desencaixados, `footprintRotation` e `footprintPitch`
   mantêm a geometria visual sem fingir que ainda existe um encaixe;
 - a junção de cobre usa `boardId` e `boardPort` no layout;
+- um jumper local usa `boardJumper: { boardId, bends? }`; os endpoints são
+  derivados dos furos/taps e somente as dobras intermediárias usam coordenadas
+  locais da placa;
 - um condutor oculto `binding:<componentId>/<pinId>` associa cada pino encaixado
   à junção canônica de seu furo ou de sua trilha.
 

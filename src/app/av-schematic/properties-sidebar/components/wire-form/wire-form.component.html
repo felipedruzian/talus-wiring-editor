@@ -94,13 +94,25 @@
     </app-form-field>
 
     <app-form-field label="Comprimento" fieldId="length">
-      <input
-        id="length"
-        type="text"
-        class="form-input p10"
-        [formField]="fieldTree.length"
-        placeholder="Ex.: 120 mm"
-      />
+      @if (jumperLength(); as calculatedLength) {
+        <input
+          id="length"
+          type="text"
+          class="form-input p10"
+          [value]="calculatedLength"
+          disabled
+          aria-describedby="jumper-length-help"
+        />
+        <small id="jumper-length-help">Calculado pela rota local da protoboard.</small>
+      } @else {
+        <input
+          id="length"
+          type="text"
+          class="form-input p10"
+          [formField]="fieldTree.length"
+          placeholder="Ex.: 120 mm"
+        />
+      }
     </app-form-field>
 
     <app-form-field label="Observação" fieldId="note">

@@ -29,6 +29,7 @@ import { traceHoles, traceSegmentHoles } from '../model/board-trace';
 import { type BoardHole, type BoardNodeData, type BoardTrace } from '../model/interfaces';
 import { BoardPlacementService } from '../placement/board-placement.service';
 import { centerLeftPortBoxPosition } from '../edge-reshaping/logic/port-position';
+import { BoardJumperCreationService } from '../board-jumper-creation.service';
 
 interface HoleView extends BoardHole {
   key: string;
@@ -135,6 +136,7 @@ function netColor(net: string | undefined): string {
 })
 export class BoardNodeComponent implements NgDiagramNodeTemplate<BoardNodeData> {
   private readonly placement = inject(BoardPlacementService);
+  protected readonly jumperCreation = inject(BoardJumperCreationService);
 
   node = input.required<Node<BoardNodeData>>();
 
@@ -199,6 +201,12 @@ export class BoardNodeComponent implements NgDiagramNodeTemplate<BoardNodeData> 
       };
     });
   });
+
+  protected onHolePointerDown(event: PointerEvent, hole: BoardHole): void {
+    if (event.button !== 0 || !this.jumperCreation.selectHole(this.node(), hole)) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }
 
   private readonly allTraces = computed<TraceView[]>(() =>
     (this.data().traces ?? []).map((trace) => this.toTraceView(trace)),

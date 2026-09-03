@@ -36,6 +36,7 @@ export class WireFormComponent {
   readonly netId = input<string>('');
   readonly netName = input<string>('');
   readonly netSize = input<number>(0);
+  readonly jumperLength = input<string | null>(null);
 
   protected readonly fieldTree = this.formService.fieldTree;
   protected readonly formModel = this.formService.formModel;

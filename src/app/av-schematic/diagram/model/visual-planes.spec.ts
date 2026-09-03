@@ -1,7 +1,7 @@
 import { type Edge, type Node } from 'ng-diagram';
 import { describe, expect, it } from 'vitest';
 import { NodeTemplateType, EdgeTemplateType } from './interfaces';
-import { applyVisualZOrder, DEFAULT_VISUAL_PLANES } from './visual-planes';
+import { applyVisualZOrder, DEFAULT_VISUAL_PLANES, MAX_VISUAL_PLANE } from './visual-planes';
 
 const node = (id: string, type: 'board' | 'device' | 'junction', visualPlane?: number): Node => ({
   id,
@@ -12,7 +12,7 @@ const node = (id: string, type: 'board' | 'device' | 'junction', visualPlane?: n
         ? NodeTemplateType.JunctionNode
         : NodeTemplateType.DeviceNode,
   position: { x: 0, y: 0 },
-  data: { type, visualPlane },
+  data: { type, visualPlane, ...(type === 'board' ? { boardId: id } : {}) },
 });
 
 const edge = (id: string, visualPlane?: number): Edge => ({
@@ -58,6 +58,44 @@ describe('visual plane ordering', () => {
   it('lets an authored plane move a wire below a board', () => {
     const ordered = applyVisualZOrder([node('board', 'board')], [edge('wire', -1)]);
     expect(ordered.edges[0].zOrder).toBeLessThan(ordered.nodes[0].zOrder ?? -1);
+  });
+
+  it('keeps an owned board jumper strictly above its board plane', () => {
+    const jumper = {
+      ...edge('jumper', -1),
+      source: 'board',
+      target: 'board',
+      data: { type: 'wire', visualPlane: -1, jumperBoardId: 'board' },
+    };
+    const ordered = applyVisualZOrder([node('board', 'board', 12)], [jumper]);
+
+    expect(ordered.edges[0].data).toMatchObject({ visualPlane: 13 });
+    expect(ordered.edges[0].zOrder).toBeGreaterThan(ordered.nodes[0].zOrder ?? Number.MAX_VALUE);
+  });
+
+  it('makes room above a board already at the maximum plane', () => {
+    const jumper = {
+      ...edge('jumper', MAX_VISUAL_PLANE),
+      source: 'board-node',
+      target: 'board-node',
+      data: {
+        type: 'wire',
+        visualPlane: MAX_VISUAL_PLANE,
+        jumperBoardId: 'board-domain',
+      },
+    };
+    const board = {
+      ...node('board-node', 'board', MAX_VISUAL_PLANE),
+      data: {
+        ...node('board-node', 'board', MAX_VISUAL_PLANE).data,
+        boardId: 'board-domain',
+      },
+    };
+
+    const ordered = applyVisualZOrder([board], [jumper]);
+
+    expect(ordered.nodes[0].data).toMatchObject({ visualPlane: MAX_VISUAL_PLANE - 1 });
+    expect(ordered.edges[0].data).toMatchObject({ visualPlane: MAX_VISUAL_PLANE });
   });
 
   it('renormalizes stale copied z-orders into one deterministic sequence after paste', () => {

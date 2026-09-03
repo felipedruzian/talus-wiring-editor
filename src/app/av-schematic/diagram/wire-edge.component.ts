@@ -19,6 +19,7 @@ import { NetHighlightService } from './net-highlight/net-highlight.service';
 import { describeWireEndpoints, formatWireEndpoint } from './model/wire-endpoints';
 import { type WireEdgeData } from './model/interfaces';
 import { resolveWireColor } from './model/wire-colors';
+import { boardJumperLengthLabel, isBoardJumperEdge } from './model/board-jumper';
 
 interface EndpointHandleView {
   id: string;
@@ -100,9 +101,12 @@ export class WireEdgeComponent implements NgDiagramEdgeTemplate<WireEdgeData> {
   });
 
   protected readonly strokeWidth = computed(() => {
+    if (isBoardJumperEdge(this.edge())) return 2;
     if (this.edge().selected) return 2;
     return this.emphasis() === 'highlighted' ? 2 : 1;
   });
+
+  protected readonly isBoardJumper = computed(() => isBoardJumperEdge(this.edge()));
 
   protected readonly isDimmed = computed(() => this.emphasis() === 'dimmed');
 
@@ -137,7 +141,10 @@ export class WireEdgeComponent implements NgDiagramEdgeTemplate<WireEdgeData> {
     if (netLabel) facts.push({ label: 'Net', value: netLabel });
     if (data.wireType) facts.push({ label: 'Tipo', value: data.wireType });
     if (data.gauge) facts.push({ label: 'Bitola', value: data.gauge });
-    if (data.length) facts.push({ label: 'Comprimento', value: data.length });
+    const jumperLength = boardJumperLengthLabel(this.modelService.nodes(), edge);
+    if (jumperLength ?? data.length) {
+      facts.push({ label: 'Comprimento', value: jumperLength ?? data.length ?? '' });
+    }
     return facts;
   });
 
@@ -178,6 +185,6 @@ export class WireEdgeComponent implements NgDiagramEdgeTemplate<WireEdgeData> {
   }
 
   protected onEndpointEnd(event: RelinkPointerEvent): void {
-    this.relinkHandler.onEndpointEnd(event.clientX, event.clientY, event.pointerId);
+    void this.relinkHandler.onEndpointEnd(event.clientX, event.clientY, event.pointerId);
   }
 }

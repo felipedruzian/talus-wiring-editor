@@ -24,6 +24,7 @@ export const buildAvDxfConfig = (): DxfExportConfig => ({
     new DxfLayer(LAYERS.DEVICES, ACI.WHITE),
     new DxfLayer(LAYERS.FOOTPRINTS, ACI.WHITE),
     new DxfLayer(LAYERS.WIRES, ACI.WHITE),
+    new DxfLayer(LAYERS.JUMPERS, ACI.WHITE),
   ],
   textStyles: [new DxfTextStyle(TEXT_STYLE.STANDARD), new DxfTextStyle(TEXT_STYLE.BOLD, true)],
   nodeRenderers: {
