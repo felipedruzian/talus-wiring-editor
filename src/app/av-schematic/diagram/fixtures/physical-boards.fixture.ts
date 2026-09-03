@@ -4,7 +4,12 @@ import { allHoles } from '../model/board-geometry';
 import { breadboardRowIndex, createBreadboard830 } from '../model/breadboard';
 import { rowTrace } from '../model/board-trace';
 import { junctionTapPortId } from '../model/canonical-project';
-import { cloneFootprint, getFootprint } from '../model/footprint';
+import {
+  cloneFootprint,
+  getFootprint,
+  UART_DIVIDER_RESISTOR_1K8_FOOTPRINT,
+  UART_DIVIDER_RESISTOR_1K_FOOTPRINT,
+} from '../model/footprint';
 import { placementNodePosition, syncPortHolesToPlacement } from '../model/footprint-geometry';
 import { holePortId, tracePortId } from '../model/board-ports';
 import {
@@ -249,7 +254,7 @@ export const SEATED_COMPONENT_NODES: Node<DeviceNodeData>[] = [
     manufacturer: 'generico',
     model: '1 kOhm',
     category: 'passive',
-    footprintId: 'resistor-1k',
+    footprintId: UART_DIVIDER_RESISTOR_1K_FOOTPRINT.id,
     boardId: 'peca-e',
     anchor: { row: 0, col: 0 },
     rotation: 0,
@@ -261,7 +266,7 @@ export const SEATED_COMPONENT_NODES: Node<DeviceNodeData>[] = [
     manufacturer: 'generico',
     model: '1,8 kOhm',
     category: 'passive',
-    footprintId: 'resistor-1k8',
+    footprintId: UART_DIVIDER_RESISTOR_1K8_FOOTPRINT.id,
     boardId: 'peca-e',
     anchor: { row: 2, col: 0 },
     rotation: 180,

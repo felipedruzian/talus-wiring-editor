@@ -5,6 +5,7 @@ export const CONNECTOR_TYPES: readonly string[] = [
   'GPIO',
   'HDMI',
   'I2C',
+  'Lead',
   'Motor',
   'Optical',
   'Phoenix',

@@ -1550,6 +1550,11 @@ function validateV2Board(board) {
 }
 
 function validateV2Footprint(footprint, label) {
+  if (footprint.axialSpan !== undefined && !isCoherentAxialFootprint(footprint)) {
+    throw new CanonicalProjectValidationError(
+      `${label}.axialSpan: expected an integer from 4 to 10 with pins at both endpoints`,
+    );
+  }
   const pinIds = new Set();
   const pinCells = new Set();
   const pinPoints = new Map();
@@ -1594,6 +1599,22 @@ function validateV2Footprint(footprint, label) {
     }
     bodyCells.add(key);
   }
+}
+
+function isCoherentAxialFootprint(footprint) {
+  const span = footprint.axialSpan;
+  if (
+    !Number.isSafeInteger(span) ||
+    span < 4 ||
+    span > 10 ||
+    footprint.rows !== 1 ||
+    footprint.cols !== span + 1 ||
+    footprint.pins.length !== 2
+  ) {
+    return false;
+  }
+  const endpoints = new Set(footprint.pins.map((pin) => `${pin.cell.row}:${pin.cell.col}`));
+  return endpoints.size === 2 && endpoints.has('0:0') && endpoints.has(`0:${span}`);
 }
 
 function validateV2FootprintCell(cell, footprint, label) {
@@ -2377,6 +2398,10 @@ function parseFootprint(raw, label) {
       OPERATIONAL_LIMITS.maxFootprintCols,
       'column count',
     ),
+    axialSpan:
+      obj['axialSpan'] === undefined
+        ? undefined
+        : expectPositiveInteger(obj['axialSpan'], `${label}.axialSpan`),
     pins: expectArray(obj['pins'], `${label}.pins`).map((pin, index) =>
       parseFootprintPin(pin, `${label}.pins[${index}]`),
     ),

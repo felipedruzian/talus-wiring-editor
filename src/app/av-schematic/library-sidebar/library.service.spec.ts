@@ -1,10 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { resizeAxialFootprintSpan } from '../diagram/model/footprint';
 import { sha256HexSync } from './artwork-import';
 import { LibraryService } from './library.service';
 import {
   LEGACY_LIBRARY_STORAGE_KEY,
   LIBRARY_STORAGE_KEY,
+  LIBRARY_SEED_REVISION,
   LIBRARY_STORAGE_VERSION,
   MAX_LIBRARY_ASSETS,
   loadLibraryCatalog,
@@ -117,6 +119,38 @@ describe('LibraryService', () => {
     ).toBe(false);
   });
 
+  it('preserves an edited axial resistor span when the library is reopened', async () => {
+    const storage = new MemoryStorage();
+    vi.stubGlobal('localStorage', storage);
+    const service = createLibraryService();
+    const resistor = service.devices().find((device) => device.libraryId === 'lib-resistor-1k');
+    if (!resistor?.template.footprint) throw new Error('Expected the physical resistor seed');
+    const resized = resizeAxialFootprintSpan(resistor.template.footprint, 10);
+    if (!resized.ok) throw new Error(resized.message);
+
+    service.beginEdit(resistor.libraryId);
+    expect(
+      await service.commitDraft(resistor.libraryId, {
+        ...resistor.template,
+        footprint: resized.footprint,
+      }),
+    ).toBe(true);
+
+    const reopened = createLibraryService()
+      .devices()
+      .find((device) => device.libraryId === resistor.libraryId);
+    expect(reopened?.template.footprint).toMatchObject({
+      id: 'resistor-1k',
+      axialSpan: 10,
+      rows: 1,
+      cols: 11,
+      pins: [
+        { id: 'a', cell: { row: 0, col: 0 } },
+        { id: 'b', cell: { row: 0, col: 10 } },
+      ],
+    });
+  });
+
   it('falls back to seeds without rewriting invalid JSON, unknown versions or unsafe shapes', () => {
     const storage = new MemoryStorage();
 
@@ -128,6 +162,7 @@ describe('LibraryService', () => {
     expect(loadLibraryDevices(storage)).not.toBe(SEED_LIBRARY);
     const unsafe = JSON.stringify({
       version: LIBRARY_STORAGE_VERSION,
+      seedRevision: LIBRARY_SEED_REVISION,
       devices: [{ libraryId: 'bad' }],
       assets: {},
     });
@@ -149,6 +184,7 @@ describe('LibraryService', () => {
     };
     const serialized = JSON.stringify({
       version: LIBRARY_STORAGE_VERSION,
+      seedRevision: LIBRARY_SEED_REVISION,
       devices: [valid, { libraryId: 'broken', template: { type: 'nope' } }, valid],
       assets: {},
     });
@@ -314,6 +350,36 @@ describe('LibraryService', () => {
     });
     expect(nano?.ports).toHaveLength(30);
     expect(nano?.ports.find((port) => port.id === 'd9')?.label).toBe('D9 personalizado');
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
+  });
+
+  it('adds the passive seed revision once to a catalog saved before issue 33', () => {
+    const storage = new MemoryStorage();
+    const passiveIds = new Set([
+      'lib-buzzer-active-12mm',
+      'lib-resistor-1k',
+      'lib-resistor-1k8',
+      'lib-capacitor-electrolytic-470uf',
+      'lib-capacitor-ceramic-100nf',
+    ]);
+    const oldSeeds = SEED_LIBRARY.filter((device) => !passiveIds.has(device.libraryId));
+    storage.setItem(
+      LIBRARY_STORAGE_KEY,
+      JSON.stringify({ version: LIBRARY_STORAGE_VERSION, devices: oldSeeds, assets: {} }),
+    );
+
+    const serialized = storage.getItem(LIBRARY_STORAGE_KEY);
+    const loaded = loadLibraryCatalog(storage);
+    expect(
+      loaded.catalog.devices.filter((device) => passiveIds.has(device.libraryId)),
+    ).toHaveLength(5);
+    expect(
+      loaded.catalog.devices
+        .filter((device) => passiveIds.has(device.libraryId))
+        .every((device) => device.template.footprint !== undefined),
+    ).toBe(true);
+    expect(loaded.needsUpgrade).toBe(true);
+    expect(loaded.needsRepair).toBe(false);
     expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
   });
 

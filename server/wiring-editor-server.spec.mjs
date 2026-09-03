@@ -286,6 +286,25 @@ function detachedFootprintProject() {
   return project;
 }
 
+function detachedAxialResistorProject() {
+  const project = detachedFootprintProject();
+  const layout = project.layout.components[0];
+  layout.footprintId = 'resistor-1k';
+  layout.footprint = {
+    id: 'resistor-1k',
+    label: '1 kOhm',
+    rows: 1,
+    cols: 5,
+    axialSpan: 4,
+    pins: [
+      { id: 'a', label: '1', cell: { row: 0, col: 0 }, primary: true },
+      { id: 'b', label: '2', cell: { row: 0, col: 4 } },
+    ],
+    shapes: [{ kind: 'line', x1: 0, y1: 0, x2: 4, y2: 0, stroke: 'lead' }],
+  };
+  return project;
+}
+
 function canonicalCableBudgetPayload(total) {
   const project = emptyV2Payload();
   let remaining = total;
@@ -755,6 +774,28 @@ describe('wiring-editor-server', () => {
         pinHoles: [
           { pinId: 'a', hole: { row: 2, col: 1 } },
           { pinId: 'b', hole: { row: 2, col: 2 } },
+        ],
+      });
+    });
+
+    it('preserves an adjustable axial span through PUT and GET', async () => {
+      const project = detachedAxialResistorProject();
+      const putRes = await fetch(`${server.baseUrl}/api/projects/axial-resistor`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(putRes.status).toBe(200);
+
+      const saved = await (await fetch(`${server.baseUrl}/api/projects/axial-resistor`)).json();
+      expect(saved.layout.components[0].footprint).toMatchObject({
+        id: 'resistor-1k',
+        rows: 1,
+        cols: 5,
+        axialSpan: 4,
+        pins: [
+          { id: 'a', cell: { row: 0, col: 0 } },
+          { id: 'b', cell: { row: 0, col: 4 } },
         ],
       });
     });

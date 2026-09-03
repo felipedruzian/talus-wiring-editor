@@ -1,11 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { NgDiagramPaletteItemComponent, NgDiagramPaletteItemPreviewComponent } from 'ng-diagram';
 import { ArtworkAssetStore } from '../../../diagram/artwork/artwork-asset.store';
-import {
-  trustedArtworkForFootprint,
-  trustedArtworkForFootprintDefinition,
-} from '../../../diagram/artwork/trusted-component-artwork';
+import { trustedArtworkForFootprintDefinition } from '../../../diagram/artwork/trusted-component-artwork';
 import { deviceCategoryLabel } from '../../../diagram/model/device-categories';
+import { resolveFootprint } from '../../../diagram/model/footprint';
+import { FootprintIllustrationComponent } from '../../../diagram/node/footprint-illustration.component';
 import { HighlightSegmentsPipe } from '../../../shared/ui/highlight-segments/highlight-segments.pipe';
 import { DeviceIllustrationComponent } from '../../../shared/ui/device-illustration/device-illustration.component';
 import { LibraryService } from '../../library.service';
@@ -18,6 +17,7 @@ import { asDevicePaletteItem } from './palette-item-cast';
     NgDiagramPaletteItemComponent,
     NgDiagramPaletteItemPreviewComponent,
     DeviceIllustrationComponent,
+    FootprintIllustrationComponent,
     HighlightSegmentsPipe,
   ],
   templateUrl: './library-list-item.component.html',
@@ -33,14 +33,14 @@ export class LibraryListItemComponent {
   protected readonly paletteItem = computed(() => asDevicePaletteItem(this.device().template));
 
   protected readonly searchQuery = this.libraryService.searchQuery;
+  protected readonly trustedFootprint = computed(() => {
+    const footprint = resolveFootprint(this.device().template);
+    if (!footprint || footprint.artwork) return null;
+    return trustedArtworkForFootprintDefinition(footprint) ? footprint : null;
+  });
   protected readonly trustedArtwork = computed(() => {
-    const template = this.device().template;
-    if (template.footprint?.artwork) return null;
-    return (
-      (template.footprint
-        ? trustedArtworkForFootprintDefinition(template.footprint)
-        : trustedArtworkForFootprint(template.footprintId)) ?? null
-    );
+    const footprint = this.trustedFootprint();
+    return footprint ? (trustedArtworkForFootprintDefinition(footprint) ?? null) : null;
   });
   protected readonly artworkUrl = computed(() => {
     const rasterHash = this.device().template.footprint?.artwork?.assetHash;

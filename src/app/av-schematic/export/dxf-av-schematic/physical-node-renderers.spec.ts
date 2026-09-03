@@ -12,8 +12,13 @@ import {
 } from '../../diagram/model/footprint-geometry';
 import {
   ARDUINO_NANO_FOOTPRINT,
+  BUZZER_ACTIVE_12MM_FOOTPRINT,
+  CAP_100N_FOOTPRINT,
+  CAP_470U_25V_FOOTPRINT,
   GY_521_MPU6050_FOOTPRINT,
   RESISTOR_1K_FOOTPRINT,
+  RESISTOR_1K8_FOOTPRINT,
+  resizeAxialFootprintSpan,
   TB6612FNG_FOOTPRINT,
   type Footprint,
 } from '../../diagram/model/footprint';
@@ -317,66 +322,167 @@ describe('illustrated footprint DXF origin', () => {
   );
 });
 
-describe('bundled module DXF geometry', () => {
+describe('bundled physical figure DXF geometry', () => {
   const bounds = { x: 0, y: 0, width: 900, height: 600 };
   const mapper = CoordinateMapper.fromScale(bounds, DXF_SCALE_MM_PER_PX, DIAGRAM_PADDING);
 
-  it.each([ARDUINO_NANO_FOOTPRINT, GY_521_MPU6050_FOOTPRINT, TB6612FNG_FOOTPRINT])(
-    'exports $id with the same rotated bounds and terminals as the canvas',
-    (module) => {
+  it.each([
+    ARDUINO_NANO_FOOTPRINT,
+    GY_521_MPU6050_FOOTPRINT,
+    TB6612FNG_FOOTPRINT,
+    BUZZER_ACTIVE_12MM_FOOTPRINT,
+    RESISTOR_1K_FOOTPRINT,
+    RESISTOR_1K8_FOOTPRINT,
+    CAP_470U_25V_FOOTPRINT,
+    CAP_100N_FOOTPRINT,
+  ])('exports $id with the same rotated bounds and terminals as the canvas', (module) => {
+    const pitch = 17;
+    const rotation = 90 as const;
+    const position = { x: 120, y: 90 };
+    const node: Node<DeviceNodeData> = {
+      id: module.id,
+      type: NodeTemplateType.FootprintNode,
+      position,
+      data: {
+        type: 'device',
+        deviceId: module.id,
+        manufacturer: 'Talus',
+        model: module.label,
+        footprintId: module.id,
+        footprint: module,
+        footprintRotation: rotation,
+        footprintPitch: pitch,
+        ports: module.pins.map((pin) => ({
+          id: pin.id,
+          label: pin.label,
+          direction: 'input',
+        })),
+      },
+    };
+    const moduleDoc = new DxfExporter(buildAvDxfConfig()).export([node], [], bounds);
+    const entities = moduleDoc.getEntities();
+    const pads = entities.filter(
+      (entity): entity is DxfCircle =>
+        entity instanceof DxfCircle &&
+        entity.layerName === LAYERS.FOOTPRINTS &&
+        Math.abs(entity.radius - mapper.mapLength(0.19 * pitch)) < 1e-9,
+    );
+    const outline = entities.find(
+      (entity): entity is DxfLwPolyline =>
+        entity instanceof DxfLwPolyline && entity.layerName === LAYERS.FOOTPRINTS && entity.closed,
+    );
+    const extent = footprintDrawnExtent(module, rotation, null);
+    const expectedPads = module.pins.map((pin) => {
+      const point = footprintDrawPoint(pin.cell.col, pin.cell.row, module, rotation, null);
+      return mapper.mapPoint(
+        position.x + (point.x - extent.left) * pitch,
+        position.y + (point.y - extent.top) * pitch,
+      );
+    });
+    const size = footprintNodeSize(module, rotation, pitch);
+    if (!outline) throw new Error(`${module.id}: missing DXF outline`);
+    const xs = outline.points.map((point) => point.x);
+    const ys = outline.points.map((point) => point.y);
+
+    expect(pads.map((pad) => ({ x: pad.x, y: pad.y }))).toEqual(expectedPads);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(mapper.mapLength(size.width));
+    expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(mapper.mapLength(size.height));
+  });
+
+  it('stretches resistor leads while keeping the exported body rigid and centered', () => {
+    const minimum = resizeAxialFootprintSpan(RESISTOR_1K_FOOTPRINT, 4);
+    const maximum = resizeAxialFootprintSpan(RESISTOR_1K_FOOTPRINT, 10);
+    if (!minimum.ok || !maximum.ok) throw new Error('Expected valid axial resistor spans');
+
+    const exportFootprint = (resistor: Footprint) => {
       const pitch = 17;
-      const rotation = 90 as const;
-      const position = { x: 120, y: 90 };
       const node: Node<DeviceNodeData> = {
-        id: module.id,
+        id: `resistor-${resistor.axialSpan}`,
         type: NodeTemplateType.FootprintNode,
-        position,
+        position: { x: 120, y: 90 },
         data: {
           type: 'device',
-          deviceId: module.id,
+          deviceId: `R-${resistor.axialSpan}`,
           manufacturer: 'Talus',
-          model: module.label,
-          footprintId: module.id,
-          footprint: module,
-          footprintRotation: rotation,
+          model: resistor.label,
+          footprintId: resistor.id,
+          footprint: resistor,
+          footprintRotation: 0,
           footprintPitch: pitch,
-          ports: module.pins.map((pin) => ({
+          ports: resistor.pins.map((pin) => ({
             id: pin.id,
             label: pin.label,
             direction: 'input',
           })),
         },
       };
-      const moduleDoc = new DxfExporter(buildAvDxfConfig()).export([node], [], bounds);
-      const entities = moduleDoc.getEntities();
+      const entities = new DxfExporter(buildAvDxfConfig()).export([node], [], bounds).getEntities();
+      const polylines = entities.filter(
+        (entity): entity is DxfLwPolyline =>
+          entity instanceof DxfLwPolyline && entity.layerName === LAYERS.FOOTPRINTS,
+      );
+      const dimensions = (polyline: DxfLwPolyline) => {
+        const xs = polyline.points.map((point) => point.x);
+        const ys = polyline.points.map((point) => point.y);
+        return {
+          width: Math.max(...xs) - Math.min(...xs),
+          height: Math.max(...ys) - Math.min(...ys),
+          centerX: (Math.max(...xs) + Math.min(...xs)) / 2,
+        };
+      };
+      const body = polylines.find((polyline) => {
+        if (!polyline.closed) return false;
+        const size = dimensions(polyline);
+        return (
+          Math.abs(size.width - mapper.mapLength(2.56 * pitch)) < 1e-9 &&
+          Math.abs(size.height - mapper.mapLength(0.98 * pitch)) < 1e-9
+        );
+      });
+      const bands = polylines
+        .filter((polyline) => {
+          if (!polyline.closed) return false;
+          const size = dimensions(polyline);
+          return (
+            Math.abs(size.width - mapper.mapLength(0.18 * pitch)) < 1e-9 &&
+            Math.abs(size.height - mapper.mapLength(0.92 * pitch)) < 1e-9
+          );
+        })
+        .map(dimensions);
+      const lead = polylines.find((polyline) => !polyline.closed);
       const pads = entities.filter(
         (entity): entity is DxfCircle =>
           entity instanceof DxfCircle && entity.layerName === LAYERS.FOOTPRINTS,
       );
-      const outline = entities.find(
-        (entity): entity is DxfLwPolyline =>
-          entity instanceof DxfLwPolyline &&
-          entity.layerName === LAYERS.FOOTPRINTS &&
-          entity.closed,
-      );
-      const extent = footprintDrawnExtent(module, rotation, null);
-      const expectedPads = module.pins.map((pin) => {
-        const point = footprintDrawPoint(pin.cell.col, pin.cell.row, module, rotation, null);
-        return mapper.mapPoint(
-          position.x + (point.x - extent.left) * pitch,
-          position.y + (point.y - extent.top) * pitch,
-        );
-      });
-      const size = footprintNodeSize(module, rotation, pitch);
-      if (!outline) throw new Error(`${module.id}: missing DXF outline`);
-      const xs = outline.points.map((point) => point.x);
-      const ys = outline.points.map((point) => point.y);
+      if (!body || !lead) throw new Error('Missing adjustable resistor DXF geometry');
+      return { body: dimensions(body), bands, lead: dimensions(lead), pads, pitch };
+    };
 
-      expect(pads.map((pad) => ({ x: pad.x, y: pad.y }))).toEqual(expectedPads);
-      expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(mapper.mapLength(size.width));
-      expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(mapper.mapLength(size.height));
-    },
-  );
+    const minDxf = exportFootprint(minimum.footprint);
+    const maxDxf = exportFootprint(maximum.footprint);
+
+    expect(maxDxf.body.width).toBeCloseTo(minDxf.body.width);
+    expect(maxDxf.body.height).toBeCloseTo(minDxf.body.height);
+    expect(maxDxf.body.centerX - minDxf.body.centerX).toBeCloseTo(
+      mapper.mapLength(((10 - 4) / 2) * minDxf.pitch),
+    );
+    expect(minDxf.bands).toHaveLength(4);
+    expect(maxDxf.bands).toHaveLength(4);
+    maxDxf.bands.forEach((band, index) => {
+      expect(band.width).toBeCloseTo(minDxf.bands[index].width);
+      expect(band.height).toBeCloseTo(minDxf.bands[index].height);
+      expect(band.centerX - minDxf.bands[index].centerX).toBeCloseTo(
+        mapper.mapLength(((10 - 4) / 2) * minDxf.pitch),
+      );
+    });
+    expect(minDxf.lead.width).toBeCloseTo(mapper.mapLength(4 * minDxf.pitch));
+    expect(maxDxf.lead.width).toBeCloseTo(mapper.mapLength(10 * maxDxf.pitch));
+    expect(Math.abs(minDxf.pads[1].x - minDxf.pads[0].x)).toBeCloseTo(
+      mapper.mapLength(4 * minDxf.pitch),
+    );
+    expect(Math.abs(maxDxf.pads[1].x - maxDxf.pads[0].x)).toBeCloseTo(
+      mapper.mapLength(10 * maxDxf.pitch),
+    );
+  });
 });
 
 /**
@@ -770,7 +876,7 @@ describe('breadboard DXF rendering', () => {
         (entity): entity is DxfText =>
           entity instanceof DxfText &&
           entity.layerName === LAYERS.FOOTPRINTS &&
-          entity.text === '1k',
+          entity.text === RESISTOR_1K_FOOTPRINT.label,
       );
     if (!outline || !label) throw new Error('resistor outline or label not rendered');
 

@@ -45,6 +45,14 @@ strong {
   line-height: 1.45;
 }
 
+.trusted-badge {
+  padding: 4px 7px;
+  border: 1px solid var(--av-color-accent);
+  border-radius: 999px;
+  color: var(--ngd-txt-secondary-default);
+  font-size: 10px;
+}
+
 .physical-editor__workspace {
   display: grid;
   grid-template-columns: minmax(360px, 1.35fr) minmax(290px, 1fr);
@@ -218,6 +226,15 @@ select:focus {
   pointer-events: none;
 }
 
+.physical-preview__trusted-artwork {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 .physical-preview__cell {
   position: absolute;
   z-index: 0;
@@ -255,6 +272,10 @@ select:focus {
 
 .physical-preview__pin:active {
   cursor: grabbing;
+}
+
+.physical-preview__pin:disabled {
+  cursor: default;
 }
 
 .physical-preview__pin--primary {

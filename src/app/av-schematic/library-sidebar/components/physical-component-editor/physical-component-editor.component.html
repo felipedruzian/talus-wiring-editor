@@ -4,7 +4,9 @@
       <h3 id="physical-editor-title">Representação física</h3>
       <p>Use a distância entre furos como unidade para imagem, corpo e terminais.</p>
     </div>
-    @if (isPhysical()) {
+    @if (isPhysical() && bundledArtwork()) {
+      <span class="trusted-badge">Figura física integrada</span>
+    } @else if (isPhysical()) {
       <button type="button" class="secondary-button" (click)="disablePhysical()">
         Tornar genérico
       </button>
@@ -45,7 +47,12 @@
               aria-hidden="true"
             ></span>
           }
-          @if (previewArtwork(); as artwork) {
+          @if (trustedPreviewFootprint(); as trustedFootprint) {
+            <app-footprint-illustration
+              class="physical-preview__trusted-artwork"
+              [footprint]="trustedFootprint"
+            />
+          } @else if (previewArtwork(); as artwork) {
             <img
               class="physical-preview__artwork"
               [attr.data-trusted-artwork]="artwork.trusted || null"
@@ -65,6 +72,7 @@
             <button
               type="button"
               class="physical-preview__pin"
+              [disabled]="isAdjustableAxial()"
               [class.physical-preview__pin--primary]="entry.pin.primary"
               [style.left.%]="previewLeft(entry.pin.cell.col)"
               [style.top.%]="previewTop(entry.pin.cell.row)"
@@ -109,30 +117,45 @@
             Nome
             <input type="text" [value]="footprint.label" (input)="updateFootprintLabel($event)" />
           </label>
-          <div class="field-row">
+          @if (isAdjustableAxial()) {
             <label>
-              Linhas
+              Vão entre terminais (passos de pitch)
               <input
                 type="number"
-                min="1"
-                max="64"
+                min="4"
+                max="10"
                 step="1"
-                [value]="footprint.rows"
-                (change)="updateDimension('rows', $event)"
+                [value]="footprint.axialSpan"
+                (change)="updateAxialSpan($event)"
               />
             </label>
-            <label>
-              Colunas
-              <input
-                type="number"
-                min="1"
-                max="64"
-                step="1"
-                [value]="footprint.cols"
-                (change)="updateDimension('cols', $event)"
-              />
-            </label>
-          </div>
+            <p class="limit-note">Os leads variam de 4 a 10 passos; corpo e bandas não esticam.</p>
+          } @else {
+            <div class="field-row">
+              <label>
+                Linhas
+                <input
+                  type="number"
+                  min="1"
+                  max="64"
+                  step="1"
+                  [value]="footprint.rows"
+                  (change)="updateDimension('rows', $event)"
+                />
+              </label>
+              <label>
+                Colunas
+                <input
+                  type="number"
+                  min="1"
+                  max="64"
+                  step="1"
+                  [value]="footprint.cols"
+                  (change)="updateDimension('cols', $event)"
+                />
+              </label>
+            </div>
+          }
         </fieldset>
 
         <fieldset>
@@ -294,9 +317,11 @@
     <fieldset class="pins-editor">
       <div class="fieldset-heading">
         <legend>Terminais</legend>
-        <button type="button" class="secondary-button" (click)="addPin()">
-          + Adicionar terminal
-        </button>
+        @if (!isAdjustableAxial()) {
+          <button type="button" class="secondary-button" (click)="addPin()">
+            + Adicionar terminal
+          </button>
+        }
       </div>
       @if (pins().length === 0) {
         <p class="empty-note">
@@ -316,6 +341,7 @@
                 <input
                   type="text"
                   [value]="entry.pin.id"
+                  [readOnly]="isAdjustableAxial()"
                   (input)="updatePinText(index, 'id', $event)"
                 />
               </label>
@@ -334,6 +360,7 @@
                   min="0"
                   [max]="footprint.rows - 1"
                   [value]="entry.pin.cell.row"
+                  [readOnly]="isAdjustableAxial()"
                   (change)="updatePinCell(index, 'row', $event)"
                 />
               </label>
@@ -344,6 +371,7 @@
                   min="0"
                   [max]="footprint.cols - 1"
                   [value]="entry.pin.cell.col"
+                  [readOnly]="isAdjustableAxial()"
                   (change)="updatePinCell(index, 'col', $event)"
                 />
               </label>
@@ -367,18 +395,23 @@
                 <input
                   type="checkbox"
                   [checked]="entry.pin.primary === true"
+                  [disabled]="isAdjustableAxial()"
                   (change)="updatePrimary(index, $event)"
                 />
                 <span class="sr-only">Marcar terminal {{ index + 1 }} como pino 1</span>
               </label>
-              <button
-                type="button"
-                class="remove-pin"
-                [attr.aria-label]="'Remover terminal ' + (entry.pin.label || index + 1)"
-                (click)="removePin(index)"
-              >
-                ×
-              </button>
+              @if (!isAdjustableAxial()) {
+                <button
+                  type="button"
+                  class="remove-pin"
+                  [attr.aria-label]="'Remover terminal ' + (entry.pin.label || index + 1)"
+                  (click)="removePin(index)"
+                >
+                  ×
+                </button>
+              } @else {
+                <span></span>
+              }
             </div>
           }
         </div>
@@ -390,41 +423,43 @@
       }
     </fieldset>
 
-    <fieldset class="body-editor">
-      <div class="fieldset-heading">
-        <legend>Células ocupadas pelo corpo</legend>
-        <div class="inline-actions">
-          <button type="button" class="secondary-button" (click)="occupyAllCells()">Todas</button>
-          <button type="button" class="secondary-button" (click)="occupyPinCells()">
-            Somente terminais
-          </button>
+    @if (!isAdjustableAxial()) {
+      <fieldset class="body-editor">
+        <div class="fieldset-heading">
+          <legend>Células ocupadas pelo corpo</legend>
+          <div class="inline-actions">
+            <button type="button" class="secondary-button" (click)="occupyAllCells()">Todas</button>
+            <button type="button" class="secondary-button" (click)="occupyPinCells()">
+              Somente terminais
+            </button>
+          </div>
         </div>
-      </div>
-      <p class="limit-note">
-        Clique nas células para declarar quais furos ficam fisicamente cobertos pelo componente.
-      </p>
-      <div
-        class="body-grid"
-        [style.grid-template-columns]="'repeat(' + footprint.cols + ', minmax(18px, 1fr))'"
-      >
-        @for (cell of cells(); track cell.row + ':' + cell.col) {
-          <button
-            type="button"
-            [class.body-grid__cell--occupied]="cell.occupied"
-            [attr.aria-pressed]="cell.occupied"
-            [attr.aria-label]="
-              'Linha ' +
-              (cell.row + 1) +
-              ', coluna ' +
-              (cell.col + 1) +
-              ': ' +
-              (cell.occupied ? 'ocupada' : 'livre')
-            "
-            (click)="toggleBodyCell(cell)"
-          ></button>
-        }
-      </div>
-    </fieldset>
+        <p class="limit-note">
+          Clique nas células para declarar quais furos ficam fisicamente cobertos pelo componente.
+        </p>
+        <div
+          class="body-grid"
+          [style.grid-template-columns]="'repeat(' + footprint.cols + ', minmax(18px, 1fr))'"
+        >
+          @for (cell of cells(); track cell.row + ':' + cell.col) {
+            <button
+              type="button"
+              [class.body-grid__cell--occupied]="cell.occupied"
+              [attr.aria-pressed]="cell.occupied"
+              [attr.aria-label]="
+                'Linha ' +
+                (cell.row + 1) +
+                ', coluna ' +
+                (cell.col + 1) +
+                ': ' +
+                (cell.occupied ? 'ocupada' : 'livre')
+              "
+              (click)="toggleBodyCell(cell)"
+            ></button>
+          }
+        </div>
+      </fieldset>
+    }
 
     @if (validationMessage(); as message) {
       <p class="editor-message editor-message--error" role="alert">{{ message }}</p>

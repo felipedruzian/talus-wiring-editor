@@ -33,6 +33,14 @@ que o app inicializa.
 > porque seus envelopes reais não cabem em seis linhas. O GY-521 usa o mesmo
 > contrato na biblioteca. Consulte `physical-footprints.md` para o estado atual.
 
+> **Atualização da issue #33:** buzzer ativo, resistores axiais de 1 kOhm e
+> 1,8 kOhm, capacitor eletrolítico de 470 uF e capacitor cerâmico de 100 nF
+> também são figuras físicas integrais da biblioteca, nunca cards genéricos.
+> Os resistores persistem um vão selecionável de 4 a 10 pitches sem deformar o
+> corpo; os capacitores e o buzzer preservam passo e polaridade explícitos.
+> Canvas, pré-visualização, snap, ocupação, conectividade e exportadores usam a
+> mesma definição física documentada em `physical-footprints.md`.
+
 ## Decisão de integração: um canvas, duas peças novas, o resto reaproveitado
 
 A restrição rígida desta fatia é **nenhum segundo canvas e nenhuma
