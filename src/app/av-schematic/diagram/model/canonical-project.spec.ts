@@ -95,7 +95,7 @@ describe('canonical physical validation corpus', () => {
     );
     const parsed = parseCanonicalProject(clone(legacy.raw));
 
-    expect(parsed.formatVersion).toBe(5);
+    expect(parsed.formatVersion).toBe(6);
     expect(parsed.layout.components[0]).toMatchObject({
       pinHoles: [
         { pinId: 'a', hole: { row: 1, col: 1 } },
