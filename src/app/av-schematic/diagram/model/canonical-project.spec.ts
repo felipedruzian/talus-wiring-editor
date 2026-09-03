@@ -1,4 +1,4 @@
-import { type Edge } from 'ng-diagram';
+import { type Edge, type Node } from 'ng-diagram';
 import { describe, expect, it } from 'vitest';
 import { diagramModel } from '../data';
 import {
@@ -13,7 +13,12 @@ import { parseCanonicalProject } from './canonical-project-parse';
 import { canonicalValidationCorpus } from './canonical-project-corpus.mjs';
 import { electricallyEquivalent } from './electrical-equivalence';
 import { isBoardNode, isDeviceNode, isJunctionNode } from './guards';
-import { NodeTemplateType, type WireEdgeData } from './interfaces';
+import {
+  EdgeTemplateType,
+  NodeTemplateType,
+  type BoardNodeData,
+  type WireEdgeData,
+} from './interfaces';
 import { OPERATIONAL_LIMITS } from './operational-limits.mjs';
 
 function must<T>(value: T | undefined): T {
@@ -27,7 +32,7 @@ function clone<T>(value: T): T {
 
 function emptyV2(): CanonicalProjectV2 {
   return {
-    formatVersion: 3,
+    formatVersion: 4,
     electrical: { components: [], junctions: [], cables: [], nets: [] },
     layout: { boards: [], components: [], junctions: [], conductors: [] },
   };
@@ -121,6 +126,83 @@ function legacyTwoPointProject(): Record<string, unknown> {
 }
 
 describe('canonical project round-trip', () => {
+  it('persists only board-local jumper bends and derives endpoints from holes', () => {
+    const board: Node<BoardNodeData> = {
+      id: 'board-node-instance',
+      type: NodeTemplateType.BoardNode,
+      position: { x: 100, y: 200 },
+      data: {
+        type: 'board',
+        boardId: 'breadboard-domain',
+        label: 'Protoboard',
+        surface: 'breadboard',
+        rows: 10,
+        cols: 12,
+        pitch: 10,
+        centerGap: 20,
+        rowLabels: ['top-', 'top+', '', '', 'J', 'E', '', '', 'bottom-', 'bottom+'],
+        visualPlane: 7,
+      },
+    };
+    const jumper: Edge<WireEdgeData> = {
+      id: 'jumper-1',
+      type: EdgeTemplateType.WireEdge,
+      source: board.id,
+      sourcePort: 'hole:0:0',
+      target: board.id,
+      targetPort: 'hole:2:4',
+      routingMode: 'manual',
+      points: [
+        { x: 116, y: 216 },
+        { x: 128, y: 257 },
+        { x: 143, y: 225 },
+        { x: 156, y: 236 },
+      ],
+      data: {
+        type: 'wire',
+        wireId: 'J1',
+        wireType: 'jumper',
+        jumperBoardId: board.data.boardId,
+        color: '#ff0000',
+        netName: 'SIGNAL',
+        visualPlane: 8,
+      },
+    };
+
+    const saved = toCanonicalProject([board], [jumper]);
+    expect(saved.formatVersion).toBe(4);
+    expect(saved.layout.conductors[0]).toMatchObject({
+      conductorId: jumper.id,
+      boardJumper: {
+        boardId: board.data.boardId,
+        bends: [
+          { x: 28, y: 57 },
+          { x: 43, y: 25 },
+        ],
+      },
+      visualPlane: 8,
+    });
+    expect(saved.layout.conductors[0]).not.toHaveProperty('routingMode');
+    expect(saved.layout.conductors[0]).not.toHaveProperty('points');
+
+    const parsed = parseCanonicalProject(clone(saved));
+    const restored = must(fromCanonicalProject(parsed).edges[0]);
+    expect(restored).toMatchObject({
+      source: board.data.boardId,
+      sourcePort: 'hole:0:0',
+      target: board.data.boardId,
+      targetPort: 'hole:2:4',
+      routingMode: 'manual',
+      points: jumper.points,
+      data: {
+        jumperBoardId: board.data.boardId,
+        wireType: 'jumper',
+        color: '#ff0000',
+        netName: 'SIGNAL',
+      },
+    });
+  });
+
   it('prefers authored names over copper fallbacks deterministically', () => {
     const conductor = {
       id: 'c1',
@@ -136,7 +218,7 @@ describe('canonical project round-trip', () => {
   it('keeps electrical semantics separate from complementary visual geometry', () => {
     const project = toCanonicalProject(diagramModel.nodes, diagramModel.edges);
 
-    expect(project.formatVersion).toBe(3);
+    expect(project.formatVersion).toBe(4);
     expect(project.electrical.nets.length).toBeGreaterThanOrEqual(2);
     expect(project.electrical.components.length).toBeGreaterThan(2);
     expect(project.layout.boards).toHaveLength(5);
@@ -475,7 +557,7 @@ describe('parseCanonicalProject', () => {
       for (const entry of layout[collection] ?? []) delete entry['visualPlane'];
     }
     const migrated = parseCanonicalProject(legacy);
-    expect(migrated.formatVersion).toBe(3);
+    expect(migrated.formatVersion).toBe(4);
     expect(migrated.layout.boards.every((item) => item.visualPlane === 0)).toBe(true);
     expect(migrated.layout.components.every((item) => item.visualPlane === 10)).toBe(true);
     expect(migrated.layout.junctions.every((item) => item.visualPlane === 30)).toBe(true);

@@ -26,9 +26,7 @@ function basePhysicalProject() {
           ],
         },
       ],
-      junctions: [
-        { id: junctionId, label: 'VCC rail', kind: 'rail', wirevizName: junctionId },
-      ],
+      junctions: [{ id: junctionId, label: 'VCC rail', kind: 'rail', wirevizName: junctionId }],
       cables: [],
       nets: [
         {
@@ -90,9 +88,7 @@ function basePhysicalProject() {
               { id: 'a', label: 'A', cell: { row: 0, col: 0 }, primary: true },
               { id: 'b', label: 'B', cell: { row: 0, col: 1 } },
             ],
-            shapes: [
-              { kind: 'line', x1: 0, y1: 0, x2: 1, y2: 0, stroke: 'lead' },
-            ],
+            shapes: [{ kind: 'line', x1: 0, y1: 0, x2: 1, y2: 0, stroke: 'lead' }],
             bodyCells: [],
           },
           placement: { boardId: 'board-17', anchor: { row: 2, col: 1 }, rotation: 0 },
@@ -198,9 +194,7 @@ function internalCopperLandingProject() {
           pins: [{ id: 'p', label: 'P', direction: 'output' }],
         },
       ],
-      junctions: [
-        { id: junctionId, label: 'B1-A1', kind: 'rail', wirevizName: junctionId },
-      ],
+      junctions: [{ id: junctionId, label: 'B1-A1', kind: 'rail', wirevizName: junctionId }],
       cables: [],
       nets: [
         {
@@ -276,6 +270,72 @@ function breadboard(change) {
   return raw;
 }
 
+/** Current-format jumper whose optional bends are expressed in its breadboard's space. */
+export function boardJumperProject() {
+  const raw = breadboardSurfaceProject();
+  raw.formatVersion = 4;
+  for (const board of raw.layout.boards) board.visualPlane = 7;
+  for (const component of raw.layout.components) component.visualPlane = 10;
+  for (const junction of raw.layout.junctions) junction.visualPlane = 30;
+  for (const conductor of raw.layout.conductors) conductor.visualPlane = 20;
+
+  const fromJunction = 'copper:board-17/hole%3A0%3A0';
+  const toJunction = 'copper:board-17/hole%3A1%3A2';
+  raw.electrical.junctions.push(
+    { id: fromJunction, label: 'top+1', kind: 'junction', wirevizName: fromJunction },
+    { id: toJunction, label: 'L2-C3', kind: 'junction', wirevizName: toJunction },
+  );
+  raw.electrical.nets.push({
+    id: 'net-jumper',
+    name: 'JUMPER_SIGNAL',
+    endpoints: [
+      { kind: 'junction', junctionId: fromJunction },
+      { kind: 'junction', junctionId: toJunction },
+    ],
+    conductors: [
+      {
+        id: 'jumper-1',
+        from: { kind: 'junction', junctionId: fromJunction },
+        to: { kind: 'junction', junctionId: toJunction },
+        wireType: 'jumper',
+        color: '#ff0000',
+      },
+    ],
+  });
+  raw.layout.junctions.push(
+    {
+      junctionId: fromJunction,
+      position: { x: -1, y: -1 },
+      visualPlane: 30,
+      taps: 1,
+      boardId: 'board-17',
+      hole: { row: 0, col: 0 },
+      boardPort: 'hole:0:0',
+    },
+    {
+      junctionId: toJunction,
+      position: { x: -1, y: -1 },
+      visualPlane: 30,
+      taps: 1,
+      boardId: 'board-17',
+      hole: { row: 1, col: 2 },
+      boardPort: 'hole:1:2',
+    },
+  );
+  raw.layout.conductors.push({
+    conductorId: 'jumper-1',
+    visualPlane: 8,
+    boardJumper: { boardId: 'board-17' },
+  });
+  return raw;
+}
+
+function jumperChanged(name, change) {
+  const raw = boardJumperProject();
+  change(raw);
+  return { name, accepted: false, raw };
+}
+
 const emptyBoard = {
   formatVersion: 2,
   electrical: { components: [], junctions: [], cables: [], nets: [] },
@@ -327,6 +387,11 @@ export const canonicalValidationCorpus = [
     name: 'accepts an explicitly declared perfboard surface',
     accepted: true,
     raw: perfboardSurface,
+  },
+  {
+    name: 'accepts a board-local jumper route on a breadboard',
+    accepted: true,
+    raw: boardJumperProject(),
   },
   {
     name: 'accepts a wire that names the internal-copper hole it lands on',
@@ -537,6 +602,30 @@ export const canonicalValidationCorpus = [
   }),
   changed('rejects an invalid footprint shape paint', (raw) => {
     raw.layout.components[0].footprint.shapes[0].stroke = 'invisible';
+  }),
+  jumperChanged('rejects a board jumper owned by a missing board', (raw) => {
+    raw.layout.conductors.at(-1).boardJumper.boardId = 'missing-board';
+  }),
+  jumperChanged('rejects a board jumper at the same plane as its board surface', (raw) => {
+    raw.layout.conductors.at(-1).visualPlane = 7;
+  }),
+  jumperChanged('rejects duplicated full points on a board jumper', (raw) => {
+    const layout = raw.layout.conductors.at(-1);
+    layout.routingMode = 'manual';
+    layout.points = [
+      { x: 16, y: 16 },
+      { x: 50, y: 33 },
+    ];
+  }),
+  jumperChanged('rejects a board jumper connected outside its owner', (raw) => {
+    raw.electrical.nets.at(-1).conductors[0].to = {
+      kind: 'junction',
+      junctionId: raw.electrical.junctions[0].id,
+    };
+    raw.electrical.nets.at(-1).endpoints[1] = {
+      kind: 'junction',
+      junctionId: raw.electrical.junctions[0].id,
+    };
   }),
 ];
 

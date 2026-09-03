@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ElementMutationService } from './element-mutation.service';
 import { PropertiesSidebarComponent } from './properties-sidebar.component';
 import { PropertiesSidebarService } from './properties-sidebar.service';
+import { BoardJumperCreationService } from '../diagram/board-jumper-creation.service';
 
 describe('PropertiesSidebarComponent selected-wire actions', () => {
   it('resets the currently selected wire id and no other wire', () => {
@@ -27,6 +28,10 @@ describe('PropertiesSidebarComponent selected-wire actions', () => {
           },
         },
         { provide: ElementMutationService, useValue: { resetEdgeRouting } },
+        {
+          provide: BoardJumperCreationService,
+          useValue: { activeBoardId: signal(null), toggle: vi.fn() },
+        },
       ],
     });
     TestBed.overrideComponent(PropertiesSidebarComponent, { set: { template: '' } });
@@ -68,6 +73,10 @@ describe('PropertiesSidebarComponent selected-wire actions', () => {
           },
         },
         { provide: ElementMutationService, useValue: { setVisualPlane } },
+        {
+          provide: BoardJumperCreationService,
+          useValue: { activeBoardId: signal(null), toggle: vi.fn() },
+        },
       ],
     });
     TestBed.overrideComponent(PropertiesSidebarComponent, { set: { template: '' } });

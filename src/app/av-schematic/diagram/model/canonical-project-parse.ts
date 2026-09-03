@@ -34,7 +34,7 @@ import {
   type CanonicalPin,
   type CanonicalPinPlacement,
   type CanonicalPoint,
-  type CanonicalProjectV3,
+  type CanonicalProjectV4,
   type CanonicalRoutingMode,
 } from './canonical-project';
 import {
@@ -107,24 +107,29 @@ const ALLOWED_FOOTPRINT_PAINTS: readonly FootprintPaint[] = [
 ];
 const ALLOWED_TEXT_ANCHORS = ['start', 'middle', 'end'] as const;
 
-export function parseCanonicalProject(raw: unknown): CanonicalProjectV3 {
+export function parseCanonicalProject(raw: unknown): CanonicalProjectV4 {
   const root = expectRecord(raw, 'project');
   const version = root['formatVersion'];
 
   if (version === 1) return migrateV1(parseV1(root));
-  if (version === 2) return parseV2(root, true);
-  if (version === CANONICAL_FORMAT_VERSION) return parseV2(root, false);
+  if (version === 2) return parseCurrent(root, true, false);
+  if (version === 3) return parseCurrent(root, false, false);
+  if (version === CANONICAL_FORMAT_VERSION) return parseCurrent(root, false, true);
 
   throw new CanonicalProjectError(
-    `project.formatVersion: expected 1, 2 or ${CANONICAL_FORMAT_VERSION}, got ${JSON.stringify(version)}`,
+    `project.formatVersion: expected 1, 2, 3 or ${CANONICAL_FORMAT_VERSION}, got ${JSON.stringify(version)}`,
   );
 }
 
 // ---------------------------------------------------------------------------
-// v2/v3 shared structure
+// v2/v3/v4 shared structure
 // ---------------------------------------------------------------------------
 
-function parseV2(root: Record<string, unknown>, migrateVisualPlanes: boolean): CanonicalProjectV3 {
+function parseCurrent(
+  root: Record<string, unknown>,
+  migrateVisualPlanes: boolean,
+  readBoardJumpers: boolean,
+): CanonicalProjectV4 {
   const electricalRaw = expectRecord(root['electrical'], 'project.electrical');
   const layoutRaw = expectRecord(root['layout'], 'project.layout');
   preflightV2(electricalRaw, layoutRaw);
@@ -171,10 +176,11 @@ function parseV2(root: Record<string, unknown>, migrateVisualPlanes: boolean): C
         value,
         `project.layout.conductors[${i}]`,
         migrateVisualPlanes ? defaultVisualPlane('conductor') : undefined,
+        readBoardJumpers,
       ),
   );
 
-  const project: CanonicalProjectV3 = {
+  const project: CanonicalProjectV4 = {
     formatVersion: CANONICAL_FORMAT_VERSION,
     electrical: { components, junctions, cables, nets },
     layout: {
@@ -364,6 +370,16 @@ function preflightV2(
     if (layout['points'] !== undefined) {
       budget.add(expectArray(layout['points'], label).length, label);
     }
+    if (layout['boardJumper'] !== undefined) {
+      const jumper = expectRecord(
+        layout['boardJumper'],
+        `project.layout.conductors[${index}].boardJumper`,
+      );
+      if (jumper['bends'] !== undefined) {
+        const bendsLabel = `project.layout.conductors[${index}].boardJumper.bends`;
+        budget.add(expectArray(jumper['bends'], bendsLabel).length, bendsLabel);
+      }
+    }
   });
 }
 
@@ -374,7 +390,7 @@ function preflightV2(
  * on -- that each declared net really is one connected group and that no
  * endpoint belongs to two nets at once.
  */
-function validateProject(project: CanonicalProjectV3): void {
+function validateProject(project: CanonicalProjectV4): void {
   const { components, junctions, cables, nets } = project.electrical;
   const { boards } = project.layout;
 
@@ -546,7 +562,7 @@ function validateProject(project: CanonicalProjectV3): void {
 }
 
 function validateLayout(
-  project: CanonicalProjectV3,
+  project: CanonicalProjectV4,
   boardsById: ReadonlyMap<string, CanonicalBoard>,
   componentsById: ReadonlyMap<string, CanonicalComponent>,
   junctionsById: ReadonlyMap<string, CanonicalJunction>,
@@ -797,6 +813,10 @@ function validateLayout(
         label,
       );
     }
+    if (layout.boardJumper) {
+      if (!conductor) throw new CanonicalProjectError(`${label}: missing conductor`);
+      validateBoardJumper(layout, conductor, boardsById, boardPortsByJunction, label);
+    }
   }
 
   validateInternalCopperTaps(project, boardPortsByJunction);
@@ -811,6 +831,80 @@ interface ResolvedBoardPort {
   netLabel?: string;
   /** Copper inside the board body, which has no landing pad of its own. */
   internal: boolean;
+}
+
+function validateBoardJumper(
+  layout: CanonicalConductorLayout,
+  conductor: CanonicalConductor,
+  boardsById: ReadonlyMap<string, CanonicalBoard>,
+  boardPortsByJunction: ReadonlyMap<string, ResolvedBoardPort>,
+  label: string,
+): void {
+  const boardId = layout.boardJumper?.boardId;
+  const board = boardId ? boardsById.get(boardId) : undefined;
+  if (!board) {
+    throw new CanonicalProjectError(`${label}.boardJumper.boardId: no board "${boardId ?? ''}"`);
+  }
+  if (board.surface !== 'breadboard') {
+    throw new CanonicalProjectError(
+      `${label}.boardJumper.boardId: board "${board.id}" is not a breadboard`,
+    );
+  }
+  if (layout.physicalBinding) {
+    throw new CanonicalProjectError(`${label}: a board jumper cannot be a physical binding`);
+  }
+  if (layout.routingMode !== undefined || layout.points !== undefined) {
+    throw new CanonicalProjectError(
+      `${label}: boardJumper derives endpoints and cannot contain routingMode or points`,
+    );
+  }
+  if (layout.visualPlane <= board.visualPlane) {
+    throw new CanonicalProjectError(
+      `${label}.visualPlane: a board jumper must be strictly above its board`,
+    );
+  }
+
+  const sourceHole = boardJumperEndpointHole(
+    conductor.from,
+    layout.fromTap,
+    board,
+    boardPortsByJunction,
+    `${label}.from`,
+  );
+  const targetHole = boardJumperEndpointHole(
+    conductor.to,
+    layout.toTap,
+    board,
+    boardPortsByJunction,
+    `${label}.to`,
+  );
+  // Resolve both ends here even though their coordinates are intentionally
+  // absent from boardJumper. This guarantees reload can derive them from the
+  // exact taps and board holes.
+  void sourceHole;
+  void targetHole;
+}
+
+function boardJumperEndpointHole(
+  endpoint: CanonicalNetEndpoint,
+  tap: number | undefined,
+  board: CanonicalBoard,
+  boardPortsByJunction: ReadonlyMap<string, ResolvedBoardPort>,
+  label: string,
+): BoardHole {
+  if (endpoint.kind !== 'junction') {
+    throw new CanonicalProjectError(`${label}: a board jumper endpoint must be a board hole`);
+  }
+  const resolved = boardPortsByJunction.get(endpoint.junctionId);
+  if (resolved?.boardId !== board.id) {
+    throw new CanonicalProjectError(`${label}: endpoint is not on board "${board.id}"`);
+  }
+  if (resolved.holes.length > 1 && tap === undefined) {
+    throw new CanonicalProjectError(`${label}: endpoint must identify one hole with a tap index`);
+  }
+  const hole = resolved.holes[tap ?? 0];
+  if (!hole) throw new CanonicalProjectError(`${label}: endpoint hole cannot be resolved`);
+  return hole;
 }
 
 /**
@@ -828,7 +922,7 @@ interface ResolvedBoardPort {
  * missing entirely.
  */
 function validateInternalCopperTaps(
-  project: CanonicalProjectV3,
+  project: CanonicalProjectV4,
   boardPortsByJunction: ReadonlyMap<string, ResolvedBoardPort>,
 ): void {
   const layoutsByConductor = new Map(
@@ -865,7 +959,7 @@ function requireInternalCopperTap(
 }
 
 function validateCopperNetLabels(
-  project: CanonicalProjectV3,
+  project: CanonicalProjectV4,
   boardPortsByJunction: ReadonlyMap<string, { netLabel?: string }>,
 ): void {
   for (const net of project.electrical.nets) {
@@ -1004,7 +1098,11 @@ function validatePhysicalBinding(
   boardPortsByJunction: ReadonlyMap<string, ResolvedBoardPort>,
   label: string,
 ): void {
-  if (layout.routingMode !== undefined || layout.points !== undefined) {
+  if (
+    layout.routingMode !== undefined ||
+    layout.points !== undefined ||
+    layout.boardJumper !== undefined
+  ) {
     throw new CanonicalProjectError(`${label}: a physical binding cannot have a visible route`);
   }
   const pin =
@@ -1068,7 +1166,7 @@ function validatePhysicalBinding(
   }
 }
 
-function validatePhysicalBindingCoverage(project: CanonicalProjectV3): void {
+function validatePhysicalBindingCoverage(project: CanonicalProjectV4): void {
   const bound = new Set(
     project.layout.conductors
       .filter((layout) => layout.physicalBinding)
@@ -1692,6 +1790,7 @@ function parseConductorLayout(
   raw: unknown,
   label: string,
   fallbackVisualPlane?: number,
+  readBoardJumpers = true,
 ): CanonicalConductorLayout {
   const obj = expectRecord(raw, label);
   const routingMode =
@@ -1705,10 +1804,25 @@ function parseConductorLayout(
           expectPoint(p, `${label}.points[${i}]`),
         );
   const points = validateManualRoute(routingMode, parsedPoints, label);
+  if (readBoardJumpers && obj['boardId'] !== undefined) {
+    throw new CanonicalProjectError(
+      `${label}.boardId: use boardJumper.boardId for board-local conductors`,
+    );
+  }
+  const boardJumper =
+    readBoardJumpers && obj['boardJumper'] !== undefined
+      ? parseBoardJumperLayout(obj['boardJumper'], `${label}.boardJumper`)
+      : undefined;
+  if (boardJumper && (routingMode !== undefined || points !== undefined)) {
+    throw new CanonicalProjectError(
+      `${label}: boardJumper derives endpoints and cannot contain routingMode or points`,
+    );
+  }
 
   return {
     conductorId: expectNonEmptyString(obj['conductorId'], `${label}.conductorId`),
     visualPlane: parseVisualPlane(obj['visualPlane'], `${label}.visualPlane`, fallbackVisualPlane),
+    boardJumper,
     routingMode,
     points,
     fromTap:
@@ -1720,6 +1834,23 @@ function parseConductorLayout(
         ? undefined
         : expectNonNegativeInteger(obj['toTap'], `${label}.toTap`),
     physicalBinding: expectOptionalBoolean(obj['physicalBinding'], `${label}.physicalBinding`),
+  };
+}
+
+function parseBoardJumperLayout(
+  raw: unknown,
+  label: string,
+): CanonicalConductorLayout['boardJumper'] {
+  const obj = expectRecord(raw, label);
+  const bends =
+    obj['bends'] === undefined
+      ? undefined
+      : expectArray(obj['bends'], `${label}.bends`).map((point, index) =>
+          expectPoint(point, `${label}.bends[${index}]`),
+        );
+  return {
+    boardId: expectNonEmptyString(obj['boardId'], `${label}.boardId`),
+    bends: bends?.length ? bends : undefined,
   };
 }
 
@@ -1958,7 +2089,7 @@ function parseLegacyNet(raw: unknown, label: string): LegacyNet {
  * nets, which is why an old saved project opens with its rails already
  * correct instead of as a pile of unrelated two-pin wires.
  */
-function migrateV1(legacy: LegacyProject): CanonicalProjectV3 {
+function migrateV1(legacy: LegacyProject): CanonicalProjectV4 {
   const components: CanonicalComponent[] = legacy.components.map((component) => ({
     id: component.id,
     deviceId: component.deviceId,
@@ -2046,7 +2177,7 @@ function migrateV1(legacy: LegacyProject): CanonicalProjectV3 {
     if (net.netId) nameHints.set(net.id, net.netId);
   }
 
-  const project: CanonicalProjectV3 = {
+  const project: CanonicalProjectV4 = {
     formatVersion: CANONICAL_FORMAT_VERSION,
     electrical: {
       components,

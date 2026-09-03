@@ -25,7 +25,7 @@ const pointerEvent = (
 };
 
 describe('edge gesture handlers', () => {
-  const dispatch = vi.fn<(command: EdgeCommand) => void>();
+  const dispatch = vi.fn<(command: EdgeCommand) => Promise<void>>().mockResolvedValue(undefined);
   const edge = {
     id: 'wire-1',
     source: 'source',
@@ -50,6 +50,7 @@ describe('edge gesture handlers', () => {
           useValue: {
             getEdgeById: vi.fn(() => edge),
             nodes: vi.fn(() => [referenceNode]),
+            getModel: vi.fn(() => ({})),
           },
         },
         {
@@ -94,7 +95,7 @@ describe('edge gesture handlers', () => {
     ]);
   });
 
-  it('has the reshape handler translate pointer movement and finish through commands', () => {
+  it('has the reshape handler translate pointer movement and finish through commands', async () => {
     const handler = TestBed.inject(EdgeReshapeHandler);
     const handle = document.createElement('button');
     const start = pointerEvent('pointerdown', {
@@ -115,20 +116,21 @@ describe('edge gesture handlers', () => {
     handle.dispatchEvent(pointerEvent('pointermove', { pointerId: 7, clientX: 30, clientY: 50 }));
     handle.dispatchEvent(pointerEvent('pointerup', { pointerId: 7, clientX: 30, clientY: 50 }));
 
-    expect(dispatch).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        kind: 'reshape-move',
-        edgeId: 'wire-1',
-        segmentIndex: 1,
-        grid: { x: 20, y: 20 },
-        dxWorld: 10,
-        dyWorld: 15,
-      }),
-    );
-    expect(dispatch).toHaveBeenNthCalledWith(2, {
-      kind: 'reshape-finish',
-      edgeId: 'wire-1',
+    await vi.waitFor(() => {
+      expect(dispatch).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          kind: 'reshape-move',
+          edgeId: 'wire-1',
+          segmentIndex: 1,
+          grid: { x: 20, y: 20 },
+          dxWorld: 10,
+          dyWorld: 15,
+        }),
+      );
+    });
+    await vi.waitFor(() => {
+      expect(dispatch).toHaveBeenNthCalledWith(2, { kind: 'reshape-finish', edgeId: 'wire-1' });
     });
     expect(handler.current).toBeNull();
     expect(handler.gestureActive()).toBe(false);

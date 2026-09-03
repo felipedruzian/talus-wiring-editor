@@ -127,7 +127,7 @@ describe('ProjectStorageService save/open', () => {
     await storage.save('project-1');
 
     expect(savedBody).toMatchObject({
-      formatVersion: 3,
+      formatVersion: 4,
       electrical: {
         cables: [{ name: 'W1', colors: ['#123456'] }],
         nets: [

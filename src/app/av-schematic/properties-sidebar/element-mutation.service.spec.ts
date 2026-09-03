@@ -32,6 +32,11 @@ class ModelStub {
     getEdges: () => this.edges,
   }));
   readonly getEdgeById = vi.fn((id: string) => this.edges.find((edge) => edge.id === id));
+  readonly updateEdge = vi.fn((id: string, update: Partial<Edge>) => {
+    const index = this.edges.findIndex((edge) => edge.id === id);
+    if (index >= 0) this.edges[index] = { ...this.edges[index], ...update };
+    return Promise.resolve();
+  });
   readonly updateEdgeData = vi.fn((id: string, data: WireEdgeData) => {
     const index = this.edges.findIndex((candidate) => candidate.id === id);
     if (index >= 0) this.edges[index] = { ...this.edges[index], data };
@@ -164,6 +169,121 @@ describe('ElementMutationService wire identity edits', () => {
     expect(model.edges[0].zOrder).toBeLessThan(model.nodes[0].zOrder ?? -1);
     expect(model.nodes[0].data).toMatchObject({ visualPlane: 0 });
     expect(model.nodes[1].data).toMatchObject({ visualPlane: 10 });
+  });
+
+  it('deletes board-owned jumpers explicitly in the same transaction as their board', async () => {
+    const model = new ModelStub();
+    model.nodes = [
+      {
+        id: 'board-node-instance',
+        type: 'boardNode',
+        position: { x: 0, y: 0 },
+        data: {
+          type: 'board',
+          boardId: 'breadboard-domain',
+          label: 'Protoboard',
+          surface: 'breadboard',
+          rows: 10,
+          cols: 12,
+          pitch: 10,
+        },
+      },
+    ];
+    model.edges = [
+      {
+        id: 'jumper',
+        type: 'wireEdge',
+        source: 'board-node-instance',
+        sourcePort: 'hole:0:0',
+        target: 'board-node-instance',
+        targetPort: 'hole:2:4',
+        data: { type: 'wire', wireId: 'W1', jumperBoardId: 'breadboard-domain' },
+      },
+      {
+        id: 'unrelated',
+        type: 'wireEdge',
+        source: 'external-a',
+        target: 'external-b',
+        data: { type: 'wire', wireId: 'W2' },
+      },
+    ];
+    const transaction = vi.fn((action: () => void) => {
+      action();
+      return Promise.resolve();
+    });
+    TestBed.configureTestingModule({
+      providers: [
+        ElementMutationService,
+        { provide: ProjectStorageService, useValue: {} },
+        { provide: NgDiagramModelService, useValue: model },
+        { provide: NgDiagramService, useValue: { transaction } },
+      ],
+    });
+
+    await TestBed.inject(ElementMutationService).removeNode('board-node-instance');
+
+    expect(transaction).toHaveBeenCalledOnce();
+    expect(model.deleteEdges).toHaveBeenCalledWith(['jumper']);
+    expect(model.deleteNodes).toHaveBeenCalledWith(['board-node-instance']);
+    expect(model.edges.map((edge) => edge.id)).toEqual(['unrelated']);
+  });
+
+  it('restores a jumper to a direct manual route instead of global auto-routing', () => {
+    const model = new ModelStub();
+    model.nodes = [
+      {
+        id: 'board-node-instance',
+        type: 'boardNode',
+        position: { x: 100, y: 200 },
+        data: {
+          type: 'board',
+          boardId: 'breadboard-domain',
+          label: 'Protoboard',
+          surface: 'breadboard',
+          rows: 10,
+          cols: 12,
+          pitch: 10,
+        },
+      },
+    ];
+    model.edges = [
+      {
+        id: 'jumper',
+        type: 'wireEdge',
+        source: 'board-node-instance',
+        sourcePort: 'hole:0:0',
+        target: 'board-node-instance',
+        targetPort: 'hole:2:4',
+        routingMode: 'manual',
+        points: [
+          { x: 116, y: 216 },
+          { x: 126, y: 216 },
+          { x: 126, y: 246 },
+          { x: 156, y: 246 },
+          { x: 156, y: 236 },
+        ],
+        data: { type: 'wire', wireId: 'W1', jumperBoardId: 'breadboard-domain' },
+      },
+    ];
+    TestBed.configureTestingModule({
+      providers: [
+        ElementMutationService,
+        { provide: ProjectStorageService, useValue: {} },
+        { provide: NgDiagramModelService, useValue: model },
+        { provide: NgDiagramService, useValue: diagramStub },
+      ],
+    });
+
+    TestBed.inject(ElementMutationService).resetEdgeRouting('jumper');
+
+    expect(model.updateEdge).toHaveBeenCalledWith('jumper', {
+      routing: 'polyline',
+      routingMode: 'manual',
+      points: [
+        { x: 116, y: 216 },
+        { x: 156, y: 236 },
+      ],
+    });
   });
 
   it('renames every conductor and the cable inventory through export and reimport', async () => {

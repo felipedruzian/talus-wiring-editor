@@ -35,6 +35,7 @@
           [netId]="wire.netId"
           [netName]="wire.netName"
           [netSize]="wire.netSize"
+          [jumperLength]="wire.jumperLength"
         />
       } @else if (state() === 'empty') {
         <app-sidebar-placeholder
@@ -71,6 +72,23 @@
       </div>
     } @else if (state() === 'single-board') {
       <div class="sidebar-actions">
+        @if (selectedBoard(); as board) {
+          @if (board.data.surface === 'breadboard') {
+            <button class="action-button p10" type="button" (click)="onToggleJumperCreation()">
+              {{
+                jumperCreation.activeBoardId() === board.data.boardId
+                  ? 'Cancelar jumper'
+                  : 'Adicionar jumper'
+              }}
+            </button>
+            @if (jumperCreation.activeBoardId() === board.data.boardId) {
+              <small>Selecione dois furos da protoboard. Pressione Escape para cancelar.</small>
+              @if (jumperCreation.status(); as status) {
+                <small class="jumper-status" role="alert">{{ status }}</small>
+              }
+            }
+          }
+        }
         <button class="remove-button p10" type="button" (click)="onRemoveBoard()">
           Remover placa
         </button>
@@ -85,7 +103,11 @@
       <div class="sidebar-actions">
         @if (wire.edge.routingMode === 'manual') {
           <button class="action-button p10" type="button" (click)="onResetWireRouting()">
-            Restaurar rota automática
+            @if (wire.edge.data.jumperBoardId) {
+              Restaurar rota direta
+            } @else {
+              Restaurar rota automática
+            }
           </button>
         }
         <button class="remove-button p10" type="button" (click)="onRemoveWire()">

@@ -8,7 +8,10 @@ import {
   type CanonicalNetEndpoint,
   type CanonicalProjectV2,
 } from '../diagram/model/canonical-project';
-import { basePhysicalProject } from '../diagram/model/canonical-project-corpus.mjs';
+import {
+  basePhysicalProject,
+  boardJumperProject,
+} from '../diagram/model/canonical-project-corpus.mjs';
 import { parseCanonicalProject } from '../diagram/model/canonical-project-parse';
 import { electricallyEquivalent } from '../diagram/model/electrical-equivalence';
 import { OPERATIONAL_LIMITS } from '../diagram/model/operational-limits.mjs';
@@ -149,6 +152,22 @@ describe('WireVizExchangeService', () => {
         net.conductors.map((conductor) => conductor.id),
       ),
     ).toEqual(['binding:link-1/a', 'binding:link-1/b']);
+  });
+
+  it('exports a jumper electrically and reports its board-local geometry separately', () => {
+    storage.project = parseCanonicalProject(boardJumperProject());
+
+    const exported = service.exportYaml();
+    if (!exported) throw new Error('jumper export failed');
+
+    expect(exported.yaml).toContain('copper:board-17/hole%3A0%3A0');
+    expect(exported.yaml).toContain('copper:board-17/hole%3A1%3A2');
+    expect(exported.report.entries).toContainEqual(
+      expect.objectContaining({
+        code: 'field-not-representable',
+        path: 'layout.conductors.boardJumper',
+      }),
+    );
   });
 
   it('keeps the live project unchanged and exposes a global error report state on invalid YAML', async () => {

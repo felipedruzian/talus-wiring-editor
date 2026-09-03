@@ -1,3 +1,6 @@
+@if (isBoardJumper()) {
+  <ng-diagram-base-edge [edge]="edge()" stroke="#000000" [strokeWidth]="3.5" />
+}
 <ng-diagram-base-edge [edge]="edge()" [stroke]="strokeColor()" [strokeWidth]="strokeWidth()">
   @if (!isInspected()) {
     <ng-diagram-base-edge-label id="wire-id-source" [positionOnEdge]="'30px'">

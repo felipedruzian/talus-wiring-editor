@@ -7,7 +7,7 @@ import {
   type CanonicalElectrical,
   type CanonicalJunction,
   type CanonicalJunctionLayout,
-  type CanonicalProjectV3,
+  type CanonicalProjectV4,
 } from '../diagram/model/canonical-project';
 import { OPERATIONAL_LIMITS } from '../diagram/model/operational-limits.mjs';
 import { defaultVisualPlane } from '../diagram/model/visual-planes';
@@ -92,8 +92,11 @@ export class WireVizExchangeService {
       const bindingCount = project.layout.conductors.filter(
         (layout) => layout.physicalBinding,
       ).length;
+      const boardJumperCount = project.layout.conductors.filter(
+        (layout) => layout.boardJumper,
+      ).length;
       const exported = exportWireViz(wireVizElectrical(project));
-      const result = withPhysicalBindingReport(exported, bindingCount);
+      const result = withProjectLayoutReport(exported, bindingCount, boardJumperCount);
       this._report.set(result.report);
       this.succeed(`WireViz exportado com ${result.report.entries.length} item(ns) no relatório.`);
       return result;
@@ -139,7 +142,7 @@ export class WireVizExchangeService {
  * targets it; otherwise it is restored from the import skeleton together with
  * the hidden bindings.
  */
-export function wireVizElectrical(project: CanonicalProjectV3): CanonicalElectrical {
+export function wireVizElectrical(project: CanonicalProjectV4): CanonicalElectrical {
   const hiddenConductorIds = new Set(
     project.layout.conductors
       .filter((layout) => layout.physicalBinding)
@@ -181,23 +184,37 @@ export function wireVizElectrical(project: CanonicalProjectV3): CanonicalElectri
   };
 }
 
-function withPhysicalBindingReport(
+function withProjectLayoutReport(
   result: WireVizExportResult,
   bindingCount: number,
+  boardJumperCount: number,
 ): WireVizExportResult {
-  if (bindingCount === 0) return result;
-  const bindingEntry: WireVizReportEntry = {
-    severity: 'info',
-    code: 'field-not-representable',
-    path: 'layout.conductors.physicalBinding',
-    message:
-      `${bindingCount} associação(ões) física(s) entre pino e cobre permanecem apenas ` +
-      'no projeto e serão restauradas em uma reimportação de substituição.',
-  };
+  const entries: WireVizReportEntry[] = [];
+  if (bindingCount > 0) {
+    entries.push({
+      severity: 'info',
+      code: 'field-not-representable',
+      path: 'layout.conductors.physicalBinding',
+      message:
+        `${bindingCount} associação(ões) física(s) entre pino e cobre permanecem apenas ` +
+        'no projeto e serão restauradas em uma reimportação de substituição.',
+    });
+  }
+  if (boardJumperCount > 0) {
+    entries.push({
+      severity: 'info',
+      code: 'field-not-representable',
+      path: 'layout.conductors.boardJumper',
+      message:
+        `${boardJumperCount} jumper(s) são exportados como condutores elétricos normais; ` +
+        'a placa proprietária e as dobras locais permanecem apenas no projeto.',
+    });
+  }
+  if (entries.length === 0) return result;
   return {
     ...result,
     report: {
-      entries: [...result.report.entries, bindingEntry].sort(
+      entries: [...result.report.entries, ...entries].sort(
         (a, b) => a.path.localeCompare(b.path) || a.code.localeCompare(b.code),
       ),
     },
@@ -212,7 +229,7 @@ function withPhysicalBindingReport(
  * omits the positional label, but can avoid promoting a generated redundant
  * label to explicit metadata.
  */
-function inferImportOptions(project: CanonicalProjectV3): WireVizImportOptions {
+function inferImportOptions(project: CanonicalProjectV4): WireVizImportOptions {
   const placement: Record<string, string> = {};
   for (const component of project.electrical.components) {
     const name = component.wirevizName ?? component.deviceId;
@@ -251,8 +268,8 @@ function inferImportOptions(project: CanonicalProjectV3): WireVizImportOptions {
 
 export function buildImportedProject(
   importedElectrical: CanonicalElectrical,
-  previous: CanonicalProjectV3,
-): CanonicalProjectV3 {
+  previous: CanonicalProjectV4,
+): CanonicalProjectV4 {
   const electrical = withPhysicalBindings(importedElectrical, previous);
   const previousComponents = new Map(
     previous.layout.components.map((layout) => [layout.componentId, layout]),
@@ -335,7 +352,7 @@ export function buildImportedProject(
  */
 function withPhysicalBindings(
   imported: CanonicalElectrical,
-  previous: CanonicalProjectV3,
+  previous: CanonicalProjectV4,
 ): CanonicalElectrical {
   const importedComponents = new Map(
     imported.components.map((component) => [component.id, component]),

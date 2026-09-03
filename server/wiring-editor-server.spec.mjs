@@ -102,7 +102,7 @@ async function startServer(cfg) {
 
 function validProjectPayload() {
   return {
-    formatVersion: 3,
+    formatVersion: 4,
     electrical: {
       components: [
         {
@@ -602,7 +602,7 @@ describe('wiring-editor-server', () => {
     });
   });
 
-  describe('canonical v1/v2 validation parity', () => {
+  describe('canonical v1/v2/v3 validation parity', () => {
     it('migrates v2 visual planes deterministically', async () => {
       const project = validProjectPayload();
       project.formatVersion = 2;
@@ -621,7 +621,7 @@ describe('wiring-editor-server', () => {
       });
       expect(res.status).toBe(200);
       const stored = await (await fetch(`${server.baseUrl}/api/projects/migrated-planes`)).json();
-      expect(stored.formatVersion).toBe(3);
+      expect(stored.formatVersion).toBe(4);
       expect(stored.layout.components.every((item) => item.visualPlane === 10)).toBe(true);
       expect(stored.layout.junctions.every((item) => item.visualPlane === 30)).toBe(true);
       expect(stored.layout.conductors.every((item) => item.visualPlane === 20)).toBe(true);

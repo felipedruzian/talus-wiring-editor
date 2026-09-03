@@ -94,6 +94,21 @@ const edge: Edge<WireEdgeData> = {
   points: [sourcePoint, targetPoint],
   data: { type: 'wire', wireId: 'W-PHYSICAL' },
 };
+const jumper: Edge<WireEdgeData> = {
+  id: 'jumper-1',
+  type: EdgeTemplateType.WireEdge,
+  source: board.id,
+  sourcePort: 'hole:0:0',
+  target: board.id,
+  targetPort: 'hole:1:2',
+  routing: 'polyline',
+  routingMode: 'manual',
+  points: [
+    { x: 116, y: 216 },
+    { x: 150, y: 233 },
+  ],
+  data: { type: 'wire', wireId: 'J1', jumperBoardId: board.data.boardId },
+};
 
 const detachedComponent: Node<DeviceNodeData> = {
   ...component,
@@ -127,7 +142,11 @@ const detachedEdge: Edge<WireEdgeData> = {
 
 describe('physical DXF renderers', () => {
   const bounds = { x: 0, y: 0, width: 400, height: 400 };
-  const doc = new DxfExporter(buildAvDxfConfig()).export([board, component], [edge], bounds);
+  const doc = new DxfExporter(buildAvDxfConfig()).export(
+    [board, component],
+    [edge, jumper],
+    bounds,
+  );
   const mapper = CoordinateMapper.fromScale(bounds, DXF_SCALE_MM_PER_PX, DIAGRAM_PADDING);
 
   it('registers separate layers and renders every board hole at pitch 17', () => {
@@ -136,6 +155,7 @@ describe('physical DXF renderers', () => {
       LAYERS.DEVICES,
       LAYERS.FOOTPRINTS,
       LAYERS.WIRES,
+      LAYERS.JUMPERS,
     ]);
     const holes = doc
       .getEntities()
@@ -175,6 +195,16 @@ describe('physical DXF renderers', () => {
       mapper.mapPoint(sourcePoint.x, sourcePoint.y),
       mapper.mapPoint(targetPoint.x, targetPoint.y),
     ]);
+  });
+
+  it('exports board-owned jumpers on their own DXF layer', () => {
+    const exported = doc
+      .getEntities()
+      .find(
+        (entity): entity is DxfLwPolyline =>
+          entity instanceof DxfLwPolyline && entity.layerName === LAYERS.JUMPERS,
+      );
+    expect(exported?.points).toEqual([mapper.mapPoint(116, 216), mapper.mapPoint(150, 233)]);
   });
 });
 

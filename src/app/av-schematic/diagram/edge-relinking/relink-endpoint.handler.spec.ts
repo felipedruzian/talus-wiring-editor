@@ -14,6 +14,8 @@ import { RelinkTargetHighlightService } from './relink-target-highlight.service'
 
 describe('RelinkEndpointHandler', () => {
   const updateEdge = vi.fn<(edgeId: string, patch: Partial<Edge>) => void>();
+  const beginHistoryGroup = vi.fn();
+  const endHistoryGroup = vi.fn();
   const highlight = { clear: vi.fn(), set: vi.fn() };
   const sourceNode: Node = {
     id: 'source',
@@ -44,6 +46,8 @@ describe('RelinkEndpointHandler', () => {
     modelNodes = [sourceNode, targetNode];
     modelEdges = [edge];
     updateEdge.mockReset();
+    beginHistoryGroup.mockReset();
+    endHistoryGroup.mockReset();
     highlight.clear.mockReset();
     highlight.set.mockReset();
     TestBed.configureTestingModule({
@@ -59,6 +63,8 @@ describe('RelinkEndpointHandler', () => {
             getModel: vi.fn(() => ({
               getNodes: () => modelNodes,
               getEdges: () => modelEdges,
+              beginHistoryGroup,
+              endHistoryGroup,
             })),
             nodes: vi.fn(() => modelNodes),
             updateEdge,
@@ -75,7 +81,7 @@ describe('RelinkEndpointHandler', () => {
     });
   });
 
-  it('previews a dangling endpoint, highlights the port, then commits one partial relink patch', () => {
+  it('previews a dangling endpoint, highlights the port, then commits one partial relink patch', async () => {
     const handler = TestBed.inject(RelinkEndpointHandler);
     const route = [
       { x: 0, y: 0 },
@@ -89,18 +95,20 @@ describe('RelinkEndpointHandler', () => {
     handler.onEndpointContinue(201, 40, 9);
 
     expect(highlight.set).toHaveBeenCalledWith('new-target', 'in');
-    expect(updateEdge).toHaveBeenNthCalledWith(
-      1,
-      'wire-1',
-      expect.objectContaining({
-        target: '',
-        targetPort: undefined,
-        targetPosition: { x: 200, y: 40 },
-        routingMode: 'manual',
-      }),
-    );
+    await vi.waitFor(() => {
+      expect(updateEdge).toHaveBeenNthCalledWith(
+        1,
+        'wire-1',
+        expect.objectContaining({
+          target: '',
+          targetPort: undefined,
+          targetPosition: { x: 200, y: 40 },
+          routingMode: 'manual',
+        }),
+      );
+    });
 
-    handler.onEndpointEnd(201, 40, 9);
+    await handler.onEndpointEnd(201, 40, 9);
 
     const committedPatch = updateEdge.mock.calls[1][1];
     expect(committedPatch).toEqual({
@@ -122,7 +130,7 @@ describe('RelinkEndpointHandler', () => {
     expect(highlight.clear).toHaveBeenCalled();
   });
 
-  it('leaves the end dangling when relink would bridge incompatible copper', () => {
+  it('leaves the end dangling when relink would bridge incompatible copper', async () => {
     const board = (id: string, x: number, traceId: string, net: string): Node<BoardNodeData> => ({
       id,
       type: NodeTemplateType.BoardNode,
@@ -175,7 +183,7 @@ describe('RelinkEndpointHandler', () => {
 
     handler.onEndpointStart(physicalEdge.id, 'target', physicalEdge.points ?? [], 11);
     handler.onEndpointContinue(205, 5, 11);
-    handler.onEndpointEnd(205, 5, 11);
+    await handler.onEndpointEnd(205, 5, 11);
 
     expect(updateEdge).toHaveBeenCalledTimes(2);
     for (const [, patch] of updateEdge.mock.calls) {
@@ -184,7 +192,7 @@ describe('RelinkEndpointHandler', () => {
     }
   });
 
-  it('leaves the end dangling when two board ports resolve to the same copper junction', () => {
+  it('leaves the end dangling when two board ports resolve to the same copper junction', async () => {
     const board: Node<BoardNodeData> = {
       id: 'shared-copper-board',
       type: NodeTemplateType.BoardNode,
@@ -241,7 +249,7 @@ describe('RelinkEndpointHandler', () => {
     const handler = TestBed.inject(RelinkEndpointHandler);
 
     handler.onEndpointStart(physicalEdge.id, 'target', physicalEdge.points ?? [], 12);
-    handler.onEndpointEnd(205, 5, 12);
+    await handler.onEndpointEnd(205, 5, 12);
 
     expect(updateEdge).toHaveBeenCalledOnce();
     expect(updateEdge).toHaveBeenCalledWith(
@@ -251,5 +259,165 @@ describe('RelinkEndpointHandler', () => {
         targetPort: undefined,
       }),
     );
+  });
+
+  it('restores a jumper endpoint when it is dropped outside its owner breadboard', async () => {
+    const board: Node<BoardNodeData> = {
+      id: 'board-node-instance',
+      type: NodeTemplateType.BoardNode,
+      position: { x: 0, y: 0 },
+      data: {
+        type: 'board',
+        boardId: 'breadboard-domain',
+        label: 'Protoboard',
+        surface: 'breadboard',
+        rows: 3,
+        cols: 4,
+        pitch: 20,
+      },
+      measuredPorts: [
+        {
+          id: 'hole:0:0',
+          nodeId: 'board-node-instance',
+          type: 'both',
+          side: 'left',
+          position: { x: 16, y: 9 },
+          size: { width: 14, height: 14 },
+        },
+        {
+          id: 'hole:1:2',
+          nodeId: 'board-node-instance',
+          type: 'both',
+          side: 'left',
+          position: { x: 56, y: 29 },
+          size: { width: 14, height: 14 },
+        },
+      ],
+    };
+    const external: Node = {
+      id: 'external',
+      position: { x: 200, y: 0 },
+      measuredPorts: [
+        {
+          id: 'in',
+          nodeId: 'external',
+          type: 'both',
+          side: 'left',
+          position: { x: 0, y: 10 },
+          size: { width: 10, height: 20 },
+        },
+      ],
+      data: {},
+    };
+    const jumper: Edge = {
+      id: 'jumper',
+      source: board.id,
+      sourcePort: 'hole:0:0',
+      target: board.id,
+      targetPort: 'hole:1:2',
+      routingMode: 'manual',
+      points: [
+        { x: 16, y: 16 },
+        { x: 56, y: 16 },
+        { x: 56, y: 36 },
+      ],
+      data: { type: 'wire', wireId: 'W1', jumperBoardId: board.data.boardId },
+    };
+    modelNodes = [board, external];
+    modelEdges = [jumper];
+    const handler = TestBed.inject(RelinkEndpointHandler);
+
+    handler.onEndpointStart(jumper.id, 'target', jumper.points ?? [], 15);
+    handler.onEndpointContinue(201, 20, 15);
+    await handler.onEndpointEnd(201, 20, 15);
+
+    expect(updateEdge).toHaveBeenLastCalledWith(jumper.id, {
+      points: jumper.points,
+      routingMode: 'manual',
+      target: board.id,
+      targetPort: 'hole:1:2',
+      targetPosition: undefined,
+    });
+    expect(highlight.set).not.toHaveBeenCalledWith('external', 'in');
+  });
+
+  it('relinks a jumper within its owner without orthogonalizing its free bends', async () => {
+    const board: Node<BoardNodeData> = {
+      id: 'board-node-instance',
+      type: NodeTemplateType.BoardNode,
+      position: { x: 0, y: 0 },
+      data: {
+        type: 'board',
+        boardId: 'breadboard-domain',
+        label: 'Protoboard',
+        surface: 'breadboard',
+        rows: 3,
+        cols: 4,
+        pitch: 20,
+      },
+      measuredPorts: [
+        {
+          id: 'hole:0:0',
+          nodeId: 'board-node-instance',
+          type: 'both',
+          side: 'left',
+          position: { x: 9, y: 9 },
+          size: { width: 14, height: 14 },
+        },
+        {
+          id: 'hole:1:2',
+          nodeId: 'board-node-instance',
+          type: 'both',
+          side: 'left',
+          position: { x: 49, y: 29 },
+          size: { width: 14, height: 14 },
+        },
+        {
+          id: 'hole:2:3',
+          nodeId: 'board-node-instance',
+          type: 'both',
+          side: 'left',
+          position: { x: 76, y: 49 },
+          size: { width: 14, height: 14 },
+        },
+      ],
+    };
+    const jumper: Edge = {
+      id: 'jumper-free-route',
+      source: board.id,
+      sourcePort: 'hole:0:0',
+      target: board.id,
+      targetPort: 'hole:1:2',
+      routing: 'polyline',
+      routingMode: 'manual',
+      points: [
+        { x: 16, y: 16 },
+        { x: 30, y: 75 },
+        { x: 51, y: 23 },
+        { x: 56, y: 36 },
+      ],
+      data: { type: 'wire', wireId: 'W1', jumperBoardId: board.data.boardId },
+    };
+    modelNodes = [board];
+    modelEdges = [jumper];
+    const handler = TestBed.inject(RelinkEndpointHandler);
+
+    handler.onEndpointStart(jumper.id, 'target', jumper.points ?? [], 16);
+    await handler.onEndpointEnd(76, 56, 16);
+
+    expect(updateEdge).toHaveBeenLastCalledWith(jumper.id, {
+      points: [
+        { x: 16, y: 16 },
+        { x: 30, y: 75 },
+        { x: 51, y: 23 },
+        { x: 76, y: 56 },
+      ],
+      routingMode: 'manual',
+      target: board.id,
+      targetPort: 'hole:2:3',
+      targetPosition: undefined,
+    });
+    expect(beginHistoryGroup).toHaveBeenCalledOnce();
+    expect(endHistoryGroup).toHaveBeenCalledOnce();
   });
 });

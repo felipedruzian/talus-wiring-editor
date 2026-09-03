@@ -19,6 +19,7 @@ import {
   type JunctionFieldChange,
 } from './components/junction-form/junction-form.mappers';
 import { MAX_VISUAL_PLANE, MIN_VISUAL_PLANE } from '../diagram/model/visual-planes';
+import { BoardJumperCreationService } from '../diagram/board-jumper-creation.service';
 
 @Component({
   selector: 'app-properties-sidebar',
@@ -69,6 +70,7 @@ import { MAX_VISUAL_PLANE, MIN_VISUAL_PLANE } from '../diagram/model/visual-plan
 export class PropertiesSidebarComponent {
   private readonly sidebarService = inject(PropertiesSidebarService);
   private readonly elementMutationService = inject(ElementMutationService);
+  protected readonly jumperCreation = inject(BoardJumperCreationService);
 
   protected readonly isExpanded = this.sidebarService.isExpanded;
   protected readonly state = this.sidebarService.sidebarState;
@@ -101,6 +103,11 @@ export class PropertiesSidebarComponent {
   protected onRemoveBoard(): void {
     const nodeId = this.sidebarService.selectedBoard()?.id;
     if (nodeId) void this.elementMutationService.removeNode(nodeId);
+  }
+
+  protected onToggleJumperCreation(): void {
+    const board = this.sidebarService.selectedBoard();
+    if (board) this.jumperCreation.toggle(board);
   }
 
   protected onVisualPlaneChange(event: Event): void {

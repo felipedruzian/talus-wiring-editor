@@ -3,6 +3,7 @@ export const LAYERS = {
   DEVICES: 'DEVICES',
   FOOTPRINTS: 'FOOTPRINTS',
   WIRES: 'WIRES',
+  JUMPERS: 'JUMPERS',
 } as const;
 
 export const ACI = {

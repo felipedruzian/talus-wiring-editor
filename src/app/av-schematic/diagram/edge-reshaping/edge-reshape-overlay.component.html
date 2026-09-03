@@ -4,6 +4,7 @@
       class="reshape-overlay__handle"
       [class.is-horizontal]="h.axis === 'horizontal'"
       [class.is-vertical]="h.axis === 'vertical'"
+      [class.is-insert-only]="h.insertOnly"
       [style.left.px]="h.midpoint.x"
       [style.top.px]="h.midpoint.y"
       (pointerdown)="onPointerDown($event, h)"
@@ -12,8 +13,16 @@
       (keydown.space)="onSegmentKeyboardInsert($event, h)"
       role="button"
       tabindex="0"
-      aria-label="Arrastar o segmento ou criar uma dobra com Enter"
-      title="Arraste para mover; clique duas vezes para criar uma dobra"
+      [attr.aria-label]="
+        h.insertOnly
+          ? 'Criar uma dobra com Enter'
+          : 'Arrastar o segmento ou criar uma dobra com Enter'
+      "
+      [title]="
+        h.insertOnly
+          ? 'Clique duas vezes para criar uma dobra'
+          : 'Arraste para mover; clique duas vezes para criar uma dobra'
+      "
     >
       <!-- Drag-direction arrow: up/down by default for horizontal segments;
            rotated left/right for vertical segments. Shown on hover / while dragging. -->

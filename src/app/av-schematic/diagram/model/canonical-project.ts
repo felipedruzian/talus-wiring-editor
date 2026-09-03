@@ -39,11 +39,18 @@ import {
 import { endpointKeysOf, groupConductorsIntoNets } from './net-grouping';
 import { normalizeOrthogonalPersistedRoute } from './persisted-wire-route.mjs';
 import { canonicalColorValue, isWireColorPairCoherent, resolveWireColor } from './wire-colors';
-import { applyVisualZOrder, defaultVisualPlane, visualPlaneOf } from './visual-planes';
+import {
+  applyVisualZOrder,
+  defaultVisualPlane,
+  MAX_VISUAL_PLANE,
+  visualPlaneOf,
+} from './visual-planes';
+import { boardLocalPoints, boardWorldPoints } from './board-jumper';
 
 /**
- * Canonical, serializable project format (v3). Visual planes were added in
- * v3 without entering the electrical section or the DXF layer vocabulary.
+ * Canonical, serializable project format (v4). Visual planes were added in
+ * v3 without entering the electrical section or the DXF layer vocabulary;
+ * v4 adds board ownership for local jumper routes.
  *
  * Two structural changes relative to v1 were required by issue #2:
  *
@@ -69,17 +76,21 @@ import { applyVisualZOrder, defaultVisualPlane, visualPlaneOf } from './visual-p
  *
  * v3 adds `visualPlane` only to layout records. It is deliberately absent
  * from electrical records and independent from the semantic DXF layers.
+ * v4 adds `boardJumper` to conductor layout. It stores only the owning board
+ * and optional board-local bends; endpoints remain derived from the
+ * conductor's junction taps and board holes.
  */
-export const CANONICAL_FORMAT_VERSION = 3;
+export const CANONICAL_FORMAT_VERSION = 4;
 
-export interface CanonicalProjectV3 {
-  formatVersion: 3;
+export interface CanonicalProjectV4 {
+  formatVersion: 4;
   electrical: CanonicalElectrical;
   layout: CanonicalLayout;
 }
 
-/** Compatibility alias kept for consumers while the v3 name propagates. */
-export type CanonicalProjectV2 = CanonicalProjectV3;
+/** Compatibility aliases kept while current-format consumers migrate names. */
+export type CanonicalProjectV3 = CanonicalProjectV4;
+export type CanonicalProjectV2 = CanonicalProjectV4;
 
 // ---------------------------------------------------------------------------
 // Electrical section -- everything WireViz can express
@@ -330,9 +341,17 @@ export interface CanonicalJunctionLayout {
  */
 export type CanonicalRoutingMode = 'manual';
 
+export interface CanonicalBoardJumperLayout {
+  boardId: string;
+  /** Optional intermediate route points in board-local coordinates. */
+  bends?: CanonicalPoint[];
+}
+
 export interface CanonicalConductorLayout {
   conductorId: string;
   visualPlane: number;
+  /** Board-local jumper identity and optional shape; endpoints are not duplicated here. */
+  boardJumper?: CanonicalBoardJumperLayout;
   routingMode?: CanonicalRoutingMode;
   points?: CanonicalPoint[];
   /** 0-based visual tap each end lands on, when that end is a junction. */
@@ -485,7 +504,7 @@ export function toCanonicalProject(
   nodes: readonly Node[],
   edges: readonly Edge[],
   cableInventory: readonly CanonicalCable[] = [],
-): CanonicalProjectV3 {
+): CanonicalProjectV4 {
   const deviceNodes = nodes.filter(isDeviceNode);
   const junctionNodes = nodes.filter(isJunctionNode);
   const boardNodes = nodes.filter(isBoardNode);
@@ -496,9 +515,10 @@ export function toCanonicalProject(
   for (const node of boardNodes) nodeKinds.set(node.id, 'board');
 
   const copper = new BoardCopperJunctions(boardNodes);
+  const boardNodesById = new Map(boardNodes.map((board) => [board.data.boardId, board]));
   const wireEdges = edges.filter(isWireEdge);
   const drafts = [
-    ...wireEdges.map((edge) => toConductorDraft(edge, nodeKinds, copper)),
+    ...wireEdges.map((edge) => toConductorDraft(edge, nodeKinds, copper, boardNodesById)),
     ...physicalBindingDrafts(deviceNodes, boardNodes, copper),
   ];
 
@@ -718,6 +738,7 @@ function toConductorDraft(
   edge: Edge<WireEdgeData>,
   nodeKinds: ReadonlyMap<string, 'device' | 'junction' | 'board'>,
   copper: BoardCopperJunctions,
+  boardNodesById: ReadonlyMap<string, Node<BoardNodeData>>,
 ): ConductorDraft {
   if (!edge.source || !edge.sourcePort || !edge.target || !edge.targetPort) {
     throw new CanonicalProjectError(
@@ -751,15 +772,29 @@ function toConductorDraft(
     wirevizLoop: edge.data.wirevizLoop,
   };
 
+  const jumperBoardId = edge.data.jumperBoardId;
+  const jumperBoard = jumperBoardId ? boardNodesById.get(jumperBoardId) : undefined;
+  if (jumperBoardId) validateLiveBoardJumper(edge, jumperBoard);
   const manual = edge.routingMode === 'manual';
-  const points = manual ? normalizeManualRoute(edge.id, edge.points) : undefined;
+  const worldPoints = manual
+    ? jumperBoard
+      ? normalizeBoardJumperRoute(edge.id, edge.points)
+      : normalizeManualRoute(edge.id, edge.points)
+    : undefined;
+  const localPoints =
+    worldPoints && jumperBoard ? boardLocalPoints(jumperBoard, worldPoints) : undefined;
+  const bends = localPoints?.slice(1, -1);
   const layout: CanonicalConductorLayout = {
     conductorId: edge.id,
-    visualPlane: visualPlaneOf(edge),
-    // Only 'manual' is a meaningful persisted state; anything else (e.g. the
-    // 'auto' ng-diagram sometimes sets explicitly) canonicalizes to absence.
-    routingMode: manual ? 'manual' : undefined,
-    points,
+    visualPlane: jumperBoard ? boardJumperVisualPlane(edge, jumperBoard) : visualPlaneOf(edge),
+    ...(jumperBoardId
+      ? { boardJumper: { boardId: jumperBoardId, bends: bends?.length ? bends : undefined } }
+      : {
+          // Only 'manual' is a meaningful persisted state; anything else
+          // canonicalizes to absence.
+          routingMode: manual ? ('manual' as const) : undefined,
+          points: worldPoints,
+        }),
     fromTap: from.tap,
     toTap: to.tap,
   };
@@ -771,6 +806,62 @@ function toConductorDraft(
     authoredNetNameHint: edge.data.netName,
     copperNetNameHint: copperHint,
   };
+}
+
+function boardJumperVisualPlane(edge: Edge, board: Node<BoardNodeData>): number {
+  const boardPlane = visualPlaneOf(board);
+  if (boardPlane >= MAX_VISUAL_PLANE) {
+    throw new CanonicalProjectError(
+      `edge "${edge.id}": jumper board must be below visual plane ${MAX_VISUAL_PLANE}`,
+    );
+  }
+  return Math.max(visualPlaneOf(edge), boardPlane + 1);
+}
+
+function validateLiveBoardJumper(
+  edge: Edge<WireEdgeData>,
+  board: Node<BoardNodeData> | undefined,
+): asserts board is Node<BoardNodeData> {
+  const label = `edge "${edge.id}"`;
+  if (!board) {
+    throw new CanonicalProjectError(`${label}: no jumper board "${edge.data.jumperBoardId}"`);
+  }
+  if (board.data.surface !== 'breadboard') {
+    throw new CanonicalProjectError(`${label}: a board jumper requires a breadboard owner`);
+  }
+  if (edge.source !== board.id || edge.target !== board.id) {
+    throw new CanonicalProjectError(
+      `${label}: both jumper ends must belong to board "${board.id}"`,
+    );
+  }
+  const sourceHole = edge.sourcePort ? parseHolePortId(edge.sourcePort) : null;
+  const targetHole = edge.targetPort ? parseHolePortId(edge.targetPort) : null;
+  if (
+    !sourceHole ||
+    !targetHole ||
+    !isBoardHoleAvailable(board.data, sourceHole) ||
+    !isBoardHoleAvailable(board.data, targetHole)
+  ) {
+    throw new CanonicalProjectError(`${label}: jumper ends must be available board holes`);
+  }
+  if (edge.routingMode !== 'manual') {
+    throw new CanonicalProjectError(`${label}: a board jumper requires a manual local route`);
+  }
+  const first = edge.points?.[0];
+  const last = edge.points?.[edge.points.length - 1];
+  const [expectedSource, expectedTarget] = boardWorldPoints(board, [
+    holeLocalPoint(board.data, sourceHole),
+    holeLocalPoint(board.data, targetHole),
+  ]);
+  if (!pointsNear(first, expectedSource) || !pointsNear(last, expectedTarget)) {
+    throw new CanonicalProjectError(`${label}: jumper route endpoints must match its board holes`);
+  }
+}
+
+function pointsNear(actual: Point | undefined, expected: Point): boolean {
+  return (
+    !!actual && Math.abs(actual.x - expected.x) <= 0.5 && Math.abs(actual.y - expected.y) <= 0.5
+  );
 }
 
 function normalizeManualRoute(
@@ -785,6 +876,19 @@ function normalizeManualRoute(
     throw new CanonicalProjectError(`edge "${edgeId}": manual route is not orthogonal`);
   }
   return normalized.map(toCanonicalPoint);
+}
+
+function normalizeBoardJumperRoute(
+  edgeId: string,
+  points: readonly Point[] | undefined,
+): CanonicalPoint[] {
+  if (!points || points.length < 2) {
+    throw new CanonicalProjectError(`edge "${edgeId}": board jumper requires at least 2 points`);
+  }
+  if (points.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))) {
+    throw new CanonicalProjectError(`edge "${edgeId}": board jumper route has invalid points`);
+  }
+  return points.map(toCanonicalPoint);
 }
 
 function toEndpoint(
@@ -1190,16 +1294,8 @@ function toJunctionLayout(node: Node<JunctionNodeData>): CanonicalJunctionLayout
 }
 
 function toCanonicalBoard(node: Node<BoardNodeData>): CanonicalBoard {
-  // A board's node id *is* its `boardId`: hole addresses, placements and
-  // copper junction ids are all written against `boardId`, so letting the two
-  // drift would silently re-point every one of them on reload.
-  if (node.id !== node.data.boardId) {
-    throw new CanonicalProjectError(
-      `board node id "${node.id}" must equal boardId "${node.data.boardId}"`,
-    );
-  }
   return {
-    id: node.id,
+    id: node.data.boardId,
     label: node.data.label,
     notes: node.data.notes,
     surface: node.data.surface,
@@ -1238,7 +1334,7 @@ const DEFAULT_POSITION: CanonicalPoint = { x: 0, y: 0 };
  * Persistent visual planes are mapped to explicit ng-diagram z-order values.
  * Type and id are deterministic tie breakers inside each plane.
  */
-export function fromCanonicalProject(project: CanonicalProjectV3): {
+export function fromCanonicalProject(project: CanonicalProjectV4): {
   nodes: Node<AvSchematicNodeData>[];
   edges: Edge<WireEdgeData>[];
   /** Cable records that have no standalone ng-diagram element. */
@@ -1278,6 +1374,12 @@ export function fromCanonicalProject(project: CanonicalProjectV3): {
       tapPortIds: trace?.segments.length
         ? traceHoles(trace).map((hole) => holePortId(hole))
         : undefined,
+      holes: trace
+        ? traceHoles(trace)
+        : (() => {
+            const hole = parseHolePortId(layout.boardPort);
+            return hole ? [hole] : [];
+          })(),
     });
   }
 
@@ -1299,7 +1401,7 @@ export function fromCanonicalProject(project: CanonicalProjectV3): {
       const layout = conductorLayouts.get(conductor.id);
       return layout?.physicalBinding
         ? []
-        : [fromCanonicalConductor(conductor, net, layout, cables, copperPorts)];
+        : [fromCanonicalConductor(conductor, net, layout, cables, copperPorts, boardsById)];
     }),
   );
 
@@ -1437,6 +1539,7 @@ function fromCanonicalConductor(
   layout: CanonicalConductorLayout | undefined,
   cables: ReadonlyMap<string, CanonicalCable>,
   copperPorts: ReadonlyMap<string, BoardCopperPort>,
+  boardsById: ReadonlyMap<string, Node<BoardNodeData>>,
 ): Edge<WireEdgeData> {
   const cable = conductor.cable ? cables.get(conductor.cable.name) : undefined;
   const cableColor = resolveWireColor(cable?.colors[(conductor.cable?.wireIndex ?? 1) - 1]);
@@ -1444,26 +1547,52 @@ function fromCanonicalConductor(
   const hasConductorColor = conductor.color !== undefined || conductor.colorCode !== undefined;
   const color = conductor.color ?? conductorColor.color ?? cableColor.color;
   const colorCode = conductor.colorCode ?? (hasConductorColor ? undefined : cableColor.colorCode);
+  const source = endpointNodeId(conductor.from, copperPorts);
+  const sourcePort = endpointPortId(conductor.from, layout?.fromTap, copperPorts);
+  const target = endpointNodeId(conductor.to, copperPorts);
+  const targetPort = endpointPortId(conductor.to, layout?.toTap, copperPorts);
   const normalizedRoute =
     layout?.routingMode === 'manual' && layout.points
       ? normalizeOrthogonalPersistedRoute(layout.points)
       : null;
-  const manualPoints = normalizedRoute && normalizedRoute.length >= 2 ? normalizedRoute : undefined;
+  const localPoints = normalizedRoute && normalizedRoute.length >= 2 ? normalizedRoute : undefined;
+  const jumperBoardId = layout?.boardJumper?.boardId;
+  const jumperBoard = jumperBoardId ? boardsById.get(jumperBoardId) : undefined;
+  const sourceHole = layout?.boardJumper
+    ? endpointBoardHole(conductor.from, layout.fromTap, copperPorts)
+    : undefined;
+  const targetHole = layout?.boardJumper
+    ? endpointBoardHole(conductor.to, layout.toTap, copperPorts)
+    : undefined;
+  const jumperLocalPoints =
+    jumperBoard && sourceHole && targetHole
+      ? [
+          holeLocalPoint(jumperBoard.data, sourceHole),
+          ...(layout?.boardJumper?.bends ?? []),
+          holeLocalPoint(jumperBoard.data, targetHole),
+        ]
+      : undefined;
+  const manualPoints =
+    jumperBoard && jumperLocalPoints
+      ? boardWorldPoints(jumperBoard, jumperLocalPoints)
+      : localPoints;
 
   return {
     id: conductor.id,
     type: EdgeTemplateType.WireEdge,
-    source: endpointNodeId(conductor.from, copperPorts),
-    sourcePort: endpointPortId(conductor.from, layout?.fromTap, copperPorts),
-    target: endpointNodeId(conductor.to, copperPorts),
-    targetPort: endpointPortId(conductor.to, layout?.toTap, copperPorts),
+    source,
+    sourcePort,
+    target,
+    targetPort,
     routingMode: manualPoints ? 'manual' : undefined,
+    routing: layout?.boardJumper ? 'polyline' : undefined,
     points: manualPoints,
     zOrder: layout?.visualPlane ?? defaultVisualPlane('conductor'),
     data: {
       type: 'wire',
       visualPlane: layout?.visualPlane ?? defaultVisualPlane('conductor'),
       wireId: conductor.cable?.name ?? '',
+      jumperBoardId,
       wireIndex: conductor.cable?.wireIndex,
       cableWireCount: cable?.wireCount,
       cableColors: cable ? [...cable.colors] : undefined,
@@ -1492,6 +1621,16 @@ export interface BoardCopperPort {
   boardId: string;
   portId: string;
   tapPortIds?: string[];
+  holes: BoardHole[];
+}
+
+function endpointBoardHole(
+  endpoint: CanonicalNetEndpoint,
+  tap: number | undefined,
+  copperPorts: ReadonlyMap<string, BoardCopperPort>,
+): BoardHole | undefined {
+  if (endpoint.kind !== 'junction') return undefined;
+  return copperPorts.get(endpoint.junctionId)?.holes[tap ?? 0];
 }
 
 function endpointNodeId(

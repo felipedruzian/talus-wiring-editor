@@ -23,6 +23,7 @@ import {
   type NgDiagramConfig,
   type Node,
   type NodeDragEndedEvent,
+  type NodeDragStartedEvent,
   type PaletteItemDroppedEvent,
   type Port,
   type SelectionGestureEndedEvent,
@@ -59,7 +60,16 @@ import { applyEdgeStretchOnSelectionMoved } from './edge-reshaping/middleware/ed
 import { EdgeReshapeOverlayComponent } from './edge-reshaping/edge-reshape-overlay.component';
 import { WireEdgeComponent } from './wire-edge.component';
 import { diagramModel } from './data';
-import { defaultVisualPlane } from './model/visual-planes';
+import { defaultVisualPlane, MAX_VISUAL_PLANE, visualPlaneOf } from './model/visual-planes';
+import {
+  boardJumperForConnection,
+  boardWorldPoints,
+  defaultBoardJumperLocalRoute,
+} from './model/board-jumper';
+import { UndoableDiagramModelAdapter } from './model/undoable-model';
+import { BoardJumperCreationService } from './board-jumper-creation.service';
+import { planPastedBoardOwnership } from './model/pasted-board-jumpers';
+import { beginModelHistoryGroup } from './model/model-history-group';
 
 const generateWireId = (): string => randomShortId('W');
 
@@ -81,6 +91,7 @@ export class DiagramComponent {
   private readonly exportService = inject(DiagramExportService);
   private readonly danglingEdge = inject(DanglingEdgeService);
   private readonly boardPlacement = inject(BoardPlacementService);
+  private readonly jumperCreation = inject(BoardJumperCreationService);
   private readonly manualWirePick = signal(false);
   private readonly altWirePick = signal(false);
 
@@ -134,26 +145,7 @@ export class DiagramComponent {
           ),
         },
       }),
-      finalEdgeDataBuilder: (edge: Edge): Edge<WireEdgeData> => ({
-        ...edge,
-        type: EdgeTemplateType.WireEdge,
-        routing: undefined,
-        sourceArrowhead: undefined,
-        targetArrowhead: undefined,
-        data: {
-          type: 'wire',
-          visualPlane: defaultVisualPlane('conductor'),
-          wireId: generateWireId(),
-          netName: initialNetNameFromCopper(
-            undefined,
-            physicalEdgeNet(
-              this.modelService.getModel().getNodes(),
-              edge,
-              this.modelService.getModel().getEdges(),
-            ),
-          ),
-        },
-      }),
+      finalEdgeDataBuilder: (edge: Edge): Edge<WireEdgeData> => this.buildFinalWire(edge),
     },
     snapping: {
       defaultDragSnap: {
@@ -173,6 +165,43 @@ export class DiagramComponent {
     },
   } satisfies NgDiagramConfig;
 
+  private buildFinalWire(edge: Edge): Edge<WireEdgeData> {
+    const model = this.modelService.getModel();
+    const jumper = boardJumperForConnection(model.getNodes(), edge);
+    const visualPlane = jumper
+      ? Math.min(
+          MAX_VISUAL_PLANE,
+          Math.max(defaultVisualPlane('conductor'), visualPlaneOf(jumper.board) + 1),
+        )
+      : defaultVisualPlane('conductor');
+    const points = jumper
+      ? boardWorldPoints(
+          jumper.board,
+          defaultBoardJumperLocalRoute(jumper.board.data, jumper.sourceHole, jumper.targetHole),
+        )
+      : undefined;
+    return {
+      ...edge,
+      type: EdgeTemplateType.WireEdge,
+      routing: jumper ? 'polyline' : undefined,
+      routingMode: jumper ? 'manual' : edge.routingMode,
+      points: points ?? edge.points,
+      sourceArrowhead: undefined,
+      targetArrowhead: undefined,
+      data: {
+        type: 'wire',
+        visualPlane,
+        wireId: generateWireId(),
+        wireType: jumper ? 'jumper' : undefined,
+        jumperBoardId: jumper?.board.data.boardId,
+        netName: initialNetNameFromCopper(
+          undefined,
+          physicalEdgeNet(model.getNodes(), edge, model.getEdges()),
+        ),
+      },
+    };
+  }
+
   nodeTemplateMap = new NgDiagramNodeTemplateMap([
     [NodeTemplateType.DeviceNode, DeviceNodeComponent],
     [NodeTemplateType.BoardNode, BoardNodeComponent],
@@ -182,7 +211,7 @@ export class DiagramComponent {
 
   edgeTemplateMap = new NgDiagramEdgeTemplateMap([[EdgeTemplateType.WireEdge, WireEdgeComponent]]);
 
-  model = initializeModel(diagramModel);
+  model = new UndoableDiagramModelAdapter(initializeModel(diagramModel));
 
   onDiagramInit(_: DiagramInitEvent): void {
     this.zoomToFit();
@@ -193,8 +222,25 @@ export class DiagramComponent {
     await this.elementMutationService.normalizeVisualOrder();
   }
 
-  async onClipboardPasted(_: ClipboardPastedEvent): Promise<void> {
-    await this.elementMutationService.normalizeVisualOrder();
+  async onClipboardPasted(event: ClipboardPastedEvent): Promise<void> {
+    const endHistoryGroup = beginModelHistoryGroup(this.modelService);
+    try {
+      const pastedNodes = event.nodes ?? [];
+      const pastedEdges = event.edges ?? [];
+      const plan = planPastedBoardOwnership(
+        pastedNodes,
+        pastedEdges,
+        this.modelService.getModel().getNodes(),
+      );
+      if (plan.nodeUpdates.length > 0) await this.modelService.updateNodes(plan.nodeUpdates);
+      if (plan.edgeUpdates.length > 0) await this.modelService.updateEdges(plan.edgeUpdates);
+      if (plan.rejectedEdgeIds.length > 0) {
+        await this.modelService.deleteEdges(plan.rejectedEdgeIds);
+      }
+      await this.elementMutationService.normalizeVisualOrder();
+    } finally {
+      endHistoryGroup();
+    }
   }
 
   // Manual edges don't auto-reroute, so re-anchor their endpoints to the live
@@ -204,11 +250,19 @@ export class DiagramComponent {
     void applyEdgeStretchOnSelectionMoved(this.modelService, this.nodeIds(event.nodes), false);
   }
 
+  onNodeDragStarted(_: NodeDragStartedEvent): void {
+    this.model.beginHistoryGroup();
+  }
+
   // On drop, snap footprinted devices to their board holes, carry components
   // seated on a moved board, then re-anchor every affected manual route.
   async onNodeDragEnded(event: NodeDragEndedEvent): Promise<void> {
-    const affectedNodeIds = await this.boardPlacement.settleDrag(this.nodeIds(event.nodes));
-    await applyEdgeStretchOnSelectionMoved(this.modelService, affectedNodeIds, true);
+    try {
+      const affectedNodeIds = await this.boardPlacement.settleDrag(this.nodeIds(event.nodes));
+      await applyEdgeStretchOnSelectionMoved(this.modelService, affectedNodeIds, true);
+    } finally {
+      this.model.endHistoryGroup();
+    }
   }
 
   private nodeIds(nodes: readonly { id: string }[]): Set<string> {
@@ -285,6 +339,13 @@ export class DiagramComponent {
     if (event.key !== 'Escape' || !this.manualWirePick()) return;
     event.preventDefault();
     this.manualWirePick.set(false);
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  protected cancelJumperCreation(event: KeyboardEvent): void {
+    if (event.key !== 'Escape' || this.jumperCreation.activeBoardId() === null) return;
+    event.preventDefault();
+    this.jumperCreation.cancel();
   }
 
   @HostListener('document:keydown', ['$event'])

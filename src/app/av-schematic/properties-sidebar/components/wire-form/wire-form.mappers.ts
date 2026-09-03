@@ -16,6 +16,7 @@ export const WIRE_TYPES = [
   'control',
   'usb',
   'fiber',
+  'jumper',
 ] as const;
 
 export type WireType = (typeof WIRE_TYPES)[number];
@@ -29,6 +30,7 @@ export const WIRE_TYPE_OPTIONS: readonly { value: WireType; label: string }[] = 
   { value: 'control', label: 'Controle' },
   { value: 'usb', label: 'USB' },
   { value: 'fiber', label: 'Fibra' },
+  { value: 'jumper', label: 'Jumper de protoboard' },
 ];
 
 export const CUSTOM_COLOR_CHOICE = 'custom';

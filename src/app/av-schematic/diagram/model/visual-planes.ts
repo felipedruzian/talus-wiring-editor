@@ -47,9 +47,41 @@ export function applyVisualZOrder<TNode extends Node, TEdge extends Edge>(
   nodes: readonly TNode[],
   edges: readonly TEdge[],
 ): { nodes: TNode[]; edges: TEdge[] } {
+  const jumperOwnerIds = new Set(
+    edges.flatMap((edge) => {
+      const ownerId = isWireEdge(edge) ? edge.data.jumperBoardId : undefined;
+      return typeof ownerId === 'string' ? [ownerId] : [];
+    }),
+  );
+  const normalizedNodes = nodes.map((node) => {
+    if (
+      !isBoardNode(node) ||
+      !jumperOwnerIds.has(node.data.boardId) ||
+      visualPlaneOf(node) < MAX_VISUAL_PLANE
+    ) {
+      return node;
+    }
+    return {
+      ...node,
+      data: { ...node.data, visualPlane: MAX_VISUAL_PLANE - 1 },
+    };
+  });
+  const boardsById = new Map<string, Node>();
+  for (const node of normalizedNodes) {
+    if (isBoardNode(node)) boardsById.set(node.data.boardId, node);
+  }
+  const normalizedEdges = edges.map((edge) => {
+    const ownerId = isWireEdge(edge) ? edge.data.jumperBoardId : undefined;
+    const owner = ownerId ? boardsById.get(ownerId) : undefined;
+    if (!owner || visualPlaneOf(edge) > visualPlaneOf(owner)) return edge;
+    return {
+      ...edge,
+      data: { ...edge.data, visualPlane: visualPlaneOf(owner) + 1 },
+    };
+  });
   const entries = [
-    ...nodes.map((element) => ({ element, collection: 'node' as const })),
-    ...edges.map((element) => ({ element, collection: 'edge' as const })),
+    ...normalizedNodes.map((element) => ({ element, collection: 'node' as const })),
+    ...normalizedEdges.map((element) => ({ element, collection: 'edge' as const })),
   ]
     .filter(({ element }) => visualElementKind(element) !== null)
     .sort((a, b) => compareVisualElements(a.element, b.element));
@@ -58,8 +90,12 @@ export function applyVisualZOrder<TNode extends Node, TEdge extends Edge>(
   );
 
   return {
-    nodes: nodes.map((node) => normalizeElement(node, zOrderByKey.get(`node:${node.id}`))),
-    edges: edges.map((edge) => normalizeElement(edge, zOrderByKey.get(`edge:${edge.id}`))),
+    nodes: normalizedNodes.map((node) =>
+      normalizeElement(node, zOrderByKey.get(`node:${node.id}`)),
+    ),
+    edges: normalizedEdges.map((edge) =>
+      normalizeElement(edge, zOrderByKey.get(`edge:${edge.id}`)),
+    ),
   };
 }
 

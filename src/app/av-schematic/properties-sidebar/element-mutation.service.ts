@@ -12,7 +12,7 @@ import {
   type JunctionNodeData,
   type WireEdgeData,
 } from '../diagram/model/interfaces';
-import { isWireEdge } from '../diagram/model/guards';
+import { isBoardNode, isWireEdge } from '../diagram/model/guards';
 import { junctionTapIndex, junctionTapPortId } from '../diagram/model/canonical-project';
 import { canonicalColorValue } from '../diagram/model/wire-colors';
 import { ProjectStorageService } from '../project-storage/project-storage.service';
@@ -28,6 +28,12 @@ import {
   isValidVisualPlane,
   type VisualElementKind,
 } from '../diagram/model/visual-planes';
+import {
+  boardJumperForConnection,
+  boardWorldPoints,
+  defaultBoardJumperLocalRoute,
+} from '../diagram/model/board-jumper';
+import { beginModelHistoryGroup } from '../diagram/model/model-history-group';
 
 /** Mutates diagram nodes and edges in response to sidebar form changes and removal requests, including port-direction-flip reflow and orphaned-edge cleanup. */
 @Injectable()
@@ -37,7 +43,34 @@ export class ElementMutationService {
   private readonly storage = inject(ProjectStorageService);
 
   async removeNode(nodeId: string): Promise<void> {
-    await this.modelService.deleteNodes([nodeId]);
+    const node = this.modelService
+      .getModel()
+      .getNodes()
+      .find((candidate) => candidate.id === nodeId);
+    const jumperBoardId = isBoardNode(node) ? node.data.boardId : undefined;
+    const jumperIds = this.modelService
+      .getModel()
+      .getEdges()
+      .filter(
+        (edge) =>
+          isWireEdge(edge) &&
+          jumperBoardId !== undefined &&
+          edge.data.jumperBoardId === jumperBoardId,
+      )
+      .map((edge) => edge.id);
+    const endHistoryGroup = beginModelHistoryGroup(this.modelService);
+    try {
+      if (jumperIds.length === 0) {
+        await this.modelService.deleteNodes([nodeId]);
+        return;
+      }
+      await this.diagramService.transaction(() => {
+        void this.modelService.deleteEdges(jumperIds);
+        void this.modelService.deleteNodes([nodeId]);
+      });
+    } finally {
+      endHistoryGroup();
+    }
   }
 
   async removeEdge(edgeId: string): Promise<void> {
@@ -330,6 +363,20 @@ export class ElementMutationService {
   }
 
   resetEdgeRouting(edgeId: string): void {
+    const edge = this.modelService.getEdgeById<WireEdgeData>(edgeId);
+    const model = this.modelService.getModel();
+    const jumper = edge ? boardJumperForConnection(model.getNodes(), edge) : null;
+    if (edge?.data.jumperBoardId && jumper?.board.data.boardId === edge.data.jumperBoardId) {
+      void this.modelService.updateEdge(edgeId, {
+        routing: 'polyline',
+        routingMode: 'manual',
+        points: boardWorldPoints(
+          jumper.board,
+          defaultBoardJumperLocalRoute(jumper.board.data, jumper.sourceHole, jumper.targetHole),
+        ),
+      });
+      return;
+    }
     void this.modelService.updateEdge(edgeId, {
       points: undefined,
       routingMode: 'auto',

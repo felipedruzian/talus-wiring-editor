@@ -326,6 +326,15 @@ export interface JunctionNodeData extends WireVizConnectorMetadata, VisualPlaneD
 export interface WireEdgeData extends VisualPlaneData {
   type: 'wire';
   wireId: string;
+  /**
+   * Board that owns this conductor as a surface jumper.
+   *
+   * ng-diagram renders `Edge.points` in world coordinates, but canonical
+   * persistence translates a jumper route to/from this board's local space.
+   * Keeping ownership explicit prevents a same-board wire from being guessed
+   * from ids or geometry and lets board movement carry every bend atomically.
+   */
+  jumperBoardId?: string;
   /** 1-based wire index within `wireId`'s cable. Absent means wire 1. */
   wireIndex?: number;
   /** Full imported cable cardinality, including currently unused conductors. */

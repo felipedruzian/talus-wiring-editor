@@ -22,14 +22,15 @@ describe('EdgeCommandDispatcher', () => {
     });
   });
 
-  it('routes a set-edge-route command to the single edge patch surface', () => {
+  it('routes a set-edge-route command to the single edge patch surface', async () => {
     const dispatcher = TestBed.inject(EdgeCommandDispatcher);
     const points = [
       { x: 0, y: 0 },
       { x: 40, y: 0 },
     ];
 
-    dispatcher.dispatch({ kind: 'set-edge-route', edgeId: 'wire-1', points });
+    updateEdge.mockResolvedValue(undefined);
+    await dispatcher.dispatch({ kind: 'set-edge-route', edgeId: 'wire-1', points });
 
     expect(updateEdge).toHaveBeenCalledOnce();
     expect(updateEdge).toHaveBeenCalledWith('wire-1', {
@@ -39,7 +40,7 @@ describe('EdgeCommandDispatcher', () => {
     expect(updateEdge.mock.calls[0][1].points).not.toBe(points);
   });
 
-  it('routes reshape-finish and preserves a same-axis reversal while folding pass-throughs', () => {
+  it('routes reshape-finish and preserves a same-axis reversal while folding pass-throughs', async () => {
     getEdgeById.mockReturnValue({
       id: 'wire-1',
       points: [
@@ -51,7 +52,8 @@ describe('EdgeCommandDispatcher', () => {
     });
     const dispatcher = TestBed.inject(EdgeCommandDispatcher);
 
-    dispatcher.dispatch({ kind: 'reshape-finish', edgeId: 'wire-1' });
+    updateEdge.mockResolvedValue(undefined);
+    await dispatcher.dispatch({ kind: 'reshape-finish', edgeId: 'wire-1' });
 
     expect(updateEdge).toHaveBeenCalledWith('wire-1', {
       points: [

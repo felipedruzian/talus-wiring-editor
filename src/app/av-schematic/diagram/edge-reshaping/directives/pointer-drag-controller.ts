@@ -4,7 +4,7 @@
 export interface PointerDragHandlers<TState> {
   onMove(event: PointerEvent, state: TState): void;
   // Commit the drop; runs on a real pointerup/cancel, never on teardown().
-  onEnd(event: PointerEvent, state: TState): void;
+  onEnd(event: PointerEvent, state: TState): void | Promise<void>;
   // Clear gesture-scoped UI state; runs on both a real release and teardown().
   onTeardown?(): void;
 }
@@ -46,9 +46,9 @@ export class PointerDragController<TState> {
     handleEl.classList.add('is-dragging');
     // Cast: the keyed EventMap overloads collapse on the Document|HTMLElement union.
     this.listenerEl = this.options.listenerTarget === 'document' ? document : handleEl;
-    this.listenerEl.addEventListener('pointermove', this.onPointerMove as EventListener);
-    this.listenerEl.addEventListener('pointerup', this.onPointerUp as EventListener);
-    this.listenerEl.addEventListener('pointercancel', this.onPointerUp as EventListener);
+    this.listenerEl.addEventListener('pointermove', this.onPointerMove as unknown as EventListener);
+    this.listenerEl.addEventListener('pointerup', this.onPointerUp as unknown as EventListener);
+    this.listenerEl.addEventListener('pointercancel', this.onPointerUp as unknown as EventListener);
   }
 
   // Idempotent teardown for a destroy hook; does NOT resolve a drop.
@@ -77,7 +77,7 @@ export class PointerDragController<TState> {
     });
   };
 
-  private readonly onPointerUp = (event: PointerEvent): void => {
+  private readonly onPointerUp = async (event: PointerEvent): Promise<void> => {
     const state = this.state;
     if (!state || event.pointerId !== this.pointerId) return;
     // A frame-coalesced drag may still have one move buffered when the pointer
@@ -88,8 +88,11 @@ export class PointerDragController<TState> {
     }
     this.cleanup();
     this.state = null;
-    this.handlers.onTeardown?.();
-    this.handlers.onEnd(event, state);
+    try {
+      await this.handlers.onEnd(event, state);
+    } finally {
+      this.handlers.onTeardown?.();
+    }
   };
 
   private cleanup(): void {
@@ -100,9 +103,18 @@ export class PointerDragController<TState> {
     this.pendingEvent = null;
     this.moveSeen = false;
     if (this.listenerEl) {
-      this.listenerEl.removeEventListener('pointermove', this.onPointerMove as EventListener);
-      this.listenerEl.removeEventListener('pointerup', this.onPointerUp as EventListener);
-      this.listenerEl.removeEventListener('pointercancel', this.onPointerUp as EventListener);
+      this.listenerEl.removeEventListener(
+        'pointermove',
+        this.onPointerMove as unknown as EventListener,
+      );
+      this.listenerEl.removeEventListener(
+        'pointerup',
+        this.onPointerUp as unknown as EventListener,
+      );
+      this.listenerEl.removeEventListener(
+        'pointercancel',
+        this.onPointerUp as unknown as EventListener,
+      );
       this.listenerEl = null;
     }
     if (this.handleEl) {

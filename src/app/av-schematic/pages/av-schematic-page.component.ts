@@ -25,6 +25,7 @@ import { PropertiesSidebarComponent } from '../properties-sidebar/properties-sid
 import { PropertiesSidebarService } from '../properties-sidebar/properties-sidebar.service';
 import { TopNavbarComponent } from '../top-navbar/top-navbar.component';
 import { WireVizExchangeService } from '../wireviz-import/wireviz-exchange.service';
+import { BoardJumperCreationService } from '../diagram/board-jumper-creation.service';
 
 @Component({
   selector: 'app-av-schematic-page',
@@ -60,6 +61,7 @@ import { WireVizExchangeService } from '../wireviz-import/wireviz-exchange.servi
     DanglingEdgeService,
     RelinkTargetHighlightService,
     RelinkEndpointHandler,
+    BoardJumperCreationService,
   ],
 })
 export class AvSchematicPageComponent {}

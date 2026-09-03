@@ -1,8 +1,8 @@
-# Round-trip WireViz e projeto canônico v3
+# Round-trip WireViz e projeto canônico v4
 
 ## Contrato persistido
 
-`CanonicalProjectV3` possui `formatVersion: 3` e duas seções independentes:
+`CanonicalProjectV4` possui `formatVersion: 4` e duas seções independentes:
 
 - `electrical`: componentes, junções, cabos e nets com seus endpoints e
   condutores, inclusive cor e metadados próprios de cada ligação;
@@ -10,8 +10,23 @@
 
 O WireViz importa e exporta somente `electrical`. Abrir ou exportar um projeto
 não precisa apagar geometria, pois ela nunca é confundida com o documento
-elétrico. O parser aceita snapshots v1 e os migra em memória; fios v1 que
+elétrico. O parser aceita snapshots v1, v2 e v3 e os migra em memória; fios v1 que
 compartilham um pino são reunidos pela conectividade em uma única net v2.
+
+## Jumpers locais da protoboard
+
+Um jumper é um condutor elétrico comum cuja geometria ganha o marcador
+`layout.conductors[].boardJumper: { boardId, bends? }`. O `boardId` é a identidade
+de domínio `BoardNodeData.boardId`, não o id transitório do node. A lista opcional
+contém somente dobras intermediárias em coordenadas locais da placa; os dois
+endpoints são derivados dos endpoints elétricos, dos taps e dos furos associados.
+Assim não existem cópias concorrentes das posições dos furos no JSON.
+
+O trajeto inicial é uma polilinha reta de dois pontos. Ao mover a protoboard, o
+runtime translada endpoints e dobras em conjunto; ao salvar, remove novamente a
+posição da placa e persiste apenas as dobras locais. A exportação WireViz mantém o
+jumper como condutor comum e registra um diagnóstico informativo porque owner e
+geometria local não possuem equivalente no YAML.
 
 ## Net, junção e fan-out
 
@@ -77,8 +92,8 @@ altera o resultado, enquanto perder um atributo elétrico altera.
 
 - `import-wireviz.ts`: texto YAML para documento, elétrica e relatório.
 - `export-wireviz.ts`: elétrica para YAML e relatório.
-- `canonical-project.ts`: modelo v3 e conversão para/de `Node`/`Edge`.
-- `canonical-project-parse.ts`: validação v3 e migração de snapshots v1/v2.
+- `canonical-project.ts`: modelo v4 e conversão para/de `Node`/`Edge`.
+- `canonical-project-parse.ts`: validação v4 e migração de snapshots v1/v2/v3.
 - `net-grouping.ts`: agrupamento determinístico por conectividade.
 - `electrical-equivalence.ts`: comparação independente de ordem textual.
 

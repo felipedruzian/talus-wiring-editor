@@ -1,6 +1,7 @@
 <div
   class="board-node"
   [class.board-node--breadboard]="breadboard()"
+  [class.board-node--jumper-mode]="jumperCreation.handles(node())"
   [style.width.px]="size().width"
   [style.height.px]="size().height"
 >
@@ -126,6 +127,7 @@
         [class.board-node__hole--positive]="hole.polarity === 'positive'"
         [class.board-node__hole--negative]="hole.polarity === 'negative'"
         [class.board-node__hole--conflicted]="hole.conflicted"
+        [class.board-node__hole--jumper-source]="jumperCreation.isStart(data().boardId, hole)"
         [attr.cx]="hole.x"
         [attr.cy]="hole.y"
         [attr.r]="holeRadius()"
@@ -156,7 +158,11 @@
       [style.width.px]="holePortSize()"
       [style.height.px]="holePortSize()"
     >
-      <span class="board-node__port-hit" [title]="hole.address"></span>
+      <span
+        class="board-node__port-hit"
+        [title]="hole.address"
+        (pointerdown)="onHolePointerDown($event, hole)"
+      ></span>
     </ng-diagram-port>
   }
 
