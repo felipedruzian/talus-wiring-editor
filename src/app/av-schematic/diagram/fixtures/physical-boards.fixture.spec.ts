@@ -7,6 +7,7 @@ import {
   holesOnSameTrace,
   netForHole,
 } from '../model/board-trace';
+import { BREADBOARD_COLS, BREADBOARD_ROWS, breadboardHoleAddress } from '../model/breadboard';
 import { deviceHoleClaims } from '../model/footprint-geometry';
 import { junctionTapPortId } from '../model/canonical-project';
 import { NodeTemplateType } from '../model/interfaces';
@@ -21,7 +22,9 @@ import {
   PLACA_ORIGEM_BOARD,
   PROTOBOARD_ENDPOINT_NODES,
   PROTOBOARD_JUMPER_EDGES,
+  PROTOBOARD_NANO_HOLE,
   PROTOBOARD_SUPERIOR_BOARD,
+  PROTOBOARD_TB6612_HOLE,
   PECA_E_BOARD,
   PECA_G_BOARD,
   SEATED_COMPONENT_NODES,
@@ -35,12 +38,14 @@ describe('physical board fixtures', () => {
     expect(PLACA_ORIGEM_BOARD).toMatchObject({ rows: 6, cols: 28 });
     expect(PROTOBOARD_SUPERIOR_BOARD).toMatchObject({
       boardId: 'protoboard-superior',
-      label: 'Protoboard superior',
-      rows: 6,
-      cols: 18,
+      label: 'Protoboard superior (830 pontos)',
+      rows: BREADBOARD_ROWS,
+      cols: BREADBOARD_COLS,
       pitch: 20,
-      centerGap: 12,
+      centerGap: 40,
     });
+    expect(PROTOBOARD_SUPERIOR_BOARD.holes).toHaveLength(830);
+    expect(PROTOBOARD_SUPERIOR_BOARD.traces).toHaveLength(BREADBOARD_COLS * 2 + 4);
     expect(PROTOBOARD_SUPERIOR_BOARD.notes).toContain('470 uF');
     expect(PECA_E_BOARD).toMatchObject({ rows: 6, cols: 3 });
     expect(PECA_G_BOARD).toMatchObject({ rows: 6, cols: 4 });
@@ -55,10 +60,31 @@ describe('physical board fixtures', () => {
     expect(PROTOBOARD_SUPERIOR_BOARD.boardId).not.toBe(PLACA_ORIGEM_BOARD.boardId);
   });
 
-  it('uses the shared board pitch and leaves the upper protoboard clear of placa A', () => {
-    const boardARight = BOARD_POSITIONS[PLACA_A_BOARD.boardId].x + boardSize(PLACA_A_BOARD).width;
+  it('uses the shared board pitch on every board, breadboard included', () => {
     expect(PROTOBOARD_SUPERIOR_BOARD.pitch).toBe(PLACA_A_BOARD.pitch);
-    expect(BOARD_POSITIONS[PROTOBOARD_SUPERIOR_BOARD.boardId].x).toBeGreaterThan(boardARight);
+    expect(boards.every((board) => board.pitch === PLACA_A_BOARD.pitch)).toBe(true);
+  });
+
+  it('lays every board body out without overlapping another', () => {
+    const rects = boards.map((board) => {
+      const position = BOARD_POSITIONS[board.boardId];
+      const size = boardSize(board);
+      return {
+        boardId: board.boardId,
+        left: position.x,
+        top: position.y,
+        right: position.x + size.width,
+        bottom: position.y + size.height,
+      };
+    });
+    for (const a of rects) {
+      for (const b of rects) {
+        if (a.boardId >= b.boardId) continue;
+        const overlaps =
+          a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+        expect(overlaps, `${a.boardId} vs ${b.boardId}`).toBe(false);
+      }
+    }
   });
 
   it('defines only valid, non-overlapping traces', () => {
@@ -142,13 +168,19 @@ describe('physical component fixtures', () => {
     const nano = PROTOBOARD_JUMPER_EDGES.find((edge) => edge.id === 'jumper-proto-nano');
     const tb6612 = PROTOBOARD_JUMPER_EDGES.find((edge) => edge.id === 'jumper-proto-tb6612');
     expect(nano?.source).toBe('protoboard-superior');
-    expect(nano?.sourcePort).toBe(holePortId({ row: 3, col: 17 }));
+    expect(nano?.sourcePort).toBe(holePortId(PROTOBOARD_NANO_HOLE));
+    expect(breadboardHoleAddress(PROTOBOARD_NANO_HOLE)).toBe('E18');
     expect(nano?.target).toBe('proto-endpoint-nano');
     expect(nano?.targetPort).toBe(junctionTapPortId(0));
     expect(nano?.data.wireType).toBe('signal');
     expect(nano?.data.netName).toBe('PROTO_NANO_SIGNAL');
     expect(tb6612?.source).toBe('protoboard-superior');
-    expect(tb6612?.sourcePort).toBe(holePortId({ row: 1, col: 17 }));
+    expect(tb6612?.sourcePort).toBe(holePortId(PROTOBOARD_TB6612_HOLE));
+    expect(breadboardHoleAddress(PROTOBOARD_TB6612_HOLE)).toBe('I18');
+    // The two jumpers sit on different column groups, so they stay separate nets.
+    expect(
+      holesOnSameTrace(PROTOBOARD_SUPERIOR_BOARD, PROTOBOARD_NANO_HOLE, PROTOBOARD_TB6612_HOLE),
+    ).toBe(false);
     expect(tb6612?.target).toBe('proto-endpoint-tb6612');
     expect(tb6612?.targetPort).toBe(junctionTapPortId(0));
     expect(tb6612?.data.wireType).toBe('signal');

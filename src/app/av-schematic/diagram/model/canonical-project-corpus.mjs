@@ -158,6 +158,10 @@ const boardWithCenterGapAndNotes = basePhysicalProject();
 boardWithCenterGapAndNotes.layout.boards[0].centerGap = 12;
 boardWithCenterGapAndNotes.layout.boards[0].notes = 'Canal central e bulk incorporado';
 
+const boardWithRowLabelsAndInternalTrace = basePhysicalProject();
+boardWithRowLabelsAndInternalTrace.layout.boards[0].rowLabels = ['J', '', 'A'];
+boardWithRowLabelsAndInternalTrace.layout.boards[0].traces[0].internal = true;
+
 const emptyBoard = {
   formatVersion: 2,
   electrical: { components: [], junctions: [], cables: [], nets: [] },
@@ -194,6 +198,11 @@ export const canonicalValidationCorpus = [
     name: 'accepts centerGap and notes on a physical board',
     accepted: true,
     raw: boardWithCenterGapAndNotes,
+  },
+  {
+    name: 'accepts printed row labels and copper grouped inside the board body',
+    accepted: true,
+    raw: boardWithRowLabelsAndInternalTrace,
   },
   {
     name: 'accepts an explicit empty hole list as a board with no holes',
@@ -290,6 +299,18 @@ export const canonicalValidationCorpus = [
   }),
   changed('rejects non-string board notes', (raw) => {
     raw.layout.boards[0].notes = ['bulk'];
+  }),
+  changed('rejects a row label list shorter than the row count', (raw) => {
+    raw.layout.boards[0].rowLabels = ['J', 'A'];
+  }),
+  changed('rejects a row label list longer than the row count', (raw) => {
+    raw.layout.boards[0].rowLabels = ['J', 'I', 'A', 'B'];
+  }),
+  changed('rejects non-string row labels', (raw) => {
+    raw.layout.boards[0].rowLabels = ['J', 3, 'A'];
+  }),
+  changed('rejects a non-boolean internal trace flag', (raw) => {
+    raw.layout.boards[0].traces[0].internal = 'yes';
   }),
   changed('rejects a diagonal trace', (raw) => {
     raw.layout.boards[0].traces[0].segments[0].to = { row: 1, col: 3 };

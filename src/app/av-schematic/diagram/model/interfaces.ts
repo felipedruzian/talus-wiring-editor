@@ -173,6 +173,18 @@ export interface BoardTrace {
   label: string;
   /** Electrical net this trace carries, e.g. `"GND_SYS"`. Free of a net when bare copper. */
   net?: string;
+  /**
+   * Grouping that lives inside the board body instead of on its face.
+   *
+   * A solderless breadboard has no exposed copper at all: its column groups
+   * and buses are spring clips under the plastic. They are still one
+   * electrical point, so they are still traces -- but they carry no visible
+   * run to label and no landing pad of their own, so the renderer draws them
+   * faintly and mints no `trace:<id>` port for them. Every connection to an
+   * internal group goes through one of its holes, which is what the hardware
+   * physically allows.
+   */
+  internal?: boolean;
   segments: BoardTraceSegment[];
 }
 
@@ -180,7 +192,7 @@ export interface BoardTrace {
  * A physical board with an addressable rows x cols hole grid.
  *
  * Nothing here presumes a particular size or a particular kind of board: the
- * 6 x 11 placa A, the 6 x 18 upper protoboard, the uncut 6 x 28 origin
+ * 6 x 11 placa A, the 830-point solderless breadboard, the uncut 6 x 28 origin
  * perfboard and the small 6 x 3 / 6 x 4 pecas E/G are all the same type with
  * different numbers. Rendered as its
  * own node so it shares the single ng-diagram canvas/coordinate plane with
@@ -198,6 +210,17 @@ export interface BoardNodeData {
   pitch: number;
   /** Extra vertical clearance between the two row halves, for a protoboard channel. */
   centerGap?: number;
+  /**
+   * Human-facing name of each row, top to bottom, when the hardware prints
+   * one -- `"J"`, `"top+"` and so on for a solderless breadboard.
+   *
+   * Exactly `rows` entries when present; an empty string is a row the board
+   * does not name (a blank spacer row, or a plain perfboard row that keeps the
+   * default `L<n>` address). Addresses stay `{row, col}` either way: this is
+   * the label layer only, so a reopened project shows `J10` without having to
+   * recognize the board as a breadboard.
+   */
+  rowLabels?: string[];
   /**
    * Explicit holes present on the board. Absence means the complete rectangular
    * `rows x cols` grid, preserving the compact representation used by earlier

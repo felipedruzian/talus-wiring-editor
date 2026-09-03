@@ -249,6 +249,8 @@ export interface CanonicalBoard {
   pitch: number;
   /** Optional extra clearance between the upper and lower row halves. */
   centerGap?: number;
+  /** Printed name of each row, top to bottom; exactly `rows` entries when present. */
+  rowLabels?: string[];
   /** Explicit hole list for an irregular board. Absent means the full rows x cols grid. */
   holes?: BoardHole[];
   /** Drawn hole diameter in px. Absent falls back to `DEFAULT_HOLE_DIAMETER`. */
@@ -598,7 +600,7 @@ class BoardCopperJunctions {
     this.used.set(junctionId, {
       junction: {
         id: junctionId,
-        label: boardPortLabel(canonicalPortId, trace?.label),
+        label: boardPortLabel(canonicalPortId, trace?.label, board.data.rowLabels),
         wirevizName: junctionId,
         // A trace joins several holes into one point, which is exactly what a
         // rail is; a bare hole is a single splice point.
@@ -1182,6 +1184,7 @@ function toCanonicalBoard(node: Node<BoardNodeData>): CanonicalBoard {
     cols: node.data.cols,
     pitch: node.data.pitch,
     centerGap: node.data.centerGap,
+    rowLabels: node.data.rowLabels ? [...node.data.rowLabels] : undefined,
     holes: node.data.holes?.map((hole) => ({ ...hole })),
     holeDiameter: node.data.holeDiameter,
     traces: node.data.traces?.map(cloneBoardTrace),
@@ -1298,6 +1301,7 @@ function fromCanonicalBoard(board: CanonicalBoard): Node<BoardNodeData> {
       cols: board.cols,
       pitch: board.pitch,
       centerGap: board.centerGap,
+      rowLabels: board.rowLabels ? [...board.rowLabels] : undefined,
       holes: board.holes?.map((hole) => ({ ...hole })),
       holeDiameter: board.holeDiameter,
       traces: board.traces?.map(cloneBoardTrace),

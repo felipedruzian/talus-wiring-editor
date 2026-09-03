@@ -21,8 +21,26 @@
         [attr.height]="gap.height"
       />
     }
+    @for (marking of rowMarkings(); track marking.row) {
+      @if (marking.polarity; as polarity) {
+        <line
+          class="board-node__bus-guide"
+          [class.board-node__bus-guide--positive]="polarity === 'positive'"
+          [class.board-node__bus-guide--negative]="polarity === 'negative'"
+          x1="4"
+          [attr.y1]="marking.guideY"
+          [attr.x2]="size().width - 4"
+          [attr.y2]="marking.guideY"
+        />
+      }
+    }
     @for (trace of traces(); track trace.id) {
-      <g class="board-node__trace" [attr.stroke]="trace.color" [attr.fill]="trace.color">
+      <g
+        class="board-node__trace"
+        [class.board-node__trace--internal]="trace.internal"
+        [attr.stroke]="trace.color"
+        [attr.fill]="trace.color"
+      >
         @for (bridge of trace.bridges; track $index) {
           <line
             class="board-node__trace-bridge"
@@ -47,11 +65,43 @@
               [attr.y1]="segment.y1"
               [attr.x2]="segment.x2"
               [attr.y2]="segment.y2"
-              [attr.stroke-width]="data().pitch * 0.34"
+              [attr.stroke-width]="data().pitch * (trace.internal ? 0.14 : 0.34)"
             />
           }
         }
       </g>
+    }
+    @for (ruler of columnRulers(); track ruler.key) {
+      @for (tick of ruler.ticks; track tick.x) {
+        <text
+          class="board-node__column-tick"
+          [attr.x]="tick.x"
+          [attr.y]="ruler.y"
+          [attr.font-size]="data().pitch * 0.42"
+        >
+          {{ tick.text }}
+        </text>
+      }
+    }
+    @for (marking of rowMarkings(); track marking.row) {
+      <text
+        class="board-node__row-mark"
+        x="2"
+        [attr.y]="marking.y"
+        [attr.font-size]="data().pitch * 0.42"
+        text-anchor="start"
+      >
+        {{ marking.label }}
+      </text>
+      <text
+        class="board-node__row-mark"
+        [attr.x]="size().width - 2"
+        [attr.y]="marking.y"
+        [attr.font-size]="data().pitch * 0.42"
+        text-anchor="end"
+      >
+        {{ marking.label }}
+      </text>
     }
     @for (hole of holes(); track hole.key) {
       <circle
@@ -64,7 +114,7 @@
     }
   </svg>
 
-  @for (trace of traces(); track trace.id) {
+  @for (trace of exposedTraces(); track trace.id) {
     <span
       class="board-node__trace-label"
       [style.left.px]="trace.labelX"
@@ -86,14 +136,11 @@
       [style.width.px]="holePortSize()"
       [style.height.px]="holePortSize()"
     >
-      <span
-        class="board-node__port-hit"
-        [title]="'L' + (hole.row + 1) + '-C' + (hole.col + 1)"
-      ></span>
+      <span class="board-node__port-hit" [title]="hole.address"></span>
     </ng-diagram-port>
   }
 
-  @for (trace of traces(); track trace.id) {
+  @for (trace of exposedTraces(); track trace.id) {
     <ng-diagram-port
       class="board-node__port board-node__port--trace"
       [id]="trace.portId"

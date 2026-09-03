@@ -12,7 +12,8 @@ opcional de `holes` e uma lista opcional de `traces`. Sem `holes`, a placa usa
 toda a grade retangular; com a lista, pode representar recortes e posições sem
 furo. Cada trilha contém um ou mais segmentos horizontais ou verticais,
 inclusivos, e pode declarar a net elétrica correspondente. Nenhuma função
-presume 63 colunas.
+genérica presume um formato de placa: as 63 colunas da protoboard de 830 pontos
+vivem apenas no construtor dela.
 
 `centerGap` acrescenta uma faixa vertical entre as duas metades das linhas sem
 alterar os endereços dos furos. Geometria, snap, footprints e `DXF` usam a mesma
@@ -20,14 +21,31 @@ posição física; placas sem o campo preservam o arredondamento legado, inclusi
 o desempate para a linha de índice maior. A placa de ensaio superior usa o mesmo
 `pitch` 20 das outras placas físicas do seed.
 
+`rowLabels` guarda o nome impresso de cada linha, de cima para baixo, com
+exatamente `rows` entradas. Uma entrada vazia é uma linha sem nome — inclusive
+uma linha totalmente sem furos. O endereço continua sendo `{row, col}`; o campo
+só decide como ele é escrito: `J10` para uma linha de uma letra, `top+:12`
+quando o nome é maior, e o `L<linha>-C<coluna>` padrão quando a placa não nomeia
+nada. Por isso um projeto reaberto mostra `J10` sem precisar reconhecer a placa
+como protoboard.
+
+Uma trilha pode declarar `internal: true`. Isso descreve cobre que une furos
+dentro do corpo da placa, sem pista exposta: os clipes de uma protoboard sem
+solda. Ela continua sendo um único ponto elétrico e continua participando de
+`holesOnSameTrace`, de `netForHole` e da junção canônica, mas é desenhada
+discretamente, não recebe rótulo e não gera uma porta `trace:<id>`. Conectar a
+um grupo interno significa conectar a um de seus furos — exatamente o que o
+hardware permite.
+
 A distinção entre ausência e lista vazia é deliberada: omitir `holes` significa
 uma grade retangular completa, enquanto `holes: []` descreve uma placa sem
 nenhum furo. Desenho, snap, placement, endpoints e validadores aplicam essa
 mesma regra.
 
 Cada furo vira uma porta `hole:<row>:<col>` do próprio nó da placa. Cada trilha
-também expõe uma porta `trace:<traceId>`. Assim, um fio conectado a um furo ou
-a uma trilha continua sendo uma aresta comum do `ng-diagram`; o endpoint fica
+exposta também oferece uma porta `trace:<traceId>`; uma trilha `internal` não,
+porque não há pista onde pousar. Assim, um fio conectado a um furo ou a uma
+trilha continua sendo uma aresta comum do `ng-diagram`; o endpoint fica
 registrado na própria aresta e não depende de uma tabela lateral.
 
 No `ng-diagram` 1.3.0, essas portas usam `originPoint="centerLeft"`. A posição
@@ -36,6 +54,42 @@ Como a biblioteca ancora uma porta lateral na borda esquerda e no centro
 vertical da caixa medida, `portFlowPosition` retorna exatamente a coordenada da
 geometria. Um teste liga `holeLocalPoint` e a geometria rotacionada do footprint
 à posição final do port para impedir regressões de meio diâmetro.
+
+## Protoboard de 830 pontos
+
+A placa de ensaio superior é uma protoboard física completa, e não um retângulo
+genérico. `diagram/model/breadboard.ts` a constrói com o mesmo `BoardNodeData`
+das demais placas:
+
+- 63 colunas e 18 linhas de grade;
+- linhas `J I H G F` acima do canal e `E D C B A` abaixo, com 63 furos cada —
+  630 furos terminais;
+- quatro barramentos, `top-`, `top+`, `bottom-` e `bottom+`, com 50 furos cada
+  em dez grupos de cinco — 200 furos de barramento;
+- 830 pontos no total, declarados como lista esparsa de furos;
+- 126 grupos de coluna, dois por coluna e independentes entre si, com cinco
+  furos cada, mais quatro grupos de barramento de cinquenta furos;
+- duas linhas vazias separam cada par de barramentos das linhas terminais, o
+  que resulta nos três passos de `pitch` da referência; o canal central usa
+  `centerGap = 2 × pitch`, mantendo `F` e `E` a três passos de distância sem
+  alterar o endereçamento.
+
+Todas as trilhas dessa placa são `internal`. A régua de colunas é desenhada nas
+faixas sem furos e o nome de cada linha aparece nas duas margens laterais;
+barramentos terminados em `+` ou `-` ganham a linha-guia colorida convencional.
+Tudo isso é derivado de `rowLabels` e da lista de furos, então nenhuma outra
+placa muda de aparência.
+
+O `pitch` é a única escala: largura, altura, canal, marcações e o encaixe de
+qualquer footprint saem dele, sem número de pixels fixado na geometria física.
+Com 830 furos, o nó da placa expõe 830 portas de furo; é o maior caso previsto
+para a estratégia atual de portas materializadas, e placas ainda maiores
+exigiriam portas sob demanda.
+
+A geometria — ordem das linhas, os três passos ao redor do canal e a fórmula das
+colunas de barramento — foi adaptada do projeto MIT `safaorhan/breadboard`, na
+revisão `db5f279`. O registro de licença está em
+[`license-matrix.md`](license-matrix.md).
 
 ## Footprints e encaixe
 
@@ -121,7 +175,8 @@ migrados pela fronteira de entrada existente.
 
 Os campos físicos opcionais são:
 
-- placas preservam `holes`, `holeDiameter`, `centerGap`, `notes` e `traces`;
+- placas preservam `holes`, `holeDiameter`, `centerGap`, `rowLabels`, `notes` e
+  `traces`, e cada trilha preserva `internal`;
 - componentes físicos preservam `footprintId`, a definição `footprint` e
   `placement`; quando desencaixados, `footprintRotation` e `footprintPitch`
   mantêm a geometria visual sem fingir que ainda existe um encaixe;
@@ -190,7 +245,7 @@ esse limite é de interface de autoria, não do modelo nem da persistência.
 | Placa | Dimensão | Conteúdo demonstrado |
 |---|---:|---|
 | Placa A | 6 × 11 | seis trilhas de distribuição |
-| `Protoboard superior` | 6 × 18 | canal central e capacitores bulk já incorporados |
+| `Protoboard superior` | 18 × 63 | protoboard de 830 pontos, canal central, quatro barramentos e capacitores bulk já incorporados |
 | Placa de origem | 6 × 28 | perfboard sem trilhas |
 | Peça E | 6 × 3 | divisor de nível do UART e jumper |
 | Peça G | 6 × 4 | distribuição da base |
@@ -200,10 +255,13 @@ bulk pertencem à placa de ensaio superior já montada. O seed preserva as peça
 G, seus resistores, um TB6612FNG encaixado e componentes externos ligados
 diretamente a furos ou trilhas.
 
-Os dois jumpers de sinal saem dos furos documentados `L4-C18` e `L2-C18`. Como
-a fonte não identifica os pinos de destino, cada jumper termina em uma junção
-conectável de um tap, rotulada como terminal provisório junto ao Nano ou à
-TB6612. Essas junções sobrevivem ao round-trip sem compartilhar os pinos `D8`
+Os dois jumpers de sinal saíam dos furos documentados `L4-C18` e `L2-C18` da
+antiga placa 6 × 18, uma linha abaixo e uma linha acima do canal. Na protoboard
+de 830 pontos eles passam a sair de `E18` e `I18`, que preservam essa posição
+relativa ao canal e caem em grupos de coluna diferentes — portanto continuam
+sendo dois sinais independentes. Como a fonte não identifica os pinos de
+destino, cada jumper termina em uma junção conectável de um tap, rotulada como
+terminal provisório junto ao Nano ou à TB6612. Essas junções sobrevivem ao round-trip sem compartilhar os pinos `D8`
 ou `STBY` e, portanto, sem fundir ou renomear as nets existentes.
 
 As ilustrações foram desenhadas neste repositório com formas SVG simples. Não

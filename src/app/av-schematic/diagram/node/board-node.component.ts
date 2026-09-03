@@ -9,7 +9,7 @@ import {
   holeKey,
   holeLocalPoint,
 } from '../model/board-geometry';
-import { holePortId, tracePortId } from '../model/board-ports';
+import { boardHoleLabel, holePortId, tracePortId } from '../model/board-ports';
 import { traceHoles, traceSegmentHoles } from '../model/board-trace';
 import { type BoardHole, type BoardNodeData, type BoardTrace } from '../model/interfaces';
 import { BoardPlacementService } from '../placement/board-placement.service';
@@ -20,7 +20,31 @@ interface HoleView extends BoardHole {
   x: number;
   y: number;
   portId: string;
+  /** Printed address, e.g. `L2-C5` or `J10` - what the tooltip shows. */
+  address: string;
   conflicted: boolean;
+}
+
+/** A row's printed name, drawn in both side margins the way a board silks it. */
+interface RowMarkingView {
+  row: number;
+  label: string;
+  y: number;
+  /** `+`/`-` suffix of a power bus, which also gets a polarity guide line. */
+  polarity: 'positive' | 'negative' | null;
+  guideY: number;
+}
+
+interface ColumnTickView {
+  x: number;
+  text: string;
+}
+
+/** A column ruler drawn in a hole-free band, like the numbers on a breadboard. */
+interface ColumnRulerView {
+  key: string;
+  y: number;
+  ticks: ColumnTickView[];
 }
 
 interface TraceSegmentView {
@@ -37,6 +61,8 @@ interface TraceView {
   label: string;
   net?: string;
   color: string;
+  /** Copper inside the body: drawn faintly, and with no landing pad of its own. */
+  internal: boolean;
   segments: TraceSegmentView[];
   /** Dashed hops between disjoint segments of one trace - i.e. jumper wires. */
   bridges: { x1: number; y1: number; x2: number; y2: number }[];
@@ -46,6 +72,9 @@ interface TraceView {
   labelX: number;
   labelY: number;
 }
+
+/** Column numbers are printed every fifth column, plus the first one. */
+const COLUMN_TICK_STEP = 5;
 
 /** Stable hue per net name, so the same rail is the same color on every board. */
 function netColor(net: string | undefined): string {
@@ -62,15 +91,17 @@ function netColor(net: string | undefined): string {
  * its copper traces, and a connection port for every hole and every trace.
  *
  * Nothing about the rendering is specialized per board - placa A (6 x 11), the
- * 6 x 28 origin perfboard and the 6 x 3 pecas all take this same path, sized
- * from `rows`/`cols`/`pitch`. Sharing the single `Node[]` array, coordinate
- * space and z-order with device nodes is what keeps "mesmo canvas" true.
+ * 6 x 28 origin perfboard, the 830-point breadboard and the 6 x 3 pecas all
+ * take this same path, sized from `rows`/`cols`/`pitch`. Sharing the single
+ * `Node[]` array, coordinate space and z-order with device nodes is what keeps
+ * "mesmo canvas" true.
  *
  * Every hole carries a port, which is what makes "furos e trilhas funcionam
  * como endpoints conectaveis" literally true rather than approximated: the
  * association a wire records is an ordinary `targetPort` on this node. For a
- * 6 x 28 board that is 168 ports; boards materially larger than that would want
- * ports minted on demand instead (see docs/physical-footprints.md).
+ * 6 x 28 board that is 168 ports and for the 830-point breadboard it is 830;
+ * boards materially larger than that would want ports minted on demand instead
+ * (see docs/physical-footprints.md).
  */
 @Component({
   selector: 'app-board-node',
@@ -116,6 +147,7 @@ export class BoardNodeComponent implements NgDiagramNodeTemplate<BoardNodeData> 
         key,
         ...holeLocalPoint(data, hole),
         portId: holePortId(hole),
+        address: boardHoleLabel(hole, data.rowLabels),
         conflicted: conflicted.has(key),
       };
     });
@@ -124,6 +156,85 @@ export class BoardNodeComponent implements NgDiagramNodeTemplate<BoardNodeData> 
   protected readonly traces = computed<TraceView[]>(() =>
     (this.data().traces ?? []).map((trace) => this.toTraceView(trace)),
   );
+
+  /**
+   * Traces that get a label and a `trace:<id>` port.
+   *
+   * Internal grouping - a breadboard's column clips and buses - has no exposed
+   * pad to land on and would otherwise cover 130 of the board's own holes with
+   * a port box, so it is drawn and nothing more. Connecting to an internal
+   * group means connecting to one of its holes, exactly as on the hardware.
+   */
+  protected readonly exposedTraces = computed<TraceView[]>(() =>
+    this.traces().filter((trace) => !trace.internal),
+  );
+
+  /**
+   * Row names in both side margins, plus the polarity guide line a `+`/`-` bus
+   * draws alongside it. Both come straight from `rowLabels`, so a board that
+   * does not name its rows draws nothing extra.
+   *
+   * The first row of a block of adjacent `+`/`-` rows draws its guide above,
+   * every following row draws it below. A bus pair therefore ends up bracketed
+   * by its two lines, which is how a breadboard silks them.
+   */
+  protected readonly rowMarkings = computed<RowMarkingView[]>(() => {
+    const data = this.data();
+    const labels = data.rowLabels;
+    if (!labels) return [];
+    const offset = data.pitch * 0.42;
+    const polarityOf = (row: number): 'positive' | 'negative' | null => {
+      const label = labels[row];
+      if (!label) return null;
+      return label.endsWith('+') ? 'positive' : label.endsWith('-') ? 'negative' : null;
+    };
+    const markings: RowMarkingView[] = [];
+    labels.forEach((label, row) => {
+      if (!label) return;
+      const { y } = holeLocalPoint(data, { row, col: 0 });
+      const polarity = polarityOf(row);
+      const outward = polarity === null ? 0 : polarityOf(row - 1) === null ? -1 : 1;
+      markings.push({ row, label, y, polarity, guideY: y + outward * offset });
+    });
+    return markings;
+  });
+
+  /**
+   * Column numbers, drawn centred in each band of hole-free rows. On a
+   * breadboard those bands are the two spacers that separate the buses from
+   * the terminal strips - exactly where the numbers are printed; a board with
+   * no empty rows gets no ruler.
+   */
+  protected readonly columnRulers = computed<ColumnRulerView[]>(() => {
+    const data = this.data();
+    const occupied = new Set(boardHoles(data).map((hole) => hole.row));
+    const rulers: ColumnRulerView[] = [];
+    let runStart: number | null = null;
+    for (let row = 0; row <= data.rows; row++) {
+      const empty = row < data.rows && !occupied.has(row);
+      if (empty && runStart === null) runStart = row;
+      if (!empty && runStart !== null) {
+        rulers.push(this.toColumnRuler(runStart, row - 1));
+        runStart = null;
+      }
+    }
+    return rulers;
+  });
+
+  private toColumnRuler(firstRow: number, lastRow: number): ColumnRulerView {
+    const data = this.data();
+    const top = holeLocalPoint(data, { row: firstRow, col: 0 }).y;
+    const bottom = holeLocalPoint(data, { row: lastRow, col: 0 }).y;
+    const ticks: ColumnTickView[] = [];
+    for (let col = 0; col < data.cols; col++) {
+      if (col !== 0 && (col + 1) % COLUMN_TICK_STEP !== 0) continue;
+      ticks.push({
+        x: holeLocalPoint(data, { row: firstRow, col }).x,
+        text: String(col + 1),
+      });
+    }
+    return { key: `${firstRow}-${lastRow}`, y: (top + bottom) / 2, ticks };
+  }
 
   protected holePortLeft(hole: HoleView): number {
     return centerLeftPortBoxPosition(hole, this.holePortSize()).x;
@@ -177,6 +288,7 @@ export class BoardNodeComponent implements NgDiagramNodeTemplate<BoardNodeData> 
       label: trace.label,
       net: trace.net,
       color: netColor(trace.net),
+      internal: trace.internal === true,
       segments,
       bridges,
       portId: tracePortId(trace.id),

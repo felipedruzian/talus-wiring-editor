@@ -1,6 +1,7 @@
 import { type Edge, type Node } from 'ng-diagram';
 import { resolveWireColor } from '../../wireviz-import/wireviz-colors';
 import { allHoles } from '../model/board-geometry';
+import { breadboardRowIndex, createBreadboard830 } from '../model/breadboard';
 import { rowTrace } from '../model/board-trace';
 import { junctionTapPortId } from '../model/canonical-project';
 import { cloneFootprint, getFootprint } from '../model/footprint';
@@ -25,16 +26,18 @@ import {
  * generic `BoardNodeData` - nothing here is a special case in the model, the
  * numbers are just different:
  *
- * | fixture        | grid   | traces                                        |
- * |----------------|--------|-----------------------------------------------|
- * | placa A        | 6 x 11 | six full-width rails, one per power net       |
- * | protoboard sup.| 6 x 18 | mounted top circuit with a central channel    |
- * | placa de origem| 6 x 28 | none (uncut perfboard the pieces are cut from)|
- * | peca E         | 6 x 3  | UART divider node (a jumper) + a short L6 GND |
- * | peca G         | 6 x 4  | L1 = GND_SYS, L6 = VBAT_SYS                   |
+ * | fixture        | grid    | traces                                       |
+ * |----------------|---------|----------------------------------------------|
+ * | placa A        | 6 x 11  | six full-width rails, one per power net      |
+ * | protoboard sup.| 18 x 63 | 830-point breadboard: 126 column groups + 4 buses |
+ * | placa de origem| 6 x 28  | none (uncut perfboard the pieces are cut from)|
+ * | peca E         | 6 x 3   | UART divider node (a jumper) + a short L6 GND|
+ * | peca G         | 6 x 4   | L1 = GND_SYS, L6 = VBAT_SYS                  |
  *
  * Row/column addresses are 0-indexed here; the `L1..L6` / `C1..C11` names the
- * hardware notes use are 1-indexed and live in each trace's `label`.
+ * hardware notes use are 1-indexed and live in each trace's `label`. The
+ * breadboard names its rows instead (`rowLabels`), so its holes read `J10` and
+ * `top+:12` while still being addressed by the same `{row, col}`.
  *
  * Source for the geometry and nets: the ressolda plan for 2026-08-11 and
  * talus-core#339. See docs/physical-footprints.md.
@@ -78,19 +81,22 @@ export const PLACA_ORIGEM_BOARD: BoardNodeData = {
   traces: [],
 };
 
-/** Mounted upper protoboard shown in the ressoldering reference artifact. */
-export const PROTOBOARD_SUPERIOR_BOARD: BoardNodeData = {
-  type: 'board',
+/**
+ * Mounted upper protoboard: the full-size 830-point solderless breadboard the
+ * Talus-Droid actually carries, not a generic perfboard rectangle.
+ *
+ * Its 630 terminal holes, 200 bus holes, column groups and buses all come from
+ * `model/breadboard.ts`; nothing about it is special-cased here, and it shares
+ * the same `pitch` as every other physical board so a footprint seats on it
+ * exactly like on the others.
+ */
+export const PROTOBOARD_SUPERIOR_BOARD: BoardNodeData = createBreadboard830({
   boardId: 'protoboard-superior',
-  label: 'Protoboard superior',
+  label: 'Protoboard superior (830 pontos)',
   notes:
     'Capacitores bulk incorporados: 470 uF/25 V no VM da TB6612 e 470 uF/16 V na entrada do Pi.',
-  rows: 6,
-  cols: 18,
   pitch: BOARD_PITCH,
-  centerGap: 12,
-  traces: [],
-};
+});
 
 export const PECA_G_BOARD: BoardNodeData = {
   type: 'board',
@@ -145,13 +151,19 @@ export const PHYSICAL_BOARDS: readonly BoardNodeData[] = [
   PECA_G_BOARD,
 ];
 
-/** Where each board node sits on the shared canvas. */
+/**
+ * Where each board node sits on the shared canvas.
+ *
+ * The 830-point breadboard is 1272 x 412 px at the shared pitch, so the small
+ * pieces sit in a row above it and the cut pieces below; the bodies are laid
+ * out not to overlap, which `physical-boards.fixture.spec.ts` asserts.
+ */
 export const BOARD_POSITIONS: Readonly<Record<string, { x: number; y: number }>> = {
   'board-a': { x: 60, y: 60 },
-  'protoboard-superior': { x: 520, y: 60 },
-  'placa-origem': { x: 60, y: 300 },
-  'peca-e': { x: 200, y: 520 },
-  'peca-g': { x: 480, y: 520 },
+  'placa-origem': { x: 400, y: 60 },
+  'protoboard-superior': { x: 60, y: 300 },
+  'peca-e': { x: 60, y: 800 },
+  'peca-g': { x: 260, y: 800 },
 };
 
 function boardNode(data: BoardNodeData): Node<BoardNodeData> {
@@ -296,7 +308,7 @@ export const EXTERNAL_COMPONENT_NODES: Node<DeviceNodeData>[] = [
   {
     id: 'xl4015-1',
     type: NodeTemplateType.DeviceNode,
-    position: { x: 700, y: 500 },
+    position: { x: 1420, y: 620 },
     data: {
       type: 'device',
       deviceId: 'CONV-1',
@@ -315,7 +327,7 @@ export const EXTERNAL_COMPONENT_NODES: Node<DeviceNodeData>[] = [
   {
     id: 'hall-left',
     type: NodeTemplateType.DeviceNode,
-    position: { x: 700, y: 280 },
+    position: { x: 1420, y: 380 },
     data: {
       type: 'device',
       deviceId: 'HALL-1',
@@ -341,7 +353,7 @@ export const PROTOBOARD_ENDPOINT_NODES: Node<JunctionNodeData>[] = [
   {
     id: 'proto-endpoint-tb6612',
     type: NodeTemplateType.JunctionNode,
-    position: { x: 310, y: 62 },
+    position: { x: 1420, y: 80 },
     data: {
       type: 'junction',
       junctionId: 'proto-endpoint-tb6612',
@@ -354,7 +366,7 @@ export const PROTOBOARD_ENDPOINT_NODES: Node<JunctionNodeData>[] = [
   {
     id: 'proto-endpoint-nano',
     type: NodeTemplateType.JunctionNode,
-    position: { x: 310, y: 122 },
+    position: { x: 1420, y: 190 },
     data: {
       type: 'junction',
       junctionId: 'proto-endpoint-nano',
@@ -398,6 +410,17 @@ function wireEdge(spec: WireSpec): Edge<WireEdgeData> {
   };
 }
 
+/**
+ * The two documented jumpers left column 18 of the old 6 x 18 rectangle, on
+ * the rows `L2` and `L4` - one row above and one row below the channel. On the
+ * real breadboard those are `I18` (second terminal row above the channel) and
+ * `E18` (first below it), which keeps the source's position relative to the
+ * channel and puts each jumper on a different column group, exactly as the two
+ * independent signals require.
+ */
+export const PROTOBOARD_TB6612_HOLE: BoardHole = { row: breadboardRowIndex('I'), col: 17 };
+export const PROTOBOARD_NANO_HOLE: BoardHole = { row: breadboardRowIndex('E'), col: 17 };
+
 /** The two explicit links drawn from the mounted protoboard in the reference artifact. */
 export const PROTOBOARD_JUMPER_EDGES: Edge<WireEdgeData>[] = [
   wireEdge({
@@ -406,7 +429,7 @@ export const PROTOBOARD_JUMPER_EDGES: Edge<WireEdgeData>[] = [
     colorCode: 'TQ',
     netName: 'PROTO_NANO_SIGNAL',
     wireType: 'signal',
-    source: ['protoboard-superior', holePortId({ row: 3, col: 17 })],
+    source: ['protoboard-superior', holePortId(PROTOBOARD_NANO_HOLE)],
     target: ['proto-endpoint-nano', junctionTapPortId(0)],
   }),
   wireEdge({
@@ -415,7 +438,7 @@ export const PROTOBOARD_JUMPER_EDGES: Edge<WireEdgeData>[] = [
     colorCode: 'YE',
     netName: 'PROTO_TB6612_SIGNAL',
     wireType: 'signal',
-    source: ['protoboard-superior', holePortId({ row: 1, col: 17 })],
+    source: ['protoboard-superior', holePortId(PROTOBOARD_TB6612_HOLE)],
     target: ['proto-endpoint-tb6612', junctionTapPortId(0)],
   }),
 ];

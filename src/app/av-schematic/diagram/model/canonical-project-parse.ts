@@ -807,6 +807,11 @@ function validateBoard(board: CanonicalBoard): void {
   if (board.holeDiameter !== undefined && board.holeDiameter > board.pitch) {
     throw new CanonicalProjectError(`${label}.holeDiameter: cannot exceed board pitch`);
   }
+  if (board.rowLabels !== undefined && board.rowLabels.length !== board.rows) {
+    throw new CanonicalProjectError(
+      `${label}.rowLabels: ${board.rowLabels.length} entries for ${board.rows} rows`,
+    );
+  }
   if (board.holes === undefined && board.rows * board.cols > OPERATIONAL_LIMITS.maxBoardHoles) {
     throw new CanonicalProjectError(
       `${label}: implicit hole count ${board.rows * board.cols} exceeds operational limit of ` +
@@ -1300,6 +1305,12 @@ function parseBoard(raw: unknown, label: string): CanonicalBoard {
             OPERATIONAL_LIMITS.maxBoardPitch,
             'central gap',
           ),
+    rowLabels:
+      obj['rowLabels'] === undefined
+        ? undefined
+        : expectArray(obj['rowLabels'], `${label}.rowLabels`).map((rowLabel, index) =>
+            expectString(rowLabel, `${label}.rowLabels[${index}]`),
+          ),
     holes:
       obj['holes'] === undefined
         ? undefined
@@ -1331,6 +1342,7 @@ function parseBoardTrace(raw: unknown, label: string): BoardTrace {
     id: expectNonEmptyString(obj['id'], `${label}.id`),
     label: expectString(obj['label'], `${label}.label`),
     net: expectOptionalString(obj['net'], `${label}.net`),
+    internal: expectOptionalBoolean(obj['internal'], `${label}.internal`),
     segments: expectArray(obj['segments'], `${label}.segments`).map((segment, index) =>
       parseBoardTraceSegment(segment, `${label}.segments[${index}]`),
     ),
