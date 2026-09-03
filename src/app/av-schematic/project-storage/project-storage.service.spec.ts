@@ -8,6 +8,8 @@ import {
   type WireEdgeData,
 } from '../diagram/model/interfaces';
 import { ProjectStorageService } from './project-storage.service';
+import { InMemoryModelAdapter } from '../diagram/model/testing/in-memory-model-adapter';
+import { UndoableDiagramModelAdapter } from '../diagram/model/undoable-model';
 
 const component = (
   id: string,
@@ -192,5 +194,51 @@ describe('ProjectStorageService save/open', () => {
     expect(storage.status()).toBe('success');
     expect(storage.message()).toContain('carregado com sucesso');
     expect(zoomToFit).toHaveBeenCalledOnce();
+  });
+
+  it('does not undo into the previous project after model replacement', async () => {
+    const oldNode: Node = { id: 'old-project-node', position: { x: 0, y: 0 }, data: {} };
+    const history = new UndoableDiagramModelAdapter(new InMemoryModelAdapter([oldNode], []));
+    history.updateNodes([{ ...oldNode, position: { x: 20, y: 0 } }]);
+
+    const modelService = {
+      getModel: () => history,
+      deleteEdges: vi.fn((ids: string[]) => {
+        const removed = new Set(ids);
+        history.updateEdges((edges) => edges.filter((edge) => !removed.has(edge.id)));
+        return Promise.resolve();
+      }),
+      deleteNodes: vi.fn((ids: string[]) => {
+        const removed = new Set(ids);
+        history.updateNodes((nodes) => nodes.filter((node) => !removed.has(node.id)));
+        return Promise.resolve();
+      }),
+      addNodes: vi.fn((nodes: Node[]) => {
+        history.updateNodes((current) => [...current, ...nodes]);
+        return Promise.resolve();
+      }),
+      addEdges: vi.fn((edges: Edge[]) => {
+        history.updateEdges((current) => [...current, ...edges]);
+        return Promise.resolve();
+      }),
+    };
+    TestBed.configureTestingModule({
+      providers: [
+        ProjectStorageService,
+        { provide: NgDiagramModelService, useValue: modelService },
+        { provide: NgDiagramViewportService, useValue: { zoomToFit: vi.fn() } },
+      ],
+    });
+
+    await TestBed.inject(ProjectStorageService).replaceProject({
+      formatVersion: 4,
+      electrical: { components: [], junctions: [], cables: [], nets: [] },
+      layout: { boards: [], components: [], junctions: [], conductors: [] },
+    });
+
+    expect(history.getNodes()).toEqual([]);
+    history.undo();
+    expect(history.getNodes()).toEqual([]);
+    expect(history.getEdges()).toEqual([]);
   });
 });
