@@ -99,6 +99,22 @@
   background: color-mix(in srgb, var(--ngd-ui-bg-tertiary-default) 35%, transparent);
 }
 
+.category-field {
+  display: grid;
+  gap: 6px;
+  padding: 16px 16px 0;
+  color: var(--ngd-txt-secondary-default);
+}
+
+.category-select {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--ngd-ui-stroke-primary-default);
+  border-radius: var(--ngd-token-radius-button-s);
+  background: var(--ngd-ui-bg-primary-default);
+  color: var(--ngd-txt-primary-default);
+}
+
 .physical-form {
   padding: 18px;
 }

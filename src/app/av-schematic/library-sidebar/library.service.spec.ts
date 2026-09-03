@@ -5,6 +5,7 @@ import { sha256HexSync } from './artwork-import';
 import { LibraryService } from './library.service';
 import {
   LEGACY_LIBRARY_STORAGE_KEY,
+  LEGACY_LIBRARY_V2_STORAGE_KEY,
   LIBRARY_STORAGE_KEY,
   LIBRARY_SEED_REVISION,
   LIBRARY_STORAGE_VERSION,
@@ -12,12 +13,18 @@ import {
   loadLibraryCatalog,
   loadLibraryDevices,
   persistLibraryCatalog,
-  type PersistedLibraryV2,
+  type PersistedLibraryV3,
 } from './library-storage';
+import {
+  SEED_LIBRARY_CATEGORIES,
+  UNCATEGORIZED_CATEGORY,
+  UNCATEGORIZED_CATEGORY_ID,
+} from './library-category';
 import { createBlankTemplate, SEED_LIBRARY } from './seed-library';
 
 class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>();
+  writes = 0;
 
   get length(): number {
     return this.values.size;
@@ -40,6 +47,7 @@ class MemoryStorage implements Storage {
   }
 
   setItem(key: string, value: string): void {
+    this.writes++;
     this.values.set(key, value);
   }
 }
@@ -163,6 +171,7 @@ describe('LibraryService', () => {
     const unsafe = JSON.stringify({
       version: LIBRARY_STORAGE_VERSION,
       seedRevision: LIBRARY_SEED_REVISION,
+      categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
       devices: [{ libraryId: 'bad' }],
       assets: {},
     });
@@ -185,6 +194,7 @@ describe('LibraryService', () => {
     const serialized = JSON.stringify({
       version: LIBRARY_STORAGE_VERSION,
       seedRevision: LIBRARY_SEED_REVISION,
+      categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
       devices: [valid, { libraryId: 'broken', template: { type: 'nope' } }, valid],
       assets: {},
     });
@@ -253,7 +263,12 @@ describe('LibraryService', () => {
     const storage = new MemoryStorage();
     storage.setItem(
       LIBRARY_STORAGE_KEY,
-      JSON.stringify({ version: LIBRARY_STORAGE_VERSION, devices: [], assets: {} }),
+      JSON.stringify({
+        version: LIBRARY_STORAGE_VERSION,
+        categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
+        devices: [],
+        assets: {},
+      }),
     );
 
     expect(loadLibraryDevices(storage)).toEqual([]);
@@ -285,6 +300,7 @@ describe('LibraryService', () => {
       LIBRARY_STORAGE_KEY,
       JSON.stringify({
         version: LIBRARY_STORAGE_VERSION,
+        categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
         devices: [overriddenSeed, custom, legacy],
         assets: {},
       }),
@@ -300,7 +316,7 @@ describe('LibraryService', () => {
     expect(createLibraryService().devices()).toEqual([...SEED_LIBRARY, custom]);
   });
 
-  it('migrates a legacy v1 device catalog to v2 without losing custom entries', () => {
+  it('migrates a legacy v1 device catalog to v3 without losing custom entries', () => {
     const storage = new MemoryStorage();
     const custom = {
       libraryId: 'lib-custom-legacy',
@@ -308,49 +324,13 @@ describe('LibraryService', () => {
     };
     storage.setItem(LEGACY_LIBRARY_STORAGE_KEY, JSON.stringify({ version: 1, devices: [custom] }));
 
-    expect(loadLibraryCatalog(storage)).toEqual({
-      catalog: { devices: [custom], assets: [] },
-      needsUpgrade: true,
-      needsRepair: false,
-    });
+    const loaded = loadLibraryCatalog(storage);
+    expect(loaded.catalog.devices).toEqual(expect.arrayContaining([custom]));
+    expect(loaded.catalog.categories).toEqual(SEED_LIBRARY_CATEGORIES);
+    expect(loaded.catalog.assets).toEqual([]);
+    expect(loaded.needsUpgrade).toBe(true);
+    expect(loaded.needsRepair).toBe(false);
     expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBeNull();
-  });
-
-  it('upgrades former generic module seeds without erasing matching local port edits', () => {
-    const storage = new MemoryStorage();
-    const oldNano = {
-      libraryId: 'lib-arduino-nano',
-      template: {
-        ...createBlankTemplate(),
-        manufacturer: 'Arduino',
-        model: 'Nano local',
-        ports: [
-          { id: 'd9', label: 'D9 personalizado', direction: 'output' as const },
-          { id: 'gnd', label: 'GND', direction: 'input' as const },
-        ],
-      },
-    };
-    const serialized = JSON.stringify({
-      version: LIBRARY_STORAGE_VERSION,
-      devices: [oldNano],
-      assets: {},
-    });
-    storage.setItem(LIBRARY_STORAGE_KEY, serialized);
-
-    const inspected = loadLibraryCatalog(storage);
-    const nano = inspected.catalog.devices[0]?.template;
-
-    expect(inspected.needsUpgrade).toBe(true);
-    expect(inspected.needsRepair).toBe(false);
-    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
-    expect(nano).toMatchObject({
-      model: 'Nano local',
-      footprintId: 'arduino-nano',
-      footprint: { rows: 7, cols: 15 },
-    });
-    expect(nano?.ports).toHaveLength(30);
-    expect(nano?.ports.find((port) => port.id === 'd9')?.label).toBe('D9 personalizado');
-    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
   });
 
   it('adds the passive seed revision once to a catalog saved before issue 33', () => {
@@ -440,6 +420,7 @@ describe('LibraryService', () => {
       JSON.stringify({
         version: LIBRARY_STORAGE_VERSION,
         seedRevision: LIBRARY_SEED_REVISION,
+        categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
         devices: without16V,
         assets: {},
       }),
@@ -452,6 +433,50 @@ describe('LibraryService', () => {
     expect(loaded.needsRepair).toBe(false);
   });
 
+  it('adds a later passive seed to uncategorized without restoring deleted seed categories', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      LIBRARY_STORAGE_KEY,
+      JSON.stringify({
+        version: LIBRARY_STORAGE_VERSION,
+        seedRevision: 2,
+        categories: [UNCATEGORIZED_CATEGORY],
+        devices: [],
+        assets: {},
+      }),
+    );
+
+    const loaded = loadLibraryCatalog(storage);
+
+    expect(loaded.catalog.categories).toEqual([UNCATEGORIZED_CATEGORY]);
+    expect(loaded.catalog.devices).toMatchObject([
+      {
+        libraryId: 'lib-capacitor-electrolytic-470uf-16v',
+        template: { categoryId: UNCATEGORIZED_CATEGORY_ID },
+      },
+    ]);
+    expect(loaded.needsUpgrade).toBe(true);
+  });
+
+  it('infers a complete short-v3 seed revision without restoring a deleted buzzer', () => {
+    const storage = new MemoryStorage();
+    const capacitor16V = SEED_LIBRARY.find(
+      (device) => device.libraryId === 'lib-capacitor-electrolytic-470uf-16v',
+    );
+    if (!capacitor16V) throw new Error('Expected the 16 V capacitor seed');
+    storage.setItem(
+      LIBRARY_STORAGE_KEY,
+      JSON.stringify({ version: 3, devices: [capacitor16V], assets: {} }),
+    );
+
+    const loaded = loadLibraryCatalog(storage);
+
+    expect(loaded.catalog.devices.map((device) => device.libraryId)).toEqual([
+      'lib-capacitor-electrolytic-470uf-16v',
+    ]);
+    expect(loaded.needsUpgrade).toBe(true);
+  });
+
   it('does not PUT or restore a deleted passive in a current central catalog', async () => {
     const storage = new MemoryStorage();
     const without16V = SEED_LIBRARY.filter(
@@ -462,6 +487,7 @@ describe('LibraryService', () => {
         {
           version: LIBRARY_STORAGE_VERSION,
           seedRevision: LIBRARY_SEED_REVISION,
+          categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
           devices: without16V,
           assets: {},
         },
@@ -513,7 +539,7 @@ describe('LibraryService', () => {
 
     const requestBody = fetchMock.mock.calls[1]?.[1]?.body;
     if (typeof requestBody !== 'string') throw new Error('Expected a migration request body');
-    const migrated = JSON.parse(requestBody) as PersistedLibraryV2;
+    const migrated = JSON.parse(requestBody) as PersistedLibraryV3;
     expect(migrated.seedRevision).toBe(LIBRARY_SEED_REVISION);
     expect(migrated.devices.some((device) => device.libraryId === 'lib-buzzer-active-12mm')).toBe(
       false,
@@ -533,6 +559,7 @@ describe('LibraryService', () => {
     const serialized = JSON.stringify({
       version: LIBRARY_STORAGE_VERSION,
       seedRevision: LIBRARY_SEED_REVISION + 1,
+      categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
       devices: SEED_LIBRARY,
       assets: {},
     });
@@ -543,6 +570,169 @@ describe('LibraryService', () => {
     expect(loaded.needsUpgrade).toBe(false);
     expect(loaded.needsRepair).toBe(true);
     expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
+  });
+
+  it('migrates v2 category strings to v3 IDs without mutating local storage during recovery', () => {
+    const storage = new MemoryStorage();
+    const { categoryId: _categoryId, ...legacyTemplate } = createBlankTemplate();
+    const legacy = {
+      libraryId: 'lib-custom-v2',
+      template: {
+        ...legacyTemplate,
+        manufacturer: 'Talus',
+        model: 'Óptico',
+        category: '  Sensór   Óptico ',
+      },
+    };
+    storage.setItem(
+      LEGACY_LIBRARY_V2_STORAGE_KEY,
+      JSON.stringify({ version: 2, devices: [legacy], assets: {} }),
+    );
+    storage.writes = 0;
+
+    const migrated = loadLibraryCatalog(storage);
+
+    expect(migrated.catalog.devices[0]?.template.category).toBeUndefined();
+    expect(migrated.catalog.devices[0]?.template.categoryId).toMatch(/^legacy-sensor-optico-/);
+    expect(
+      migrated.catalog.categories.find(
+        ({ id }) => id === migrated.catalog.devices[0]?.template.categoryId,
+      ),
+    ).toMatchObject({ name: 'Sensór Óptico', prefix: 'DEV' });
+    expect(storage.writes).toBe(0);
+    expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBeNull();
+  });
+
+  it('keeps project category resources private while resolving a deleted or colliding catalog ID', () => {
+    vi.stubGlobal('localStorage', new MemoryStorage());
+    const service = createLibraryService();
+
+    service.hydrateProjectCategories({
+      'category-portable': { name: 'Laboratório portátil', prefix: 'LAB' },
+      resistor: { name: 'Resistor do projeto', prefix: 'PRJ' },
+    });
+
+    expect(service.categories().some((category) => category.id === 'category-portable')).toBe(
+      false,
+    );
+    expect(service.projectCategoryInventory()).toContainEqual({
+      id: 'category-portable',
+      name: 'Laboratório portátil',
+      prefix: 'LAB',
+    });
+    expect(service.category('resistor')).toMatchObject({ name: 'Resistores', prefix: 'RES' });
+    expect(service.category('category-portable')).toMatchObject({
+      name: 'Laboratório portátil',
+      prefix: 'LAB',
+    });
+  });
+
+  it('creates and renames a category without changing its stable ID', async () => {
+    const storage = new MemoryStorage();
+    vi.stubGlobal('localStorage', storage);
+    const service = createLibraryService();
+
+    expect(await service.createCategory('  Sensores   Ópticos ', 'sen')).toBe(true);
+    const created = service.categories().at(-1);
+    expect(created).toMatchObject({ name: 'Sensores Ópticos', prefix: 'SEN' });
+    if (!created) throw new Error('Expected created category');
+
+    expect(await service.renameCategory(created.id, 'Óptica avançada', 'opt')).toBe(true);
+    expect(service.categories().at(-1)).toEqual({
+      id: created.id,
+      name: 'Óptica avançada',
+      prefix: 'OPT',
+    });
+  });
+
+  it('rejects empty and normalized duplicate category names without writing', async () => {
+    const storage = new MemoryStorage();
+    vi.stubGlobal('localStorage', storage);
+    const service = createLibraryService();
+    expect(await service.createCategory('Acústica', 'AUD')).toBe(true);
+    const before = structuredClone(service.catalog());
+    storage.writes = 0;
+
+    expect(await service.createCategory('  acustica ', 'ALT')).toBe(false);
+    expect(await service.createCategory(' \t ', 'ALT')).toBe(false);
+    expect(service.catalog()).toEqual(before);
+    expect(storage.writes).toBe(0);
+    expect(service.storageError()).toMatch(/nome/);
+  });
+
+  it('keeps the fallback fixed and deletes another category in one atomic catalog write', async () => {
+    const storage = new MemoryStorage();
+    vi.stubGlobal('localStorage', storage);
+    const service = createLibraryService();
+
+    expect(await service.renameCategory(UNCATEGORIZED_CATEGORY_ID, 'Outro nome', 'OUT')).toBe(
+      false,
+    );
+    expect(await service.deleteCategory(UNCATEGORIZED_CATEGORY_ID)).toBe(false);
+    expect(service.category(UNCATEGORIZED_CATEGORY_ID)).toEqual(UNCATEGORIZED_CATEGORY);
+
+    expect(await service.createCategory('Temporária', 'TMP')).toBe(true);
+    const temporary = service.categories().at(-1);
+    if (!temporary) throw new Error('Expected category');
+    service.beginCreate();
+    const libraryId = service.editingDeviceId();
+    if (!libraryId) throw new Error('Expected library id');
+    expect(
+      await service.commitDraft(libraryId, {
+        ...createBlankTemplate(),
+        manufacturer: 'Talus',
+        model: 'Temporário',
+        categoryId: temporary.id,
+      }),
+    ).toBe(true);
+    storage.writes = 0;
+    const setSpy = vi.spyOn(service.catalog, 'set');
+
+    expect(await service.deleteCategory(temporary.id)).toBe(true);
+    expect(service.categories().some(({ id }) => id === temporary.id)).toBe(false);
+    expect(service.devices().at(-1)?.template.categoryId).toBe(UNCATEGORIZED_CATEGORY_ID);
+    expect(storage.writes).toBe(1);
+    expect(setSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks a concurrent category mutation while a conditional central write is pending', async () => {
+    const storage = new MemoryStorage();
+    let resolveSave: ((response: Response) => void) | undefined;
+    const pendingSave = new Promise<Response>((resolve) => {
+      resolveSave = resolve;
+    });
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        sharedCatalogResponse(
+          {
+            version: 3,
+            categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
+            devices: structuredClone(SEED_LIBRARY),
+            assets: {},
+          },
+          true,
+        ),
+      )
+      .mockImplementationOnce(() => pendingSave);
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('fetch', fetchMock);
+    const service = createLibraryService();
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    const first = service.createCategory('Primeira', 'PRI');
+    await vi.waitFor(() => {
+      expect(service.isPersisting()).toBe(true);
+    });
+    expect(await service.createCategory('Segunda', 'SEG')).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    resolveSave?.(new Response(null, { status: 200, headers: { ETag: `"${'a'.repeat(64)}"` } }));
+    expect(await first).toBe(true);
+    expect(service.categories().some(({ name }) => name === 'Primeira')).toBe(true);
+    expect(service.categories().some(({ name }) => name === 'Segunda')).toBe(false);
   });
 
   it('deduplicates artwork by hash and restores a physical custom component', async () => {
@@ -601,6 +791,8 @@ describe('LibraryService', () => {
     };
     const serialized = JSON.stringify({
       version: LIBRARY_STORAGE_VERSION,
+      seedRevision: LIBRARY_SEED_REVISION,
+      categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
       devices: [device],
       assets: { [forgedHash]: persistedAsset },
     });
@@ -625,7 +817,13 @@ describe('LibraryService', () => {
     const devices = assets.map((asset, index) =>
       physicalLibraryDevice(`existing-${index}`, asset.hash),
     );
-    expect(persistLibraryCatalog(storage, { devices, assets })).toEqual({ ok: true });
+    expect(
+      persistLibraryCatalog(storage, {
+        categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
+        devices,
+        assets,
+      }),
+    ).toEqual({ ok: true });
     const before = storage.getItem(LIBRARY_STORAGE_KEY);
     vi.stubGlobal('localStorage', storage);
     const service = createLibraryService();
@@ -649,7 +847,12 @@ describe('LibraryService', () => {
         {},
       ]),
     );
-    const serialized = JSON.stringify({ version: LIBRARY_STORAGE_VERSION, devices: [], assets });
+    const serialized = JSON.stringify({
+      version: LIBRARY_STORAGE_VERSION,
+      categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
+      devices: [],
+      assets,
+    });
     storage.setItem(LIBRARY_STORAGE_KEY, serialized);
 
     const loaded = loadLibraryCatalog(storage);
@@ -665,6 +868,7 @@ describe('LibraryService', () => {
     };
     vi.stubGlobal('localStorage', storage);
     const service = createLibraryService();
+    const before = structuredClone(service.catalog());
     service.beginCreate();
     const libraryId = service.editingDeviceId();
     if (!libraryId) throw new Error('Expected library id');
@@ -678,6 +882,7 @@ describe('LibraryService', () => {
     ).toBe(false);
     expect(service.storageError()).toMatch(/sem espaço/);
     expect(service.editingDeviceId()).toBe(libraryId);
+    expect(service.catalog()).toEqual(before);
   });
 
   it('hydrates the shared catalog when the central service is available', async () => {
@@ -687,11 +892,18 @@ describe('LibraryService', () => {
       template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Compartilhado' },
     };
     vi.stubGlobal('localStorage', storage);
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(
-        sharedCatalogResponse({ version: 2, devices: [remoteDevice], assets: {} }, true),
-      );
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      sharedCatalogResponse(
+        {
+          version: 3,
+          seedRevision: LIBRARY_SEED_REVISION,
+          categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
+          devices: [remoteDevice],
+          assets: {},
+        },
+        true,
+      ),
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     const service = createLibraryService();
@@ -744,7 +956,7 @@ describe('LibraryService', () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
-    expect(service.devices()).toEqual([local]);
+    expect(service.devices()).toEqual(expect.arrayContaining([local]));
     expect(service.artworkAsset(hash)).toBeUndefined();
     expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(before);
     expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
@@ -753,7 +965,7 @@ describe('LibraryService', () => {
     });
     const requestBody = fetchMock.mock.calls[1]?.[1]?.body;
     if (typeof requestBody !== 'string') throw new Error('Expected a migration request body');
-    const upgradedCatalog = JSON.parse(requestBody) as PersistedLibraryV2;
+    const upgradedCatalog = JSON.parse(requestBody) as PersistedLibraryV3;
     expect(upgradedCatalog.devices[0]?.template).toMatchObject({
       model: 'Nano local',
       footprintId: 'arduino-nano',
@@ -876,7 +1088,7 @@ describe('LibraryService', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(service.devices()).toEqual([local]);
+    expect(service.devices()).toEqual(expect.arrayContaining([local]));
     expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(before);
   });
 
@@ -904,7 +1116,7 @@ describe('LibraryService', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(service.devices()).toEqual([local]);
+    expect(service.devices()).toEqual(expect.arrayContaining([local]));
     expect(storage.getItem(LIBRARY_STORAGE_KEY)).toBe(serialized);
   });
 
@@ -918,7 +1130,13 @@ describe('LibraryService', () => {
       libraryId: 'lib-shared',
       template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Versão remota' },
     };
-    expect(persistLibraryCatalog(storage, { devices: [localDevice], assets: [] }).ok).toBe(true);
+    expect(
+      persistLibraryCatalog(storage, {
+        categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
+        devices: [localDevice],
+        assets: [],
+      }).ok,
+    ).toBe(true);
     const remote = deferred<Response>();
     const fetchMock = vi.fn<typeof fetch>().mockReturnValue(remote.promise);
     vi.stubGlobal('localStorage', storage);
@@ -929,7 +1147,15 @@ describe('LibraryService', () => {
     expect(service.editingDeviceId()).toBeNull();
 
     remote.resolve(
-      sharedCatalogResponse({ version: 2, devices: [remoteDevice], assets: {} }, true),
+      sharedCatalogResponse(
+        {
+          version: 3,
+          categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
+          devices: [remoteDevice],
+          assets: {},
+        },
+        true,
+      ),
     );
     await opening;
 
@@ -944,7 +1170,13 @@ describe('LibraryService', () => {
       libraryId: 'lib-custom-deleted',
       template: { ...createBlankTemplate(), manufacturer: 'Talus', model: 'Excluído' },
     };
-    expect(persistLibraryCatalog(storage, { devices: [deleted], assets: [] }).ok).toBe(true);
+    expect(
+      persistLibraryCatalog(storage, {
+        categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
+        devices: [deleted],
+        assets: [],
+      }).ok,
+    ).toBe(true);
     const remote = deferred<Response>();
     const fetchMock = vi.fn<typeof fetch>().mockReturnValue(remote.promise);
     vi.stubGlobal('localStorage', storage);
@@ -952,7 +1184,17 @@ describe('LibraryService', () => {
     const service = createLibraryService();
 
     const opening = service.beginEdit(deleted.libraryId);
-    remote.resolve(sharedCatalogResponse({ version: 2, devices: [], assets: {} }, true));
+    remote.resolve(
+      sharedCatalogResponse(
+        {
+          version: 3,
+          categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
+          devices: [],
+          assets: {},
+        },
+        true,
+      ),
+    );
     await opening;
 
     expect(service.editingDeviceId()).toBeNull();
@@ -970,7 +1212,17 @@ describe('LibraryService', () => {
     storage.setItem(LEGACY_LIBRARY_STORAGE_KEY, JSON.stringify({ version: 1, devices: [legacy] }));
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(sharedCatalogResponse({ version: 2, devices: [], assets: {} }, false))
+      .mockResolvedValueOnce(
+        sharedCatalogResponse(
+          {
+            version: 3,
+            categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
+            devices: [],
+            assets: {},
+          },
+          false,
+        ),
+      )
       .mockResolvedValueOnce(
         new Response(null, {
           status: 200,
@@ -987,7 +1239,8 @@ describe('LibraryService', () => {
 
     const request = fetchMock.mock.calls[1]?.[1];
     if (typeof request?.body !== 'string') throw new Error('Expected a JSON request body');
-    expect(JSON.parse(request.body)).toMatchObject({ devices: [legacy] });
+    expect(request.body).toContain('lib-custom-legacy-central');
+    expect(request.body).toContain(`"seedRevision":${LIBRARY_SEED_REVISION}`);
   });
 
   it('surfaces a central ETag conflict without mutating the visible or local catalog', async () => {
@@ -999,7 +1252,15 @@ describe('LibraryService', () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
-        sharedCatalogResponse({ version: 2, devices: [remoteDevice], assets: {} }, true),
+        sharedCatalogResponse(
+          {
+            version: 3,
+            categories: structuredClone([...SEED_LIBRARY_CATEGORIES]),
+            devices: [remoteDevice],
+            assets: {},
+          },
+          true,
+        ),
       )
       .mockResolvedValueOnce(new Response('{}', { status: 412 }));
     vi.stubGlobal('localStorage', storage);

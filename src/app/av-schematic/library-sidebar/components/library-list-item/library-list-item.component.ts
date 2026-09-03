@@ -2,7 +2,6 @@ import { ChangeDetectionStrategy, Component, computed, inject, input } from '@an
 import { NgDiagramPaletteItemComponent, NgDiagramPaletteItemPreviewComponent } from 'ng-diagram';
 import { ArtworkAssetStore } from '../../../diagram/artwork/artwork-asset.store';
 import { trustedArtworkForFootprintDefinition } from '../../../diagram/artwork/trusted-component-artwork';
-import { deviceCategoryLabel } from '../../../diagram/model/device-categories';
 import { resolveFootprint } from '../../../diagram/model/footprint';
 import { FootprintIllustrationComponent } from '../../../diagram/node/footprint-illustration.component';
 import { HighlightSegmentsPipe } from '../../../shared/ui/highlight-segments/highlight-segments.pipe';
@@ -48,8 +47,7 @@ export class LibraryListItemComponent {
   });
 
   protected readonly categoryLabel = computed(() => {
-    const c = this.device().template.category?.trim();
-    return c ? deviceCategoryLabel(c) : '';
+    return this.libraryService.category(this.device().template.categoryId).name;
   });
 
   protected onOpenDetail(): void {

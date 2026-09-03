@@ -40,10 +40,10 @@ function clone<T>(value: T): T {
 
 function emptyV2(): CanonicalProjectV2 {
   return {
-    formatVersion: 5,
+    formatVersion: 6,
     electrical: { components: [], junctions: [], cables: [], nets: [] },
     layout: { boards: [], components: [], junctions: [], conductors: [] },
-    resources: { artworkAssets: {} },
+    resources: { artworkAssets: {}, categories: {} },
   };
 }
 
@@ -95,7 +95,7 @@ describe('canonical physical validation corpus', () => {
     );
     const parsed = parseCanonicalProject(clone(legacy.raw));
 
-    expect(parsed.formatVersion).toBe(5);
+    expect(parsed.formatVersion).toBe(6);
     expect(parsed.layout.components[0]).toMatchObject({
       pinHoles: [
         { pinId: 'a', hole: { row: 1, col: 1 } },
@@ -370,7 +370,7 @@ describe('canonical project round-trip', () => {
     };
 
     const saved = toCanonicalProject([board], [jumper]);
-    expect(saved.formatVersion).toBe(5);
+    expect(saved.formatVersion).toBe(6);
     expect(saved.layout.conductors[0]).toMatchObject({
       conductorId: jumper.id,
       boardJumper: {
@@ -418,7 +418,7 @@ describe('canonical project round-trip', () => {
   it('keeps electrical semantics separate from complementary visual geometry', () => {
     const project = toCanonicalProject(diagramModel.nodes, diagramModel.edges);
 
-    expect(project.formatVersion).toBe(5);
+    expect(project.formatVersion).toBe(6);
     expect(project.electrical.nets.length).toBeGreaterThanOrEqual(2);
     expect(project.electrical.components.length).toBeGreaterThan(2);
     expect(project.layout.boards).toHaveLength(5);
@@ -782,9 +782,105 @@ describe('parseCanonicalProject', () => {
     expect(parseCanonicalProject(validRaw)).toEqual(validProject);
   });
 
+  it('drops a tolerated legacy category field from a v6 component', () => {
+    const v6 = clone(validProject);
+    const component = must(v6.electrical.components[0]);
+    component.category = 'Legado';
+
+    expect(parseCanonicalProject(v6).electrical.components[0]?.category).toBeUndefined();
+  });
+
+  it('preserves same-named project category resources with distinct IDs', () => {
+    const project = emptyV2();
+    project.electrical.components = [
+      {
+        id: 'seed-resistor',
+        deviceId: 'R1',
+        manufacturer: '',
+        model: '',
+        categoryId: 'resistor',
+        pins: [],
+      },
+      {
+        id: 'portable-resistor',
+        deviceId: 'R2',
+        manufacturer: '',
+        model: '',
+        categoryId: 'category-portable-resistor',
+        pins: [],
+      },
+    ];
+    project.layout.components = project.electrical.components.map((component) => ({
+      componentId: component.id,
+      position: { x: 0, y: 0 },
+      visualPlane: 10,
+    }));
+    project.resources.categories = {
+      resistor: { name: 'Resistores', prefix: 'RES' },
+      'category-portable-resistor': { name: 'Resistores', prefix: 'LAB' },
+    };
+
+    expect(parseCanonicalProject(project).resources.categories).toEqual(
+      project.resources.categories,
+    );
+  });
+
   it('accepts an empty v2 project', () => {
     const empty = emptyV2();
     expect(parseCanonicalProject(clone(empty))).toEqual(empty);
+  });
+
+  it('persists a referenced custom category and restores its portable name', () => {
+    const source: Node<DeviceNodeData> = {
+      id: 'lab-device',
+      type: NodeTemplateType.DeviceNode,
+      position: { x: 0, y: 0 },
+      data: {
+        type: 'device',
+        deviceId: 'LAB1',
+        manufacturer: 'Talus',
+        model: 'Componente de laboratório',
+        categoryId: 'category-lab',
+        ports: [],
+      },
+    };
+    const project = toCanonicalProject(
+      [source],
+      [],
+      [],
+      [],
+      [{ id: 'category-lab', name: 'Laboratório', prefix: 'LAB' }],
+    );
+
+    expect(project.resources.categories).toEqual({
+      'category-lab': { name: 'Laboratório', prefix: 'LAB' },
+    });
+    const restored = must(fromCanonicalProject(parseCanonicalProject(clone(project))).nodes[0]);
+    expect(restored.data).toMatchObject({ categoryId: 'category-lab', category: 'Laboratório' });
+  });
+
+  it('migrates a v5 textual category and rejects dangling v6 category resources', () => {
+    const legacy = clone(validProject) as unknown as Record<string, unknown>;
+    legacy['formatVersion'] = 5;
+    const electrical = legacy['electrical'] as Record<string, Record<string, unknown>[]>;
+    const component = must(must(electrical['components'])[0]);
+    component['category'] = 'Laboratório';
+    delete component['categoryId'];
+    const resources = legacy['resources'] as Record<string, unknown>;
+    resources['categories'] = {};
+
+    const migrated = parseCanonicalProject(legacy);
+    const categoryId = must(migrated.electrical.components[0]).categoryId;
+    expect(migrated.resources.categories[categoryId ?? '']).toEqual({
+      name: 'Laboratório',
+      prefix: 'DEV',
+    });
+
+    const dangling = clone(migrated);
+    const { [categoryId ?? '']: _removedCategory, ...remainingCategories } =
+      dangling.resources.categories;
+    dangling.resources.categories = remainingCategories;
+    expect(() => parseCanonicalProject(dangling)).toThrow('missing category');
   });
 
   it('migrates v2 snapshots to deterministic visual-plane defaults', () => {
@@ -795,8 +891,11 @@ describe('parseCanonicalProject', () => {
       for (const entry of layout[collection] ?? []) delete entry['visualPlane'];
     }
     const migrated = parseCanonicalProject(legacy);
-    expect(migrated.formatVersion).toBe(5);
-    expect(migrated.resources).toEqual({ artworkAssets: {} });
+    expect(migrated.formatVersion).toBe(6);
+    expect(migrated.resources).toMatchObject({
+      artworkAssets: {},
+      categories: { uncategorized: { name: 'Não categorizado', prefix: 'DEV' } },
+    });
     expect(migrated.layout.boards.every((item) => item.visualPlane === 0)).toBe(true);
     expect(migrated.layout.components.every((item) => item.visualPlane === 10)).toBe(true);
     expect(migrated.layout.junctions.every((item) => item.visualPlane === 30)).toBe(true);
@@ -829,12 +928,17 @@ describe('parseCanonicalProject', () => {
       deviceId: 'X1',
       manufacturer: '',
       model: '',
+      categoryId: 'uncategorized',
       pins: Array.from({ length: pinCount }, (_, index) => ({
         id: `p${index}`,
         label: `P${index}`,
         direction: 'output',
       })),
     });
+    project.resources.categories['uncategorized'] = {
+      name: 'Não categorizado',
+      prefix: 'DEV',
+    };
     project.layout.components.push({
       componentId: 'x1',
       position: { x: 0, y: 0 },
@@ -1250,11 +1354,16 @@ describe('parseCanonicalProject', () => {
       deviceId: 'X1',
       manufacturer: '',
       model: '',
+      categoryId: 'uncategorized',
       pins: [
         { id: 'a', label: 'A', direction: 'output' },
         { id: 'b', label: 'B', direction: 'output' },
       ],
     });
+    loopProject.resources.categories['uncategorized'] = {
+      name: 'Não categorizado',
+      prefix: 'DEV',
+    };
     loopProject.electrical.nets.push({
       id: 'loop-net',
       name: '',

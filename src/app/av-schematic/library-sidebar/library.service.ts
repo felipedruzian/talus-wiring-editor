@@ -11,7 +11,17 @@ import {
 } from './library-storage';
 import { loadSharedLibrary, saveSharedLibrary } from './library-api';
 import { matchesLibrarySearch } from './library-search';
-import { SEED_LIBRARY, type LibraryDevice } from './seed-library';
+import {
+  canonicalCategory,
+  categoryById,
+  categoryValidationError,
+  collapseCategoryWhitespace,
+  normalizeCategoryPrefix,
+  SEED_LIBRARY_CATEGORIES,
+  UNCATEGORIZED_CATEGORY_ID,
+  type LibraryCategory,
+} from './library-category';
+import { SEED_LIBRARY, type LibraryDevice, type LibraryDeviceTemplate } from './seed-library';
 
 type LibraryEditMode = 'create' | 'edit';
 
@@ -23,7 +33,22 @@ export class LibraryService {
   private readonly initialLoad = loadLibraryCatalog(this.storage);
   private readonly initialCatalog = this.initialLoad.catalog;
 
-  readonly devices = signal<LibraryDevice[]>(this.initialCatalog.devices);
+  /** The catalog changes atomically; consumers derive every collection from this one signal. */
+  readonly catalog = signal(structuredClone(this.initialCatalog));
+  readonly categories = computed(() => this.catalog().categories);
+  // Project resources are deliberately separate from the shared catalog. They
+  // resolve labels for an opened project, but are never candidates for library
+  // CRUD or a central PUT.
+  private readonly projectCategories = signal<readonly LibraryCategory[]>([]);
+  readonly resolvedCategories = computed(() => {
+    const catalog = this.catalog().categories;
+    const catalogIds = new Set(catalog.map((category) => category.id));
+    return [
+      ...catalog,
+      ...this.projectCategories().filter((category) => !catalogIds.has(category.id)),
+    ];
+  });
+  readonly devices = computed(() => this.catalog().devices);
   readonly isExpanded = signal(false);
   readonly editingDeviceId = signal<string | null>(null);
   readonly editingMode = signal<LibraryEditMode | null>(null);
@@ -51,8 +76,15 @@ export class LibraryService {
   readonly filteredDevices = computed<LibraryDevice[]>(() => {
     const query = this.searchQuery().trim();
     if (!query) return this.devices();
-    return this.devices().filter((device) => matchesLibrarySearch(device, query));
+    return this.devices().filter((device) =>
+      matchesLibrarySearch(device, query, this.categories()),
+    );
   });
+
+  /** Supplies project serialization without exposing private resources to catalog CRUD. */
+  projectCategoryInventory(): readonly LibraryCategory[] {
+    return this.resolvedCategories();
+  }
 
   expand(): void {
     this.isExpanded.set(true);
@@ -94,11 +126,21 @@ export class LibraryService {
     await this.centralHydration;
     if (this.isPersisting()) return false;
     const mode = this.editingMode();
+    const requestedCategoryId = template.categoryId;
+    const categoryId =
+      requestedCategoryId && this.catalog().categories.some(({ id }) => id === requestedCategoryId)
+        ? requestedCategoryId
+        : UNCATEGORIZED_CATEGORY_ID;
+    const { category: _legacyCategory, ...canonicalTemplate } = template;
+    const normalizedTemplate: LibraryDeviceTemplate = {
+      ...canonicalTemplate,
+      categoryId,
+    };
     let nextDevices: LibraryDevice[];
     if (mode === 'create') {
       nextDevices = (() => {
         const list = this.devices();
-        const cloned = structuredClone(template);
+        const cloned = structuredClone(normalizedTemplate);
         const existing = list.findIndex((device) => device.libraryId === libraryId);
         if (existing < 0) return [...list, { libraryId, template: cloned }];
         return list.map((device, index) =>
@@ -119,7 +161,7 @@ export class LibraryService {
         return false;
       }
       nextDevices = this.devices().map((d) =>
-        d.libraryId === libraryId ? { ...d, template: structuredClone(template) } : d,
+        d.libraryId === libraryId ? { ...d, template: structuredClone(normalizedTemplate) } : d,
       );
     } else {
       return false;
@@ -140,7 +182,10 @@ export class LibraryService {
       this.storageError.set('O componente referencia uma imagem que não está disponível.');
       return false;
     }
-    return this.commitCatalog({ devices: nextDevices, assets }, true);
+    return this.commitCatalog(
+      { categories: this.catalog().categories, devices: nextDevices, assets },
+      true,
+    );
   }
 
   closeDetail(): void {
@@ -159,24 +204,142 @@ export class LibraryService {
 
   async removeDevice(libraryId: string): Promise<boolean> {
     await this.centralHydration;
+    if (this.isPersisting()) return false;
     const nextDevices = this.devices().filter((device) => device.libraryId !== libraryId);
     const hashes = referencedArtworkHashes(nextDevices);
     return this.commitCatalog(
-      { devices: nextDevices, assets: this.artworkStore.referenced(hashes) },
+      {
+        categories: this.catalog().categories,
+        devices: nextDevices,
+        assets: this.artworkStore.referenced(hashes),
+      },
       this.editingDeviceId() === libraryId,
     );
   }
 
   async restoreDefaults(): Promise<boolean> {
     await this.centralHydration;
+    if (this.isPersisting()) return false;
     const restored = [
       ...structuredClone(SEED_LIBRARY),
       ...this.devices().filter((device) => device.libraryId.startsWith('lib-custom-')),
     ];
     const hashes = referencedArtworkHashes(restored);
     return this.commitCatalog(
-      { devices: restored, assets: this.artworkStore.referenced(hashes) },
+      {
+        categories: [
+          ...structuredClone([...SEED_LIBRARY_CATEGORIES]),
+          ...this.catalog().categories.filter(
+            (category) => !SEED_LIBRARY_CATEGORIES.some(({ id }) => id === category.id),
+          ),
+        ],
+        devices: restored,
+        assets: this.artworkStore.referenced(hashes),
+      },
       true,
+    );
+  }
+
+  category(categoryId: string | undefined): LibraryCategory {
+    return categoryById(this.resolvedCategories(), categoryId);
+  }
+
+  /**
+   * Makes category names embedded in an opened project available to the UI
+   * without silently publishing them to the shared library on this host.
+   */
+  hydrateProjectCategories(
+    resources: Readonly<Record<string, { name: string; prefix: string }>>,
+  ): void {
+    const candidates = Object.entries(resources).flatMap(([id, resource]) => {
+      const category = canonicalCategory(id, resource.name, resource.prefix);
+      return categoryValidationError(category, []) ? [] : [category];
+    });
+    this.projectCategories.set(candidates);
+  }
+
+  async createCategory(name: string, prefix: string): Promise<boolean> {
+    await this.centralHydration;
+    if (this.isPersisting()) return false;
+    const category = canonicalCategory(
+      `category-${createLibraryId().toLocaleLowerCase('pt-BR')}`,
+      name,
+      prefix,
+    );
+    const error = categoryValidationError(category, this.catalog().categories);
+    if (error) {
+      this.storageError.set(error);
+      return false;
+    }
+    return this.commitCatalog(
+      {
+        ...this.catalog(),
+        categories: [...this.catalog().categories, category],
+      },
+      false,
+    );
+  }
+
+  async renameCategory(categoryId: string, name: string, prefix: string): Promise<boolean> {
+    await this.centralHydration;
+    if (this.isPersisting()) return false;
+    if (categoryId === UNCATEGORIZED_CATEGORY_ID) {
+      this.storageError.set('A categoria “Não categorizado” é fixa e não pode ser alterada.');
+      return false;
+    }
+    const current = this.catalog().categories.find(({ id }) => id === categoryId);
+    if (!current) {
+      this.storageError.set('A categoria não existe mais. Recarregue a página.');
+      return false;
+    }
+    const updated = canonicalCategory(
+      current.id,
+      collapseCategoryWhitespace(name),
+      normalizeCategoryPrefix(prefix),
+    );
+    const error = categoryValidationError(updated, this.catalog().categories, categoryId);
+    if (error) {
+      this.storageError.set(error);
+      return false;
+    }
+    return this.commitCatalog(
+      {
+        ...this.catalog(),
+        categories: this.catalog().categories.map((category) =>
+          category.id === categoryId ? updated : category,
+        ),
+      },
+      false,
+    );
+  }
+
+  async deleteCategory(categoryId: string): Promise<boolean> {
+    await this.centralHydration;
+    if (this.isPersisting()) return false;
+    if (categoryId === UNCATEGORIZED_CATEGORY_ID) {
+      this.storageError.set('A categoria “Não categorizado” é fixa e não pode ser excluída.');
+      return false;
+    }
+    if (!this.catalog().categories.some(({ id }) => id === categoryId)) {
+      this.storageError.set('A categoria não existe mais. Recarregue a página.');
+      return false;
+    }
+    // Reassignment and removal form one immutable catalog transaction and one write.
+    const devices = this.devices().map((device) =>
+      device.template.categoryId === categoryId
+        ? {
+            ...device,
+            template: { ...device.template, categoryId: UNCATEGORIZED_CATEGORY_ID },
+          }
+        : device,
+    );
+    return this.commitCatalog(
+      {
+        ...this.catalog(),
+        categories: this.catalog().categories.filter(({ id }) => id !== categoryId),
+        devices,
+      },
+      false,
     );
   }
 
@@ -189,7 +352,11 @@ export class LibraryService {
   }
 
   private async commitCatalog(
-    catalog: { devices: LibraryDevice[]; assets: RasterArtworkAsset[] },
+    catalog: {
+      categories: LibraryCategory[];
+      devices: LibraryDevice[];
+      assets: RasterArtworkAsset[];
+    },
     closeDetail: boolean,
   ): Promise<boolean> {
     const prepared = prepareLibraryCatalog(catalog);
@@ -221,8 +388,6 @@ export class LibraryService {
         this.centralEtag = remote.etag;
       }
 
-      this.devices.set(structuredClone(catalog.devices));
-      this.artworkStore.registerMany(catalog.assets);
       const local = persistLibraryCatalog(this.storage, catalog);
       this.storageError.set(
         local.ok
@@ -232,6 +397,8 @@ export class LibraryService {
             : local.message,
       );
       if (!local.ok && this.centralState !== 'ready') return false;
+      this.catalog.set(structuredClone(catalog));
+      this.artworkStore.registerMany(catalog.assets);
       if (closeDetail) this.closeDetail();
       return true;
     } finally {
@@ -303,7 +470,7 @@ export class LibraryService {
       this.centralEtag = upgraded.etag;
     }
 
-    this.devices.set(structuredClone(remote.catalog.devices));
+    this.catalog.set(structuredClone(remote.catalog));
     this.artworkStore.registerMany(remote.catalog.assets);
     const local = persistLibraryCatalog(this.storage, remote.catalog);
     if (!local.ok) {

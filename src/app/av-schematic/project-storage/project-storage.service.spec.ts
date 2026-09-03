@@ -130,7 +130,7 @@ describe('ProjectStorageService save/open', () => {
     await storage.save('project-1');
 
     expect(savedBody).toMatchObject({
-      formatVersion: 5,
+      formatVersion: 6,
       electrical: {
         cables: [{ name: 'W1', colors: ['#123456'] }],
         nets: [
@@ -155,7 +155,7 @@ describe('ProjectStorageService save/open', () => {
           }),
         ],
       },
-      resources: { artworkAssets: {} },
+      resources: { artworkAssets: {}, categories: {} },
     });
     expect(storage.status()).toBe('success');
 
@@ -233,10 +233,10 @@ describe('ProjectStorageService save/open', () => {
     });
 
     await TestBed.inject(ProjectStorageService).replaceProject({
-      formatVersion: 5,
+      formatVersion: 6,
       electrical: { components: [], junctions: [], cables: [], nets: [] },
       layout: { boards: [], components: [], junctions: [], conductors: [] },
-      resources: { artworkAssets: {} },
+      resources: { artworkAssets: {}, categories: {} },
     });
 
     expect(history.getNodes()).toEqual([]);
@@ -297,6 +297,7 @@ describe('ProjectStorageService save/open', () => {
             dataUrl,
           },
         },
+        categories: { uncategorized: { name: 'Não categorizado', prefix: 'DEV' } },
       },
     };
     const artworkStore = new ArtworkAssetStore();

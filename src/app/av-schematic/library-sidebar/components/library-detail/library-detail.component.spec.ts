@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ArtworkAssetStore } from '../../../diagram/artwork/artwork-asset.store';
 import { LibraryService } from '../../library.service';
-import { type LibraryDevice } from '../../seed-library';
+import { createBlankTemplate, type LibraryDevice } from '../../seed-library';
 import { LibraryDetailComponent } from './library-detail.component';
 
 describe('LibraryDetailComponent dialog', () => {
@@ -80,14 +80,13 @@ describe('LibraryDetailComponent dialog', () => {
     const device: LibraryDevice = {
       libraryId: 'lib-port-sync',
       template: {
-        type: 'device',
-        deviceId: '',
+        ...createBlankTemplate(),
         manufacturer: 'Talus',
         model: 'Sync',
         ports: [{ id: 'in', label: 'Entrada', direction: 'input' }],
       },
     };
-    service.devices.set([device]);
+    service.catalog.update((catalog) => ({ ...catalog, devices: [device] }));
     await service.beginEdit(device.libraryId);
     const fixture = TestBed.createComponent(LibraryDetailComponent);
     fixture.componentRef.setInput('libraryId', device.libraryId);

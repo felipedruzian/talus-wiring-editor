@@ -120,6 +120,9 @@ export interface DeviceNodeData extends WireVizConnectorMetadata, VisualPlaneDat
   deviceId: string;
   manufacturer: string;
   model: string;
+  /** Stable category identity used by library catalog v3 templates. */
+  categoryId?: string;
+  /** Legacy project and v1/v2 library category string; new catalog templates omit it. */
   category?: string;
   location?: string;
   /**

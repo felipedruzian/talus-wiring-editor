@@ -223,6 +223,11 @@ describe('Talus-Droid library catalog', () => {
     expect(deviceCategoryLabel('capacitor')).toBe('Capacitores');
   });
 
+  it('uses stable category IDs instead of legacy category strings in every template', () => {
+    expect(SEED_LIBRARY.every((device) => device.template.categoryId.length > 0)).toBe(true);
+    expect(SEED_LIBRARY.every((device) => device.template.category === undefined)).toBe(true);
+  });
+
   it('clones a catalog template into a draggable palette item', () => {
     const template = seed('lib-mpu6050-gy521').template;
     const paletteItem = asDevicePaletteItem(template) as unknown as { data: typeof template };

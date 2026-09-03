@@ -292,11 +292,13 @@ aplicada a endpoints de placa ou footprint.
 
 ## Persistência
 
-O projeto usa o formato canônico v5, evolução compatível do v4. A seção
+O projeto usa o formato canônico v6, evolução compatível do v5. A seção
 `electrical` continua contendo componentes, junções, cabos, nets multi-drop e
 condutores; a seção `layout` contém placas, footprints, placements e geometria;
 e `resources.artworkAssets` transporta somente as imagens referenciadas pelos
-footprints, deduplicadas pelo SHA-256.
+footprints, deduplicadas pelo SHA-256. `resources.categories` transporta as
+definições de categoria usadas pelos componentes (`categoryId`), permitindo
+abrir o mesmo projeto em outro host sem depender do catálogo local.
 Não existe `CanonicalNet` v1 paralelo. Snapshots v1 anteriores continuam sendo
 migrados pela fronteira de entrada existente.
 

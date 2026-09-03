@@ -46,6 +46,14 @@ import {
   visualPlaneOf,
 } from './visual-planes';
 import { boardLocalPoints, boardWorldPoints } from './board-jumper';
+import {
+  categoryById,
+  collapseCategoryWhitespace,
+  migrateLegacyDeviceCategories,
+  SEED_LIBRARY_CATEGORIES,
+  UNCATEGORIZED_CATEGORY,
+  type LibraryCategory,
+} from '../../library-sidebar/library-category';
 
 /**
  * Canonical, serializable project format (v4). Visual planes were added in
@@ -82,20 +90,24 @@ import { boardLocalPoints, boardWorldPoints } from './board-jumper';
  * v5 adds content-addressed raster artwork under `resources`. Footprint
  * definitions keep only the hash, while every used inert PNG/WebP byte stream
  * travels with the project and can be hydrated before nodes are rendered.
+ * v6 gives component categories stable IDs and embeds the referenced category
+ * definitions beside artwork, so a project keeps its category names across
+ * hosts even when that category is no longer present in the shared library.
  */
-export const CANONICAL_FORMAT_VERSION = 5;
+export const CANONICAL_FORMAT_VERSION = 6;
 
-export interface CanonicalProjectV5 {
-  formatVersion: 5;
+export interface CanonicalProjectV6 {
+  formatVersion: 6;
   electrical: CanonicalElectrical;
   layout: CanonicalLayout;
   resources: CanonicalResources;
 }
 
 /** Compatibility aliases kept while current-format consumers migrate names. */
-export type CanonicalProjectV4 = CanonicalProjectV5;
-export type CanonicalProjectV3 = CanonicalProjectV5;
-export type CanonicalProjectV2 = CanonicalProjectV5;
+export type CanonicalProjectV5 = CanonicalProjectV6;
+export type CanonicalProjectV4 = CanonicalProjectV6;
+export type CanonicalProjectV3 = CanonicalProjectV6;
+export type CanonicalProjectV2 = CanonicalProjectV6;
 
 export type CanonicalArtworkMimeType = 'image/png' | 'image/webp';
 
@@ -113,6 +125,12 @@ export interface CanonicalArtworkAsset extends CanonicalArtworkResource {
 
 export interface CanonicalResources {
   artworkAssets: Record<string, CanonicalArtworkResource>;
+  categories: Record<string, CanonicalCategoryResource>;
+}
+
+export interface CanonicalCategoryResource {
+  name: string;
+  prefix: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -151,6 +169,9 @@ export interface CanonicalComponent {
   deviceId: string;
   manufacturer: string;
   model: string;
+  /** Required by persisted v6; optional here while legacy in-memory callers migrate. */
+  categoryId?: string;
+  /** Legacy import-only hint accepted while v1-v5 projects are migrated. */
   category?: string;
   location?: string;
   /** Name this component takes as a WireViz `connectors.<name>` entry. */
@@ -528,6 +549,7 @@ export function toCanonicalProject(
   edges: readonly Edge[],
   cableInventory: readonly CanonicalCable[] = [],
   artworkAssets: readonly CanonicalArtworkAsset[] = [],
+  categoryInventory: readonly LibraryCategory[] = SEED_LIBRARY_CATEGORIES,
 ): CanonicalProjectV4 {
   const deviceNodes = nodes.filter(isDeviceNode);
   const junctionNodes = nodes.filter(isJunctionNode);
@@ -541,6 +563,7 @@ export function toCanonicalProject(
   const copper = new BoardCopperJunctions(boardNodes);
   const boardNodesById = new Map(boardNodes.map((board) => [board.data.boardId, board]));
   const wireEdges = edges.filter(isWireEdge);
+  const categoryContext = canonicalProjectCategories(deviceNodes, categoryInventory);
   const drafts = [
     ...wireEdges.map((edge) => toConductorDraft(edge, nodeKinds, copper, boardNodesById)),
     ...physicalBindingDrafts(deviceNodes, boardNodes, copper),
@@ -570,7 +593,9 @@ export function toCanonicalProject(
   return {
     formatVersion: CANONICAL_FORMAT_VERSION,
     electrical: {
-      components: deviceNodes.map(toCanonicalComponent).sort(byId),
+      components: deviceNodes
+        .map((node) => toCanonicalComponent(node, categoryContext.byNodeId.get(node.id)))
+        .sort(byId),
       junctions: [...junctionNodes.map(toCanonicalJunction), ...copper.junctions()].sort(byId),
       cables: buildCables(wireEdges, cableInventory),
       nets,
@@ -583,13 +608,14 @@ export function toCanonicalProject(
       ),
       conductors: drafts.map((draft) => draft.layout).sort(byKey((c) => c.conductorId)),
     },
-    resources: canonicalResources(deviceNodes, artworkAssets),
+    resources: canonicalResources(deviceNodes, artworkAssets, categoryContext.resources),
   };
 }
 
 function canonicalResources(
   devices: readonly Node<DeviceNodeData>[],
   assets: readonly CanonicalArtworkAsset[],
+  categories: Record<string, CanonicalCategoryResource>,
 ): CanonicalResources {
   const required = new Set(
     devices.flatMap((device) => {
@@ -620,7 +646,56 @@ function canonicalResources(
     const { hash: _hash, ...resource } = structuredClone(asset);
     artworkAssets[hash] = resource;
   }
-  return { artworkAssets };
+  return { artworkAssets, categories };
+}
+
+function canonicalProjectCategories(
+  devices: readonly Node<DeviceNodeData>[],
+  categoryInventory: readonly LibraryCategory[],
+): {
+  byNodeId: ReadonlyMap<string, string>;
+  resources: Record<string, CanonicalCategoryResource>;
+} {
+  const inventory = new Map<string, LibraryCategory>(
+    categoryInventory.map((category) => [category.id, structuredClone(category)]),
+  );
+  const byNodeId = new Map<string, string>();
+  const resources: Record<string, CanonicalCategoryResource> = {};
+  for (const device of devices) {
+    let categoryId = device.data.categoryId?.trim();
+    let category = categoryId ? inventory.get(categoryId) : undefined;
+    if (!categoryId) {
+      const migrated = migrateLegacyDeviceCategories([
+        { libraryId: device.id, template: device.data },
+      ]);
+      categoryId = migrated.devices[0]?.template.categoryId;
+      category = migrated.categories.find((candidate) => candidate.id === categoryId);
+    }
+    if (categoryId && !category && device.data.category) {
+      const name = collapseCategoryWhitespace(device.data.category);
+      category = { id: categoryId, name: name || categoryId, prefix: 'DEV' };
+    }
+    if (!categoryId) {
+      categoryId = UNCATEGORIZED_CATEGORY.id;
+      category = UNCATEGORIZED_CATEGORY;
+    }
+    // A category may have been deleted after this node was dropped on the
+    // canvas. Persist the fixed fallback rather than making the project
+    // unsaveable because a library-only definition disappeared.
+    if (!category) {
+      categoryId = UNCATEGORIZED_CATEGORY.id;
+      category = UNCATEGORIZED_CATEGORY;
+    }
+    const canonical = categoryById([category], categoryId);
+    byNodeId.set(device.id, categoryId);
+    resources[categoryId] = { name: canonical.name, prefix: canonical.prefix };
+  }
+  return {
+    byNodeId,
+    resources: Object.fromEntries(
+      Object.entries(resources).sort(([left], [right]) => left.localeCompare(right)),
+    ),
+  };
 }
 
 /**
@@ -1257,13 +1332,16 @@ function stableJson(value: unknown): string {
   return serialized;
 }
 
-function toCanonicalComponent(node: Node<DeviceNodeData>): CanonicalComponent {
+function toCanonicalComponent(
+  node: Node<DeviceNodeData>,
+  categoryId: string | undefined,
+): CanonicalComponent {
   return {
     id: node.id,
     deviceId: node.data.deviceId,
     manufacturer: node.data.manufacturer,
     model: node.data.model,
-    category: node.data.category,
+    categoryId: categoryId ?? UNCATEGORIZED_CATEGORY.id,
     location: node.data.location,
     wirevizName: node.data.wirevizName,
     wirevizType: node.data.wirevizType,
@@ -1445,7 +1523,12 @@ export function fromCanonicalProject(project: CanonicalProjectV4): {
   }
 
   const componentNodes = project.electrical.components.map((component) =>
-    fromCanonicalComponent(component, componentLayouts.get(component.id), boardsById),
+    fromCanonicalComponent(
+      component,
+      componentLayouts.get(component.id),
+      boardsById,
+      project.resources.categories,
+    ),
   );
   const junctionNodes = project.electrical.junctions
     .filter((junction) => !copperPorts.has(junction.id))
@@ -1503,6 +1586,7 @@ function fromCanonicalComponent(
   component: CanonicalComponent,
   layout: CanonicalComponentLayout | undefined,
   boardsById: ReadonlyMap<string, Node<BoardNodeData>>,
+  categories: Readonly<Record<string, CanonicalCategoryResource>>,
 ): Node<DeviceNodeData> {
   const holesByPin = new Map((layout?.pinHoles ?? []).map((entry) => [entry.pinId, entry.hole]));
   const footprint = layout?.footprint ? cloneFootprint(layout.footprint) : undefined;
@@ -1521,7 +1605,10 @@ function fromCanonicalComponent(
     deviceId: component.deviceId,
     manufacturer: component.manufacturer,
     model: component.model,
-    category: component.category,
+    categoryId: component.categoryId ?? UNCATEGORIZED_CATEGORY.id,
+    category:
+      categories[component.categoryId ?? UNCATEGORIZED_CATEGORY.id]?.name ??
+      UNCATEGORIZED_CATEGORY.name,
     location: component.location,
     boardId: layout?.boardId,
     wirevizName: component.wirevizName,

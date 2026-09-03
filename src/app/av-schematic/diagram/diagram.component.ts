@@ -33,6 +33,7 @@ import { AV_SCHEMATIC_CONFIG } from '../av-schematic.config';
 import { snapPointToGrid } from './edge-reshaping/logic';
 import { DanglingEdgeService } from './dangling-edge-creation/dangling-edge.service';
 import { DiagramExportService } from '../export/diagram-export.service';
+import { LibraryService } from '../library-sidebar/library.service';
 import { PropertiesSidebarService } from '../properties-sidebar/properties-sidebar.service';
 import { ElementMutationService } from '../properties-sidebar/element-mutation.service';
 import { randomShortId } from '../shared/utils/random-short-id';
@@ -88,6 +89,7 @@ export class DiagramComponent {
   private readonly danglingEdge = inject(DanglingEdgeService);
   private readonly boardPlacement = inject(BoardPlacementService);
   private readonly jumperCreation = inject(BoardJumperCreationService);
+  private readonly libraryService = inject(LibraryService);
   private readonly manualWirePick = signal(false);
   private readonly altWirePick = signal(false);
 
@@ -367,8 +369,9 @@ export class DiagramComponent {
     // signal may not include the previous drop yet, minting a duplicate id.
     if (!node.data.deviceId) {
       const deviceId = generateDeviceId(
-        node.data.category,
+        node.data.categoryId ?? node.data.category,
         this.modelService.getModel().getNodes(),
+        this.libraryService.categories(),
       );
       await this.modelService.updateNodeData<DeviceNodeData>(node.id, {
         ...node.data,

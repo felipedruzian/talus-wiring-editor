@@ -32,6 +32,19 @@
 
     <div class="editor-content">
       <aside class="detail-form" aria-label="Dados do componente">
+        <div class="category-field">
+          <label class="p11" for="library-device-category">Categoria</label>
+          <select
+            id="library-device-category"
+            class="category-select p10"
+            [value]="draft().categoryId"
+            (change)="onCategoryChange($event)"
+          >
+            @for (category of categories(); track category.id) {
+              <option [value]="category.id">{{ category.name }} ({{ category.prefix }})</option>
+            }
+          </select>
+        </div>
         <app-device-form
           [entityId]="libraryId()"
           [nodeData]="initialTemplate()"

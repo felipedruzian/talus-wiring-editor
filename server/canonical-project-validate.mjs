@@ -60,6 +60,43 @@ const DEFAULT_VISUAL_PLANES = Object.freeze({
 const MAX_PROJECT_ARTWORK_ASSETS = 64;
 const MAX_PROJECT_ARTWORK_BYTES = 4 * 1024 * 1024;
 const ARTWORK_HASH_PATTERN = /^[a-f0-9]{64}$/;
+const CANONICAL_FORMAT_VERSION = 6;
+const MAX_PROJECT_CATEGORIES = 512;
+const CATEGORY_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/;
+const CATEGORY_PREFIX_PATTERN = /^[A-Z][A-Z0-9]{0,11}$/;
+const UNCATEGORIZED_CATEGORY = Object.freeze({
+  id: 'uncategorized',
+  name: 'Não categorizado',
+  prefix: 'DEV',
+});
+const SEED_CATEGORY_BY_ID = new Map(
+  [
+    UNCATEGORIZED_CATEGORY,
+    ['microphone', 'Microfones', 'MIC'],
+    ['wireless-mic', 'Microfones sem fio', 'WMIC'],
+    ['media-player', 'Reprodutores de mídia', 'MEDIA'],
+    ['mixer', 'Mesas de som', 'MIXER'],
+    ['amplifier', 'Amplificadores', 'AMP'],
+    ['loudspeaker', 'Alto-falantes', 'SPK'],
+    ['display', 'Telas', 'DISPLAY'],
+    ['camera', 'Câmeras', 'CAM'],
+    ['switcher', 'Comutadores', 'SW'],
+    ['microcontroller', 'Microcontroladores', 'MCU'],
+    ['single-board-computer', 'Computadores de placa única', 'SBC'],
+    ['imu', 'Unidades de medição inercial', 'IMU'],
+    ['motor-driver', 'Drivers de motor', 'DRV'],
+    ['voltage-regulator', 'Reguladores de tensão', 'REG'],
+    ['hall-sensor', 'Sensores Hall', 'HALL'],
+    ['buzzer', 'Buzzers', 'BUZ'],
+    ['resistor', 'Resistores', 'RES'],
+    ['capacitor', 'Capacitores', 'CAP'],
+  ].map((value) => {
+    const category = Array.isArray(value)
+      ? { id: value[0], name: value[1], prefix: value[2] }
+      : value;
+    return [category.id, category];
+  }),
+);
 // Keep these geometry constants aligned with board-geometry.ts and
 // footprint-geometry.ts. The server stays dependency-free from Angular code.
 const BOARD_MARGIN = 16;
@@ -97,21 +134,22 @@ export function parseCanonicalProject(raw) {
   const root = expectRecord(raw, 'project');
   const version = root['formatVersion'];
 
-  if (version === 1) return parseV1(root);
-  if (version === 2) return parseV2(root, true, false, false);
-  if (version === 3) return parseV2(root, false, false, false);
-  if (version === 4) return parseV2(root, false, true, false);
-  if (version === 5) return parseV2(root, false, true, true);
+  if (version === 1) return migrateV1(parseV1(root));
+  if (version === 2) return parseV2(root, true, false, false, false);
+  if (version === 3) return parseV2(root, false, false, false, false);
+  if (version === 4) return parseV2(root, false, true, false, false);
+  if (version === 5) return parseV2(root, false, true, true, false);
+  if (version === 6) return parseV2(root, false, true, true, true);
 
   throw new CanonicalProjectValidationError(
-    `project.formatVersion: expected 1, 2, 3, 4 or 5, got ${JSON.stringify(version)}`,
+    `project.formatVersion: expected 1, 2, 3, 4, 5 or 6, got ${JSON.stringify(version)}`,
   );
 }
 
 function parseV1(root) {
   preflightV1(root);
   const boards = expectArray(root['boards'], 'project.boards').map((b, i) =>
-    parseBoard(b, `project.boards[${i}]`),
+    parseBoard(b, `project.boards[${i}]`, true, DEFAULT_VISUAL_PLANES.board),
   );
   const components = expectArray(root['components'], 'project.components').map((c, i) =>
     parseLegacyComponent(c, `project.components[${i}]`),
@@ -191,14 +229,167 @@ function parseV1(root) {
   return { formatVersion: 1, boards, components, nets };
 }
 
-function parseV2(root, migrateVisualPlanes, readBoardJumpers, readResources) {
+/** Mirrors the client v1 migration before the service writes a normalized snapshot. */
+function migrateV1(legacy) {
+  const electrical = {
+    components: legacy.components.map((component) => ({
+      id: component.id,
+      deviceId: component.deviceId,
+      manufacturer: component.manufacturer,
+      model: component.model,
+      categoryId: '',
+      category: component.category,
+      location: component.location,
+      pins: component.pins.map((pin) => ({
+        id: pin.id,
+        label: pin.label,
+        direction: pin.direction,
+        connectorType: pin.connectorType,
+      })),
+    })),
+    junctions: [],
+    cables: legacyCables(legacy.nets),
+    nets: buildLegacyNets(
+      legacy.nets.map((net) => ({
+        id: net.id,
+        from: { kind: 'pin', componentId: net.source.componentId, pinId: net.source.pinId },
+        to: { kind: 'pin', componentId: net.target.componentId, pinId: net.target.pinId },
+        cable: net.wireId ? { name: net.wireId, wireIndex: 1 } : undefined,
+        wireType: net.wireType,
+        color: net.color,
+        colorCode: net.colorCode,
+        gauge: net.gauge,
+        length: net.length,
+        notes: net.note,
+      })),
+      new Map(legacy.nets.map((net) => [net.id, net.netId]).filter(([, name]) => !!name)),
+    ),
+  };
+  const layout = {
+    boards: legacy.boards,
+    components: legacy.components.map((component) => {
+      const pinHoles = component.pins
+        .filter((pin) => pin.hole !== undefined)
+        .map((pin) => ({ pinId: pin.id, hole: pin.hole }));
+      return {
+        componentId: component.id,
+        position: component.position,
+        visualPlane: DEFAULT_VISUAL_PLANES.component,
+        boardId: component.boardId,
+        pinHoles: pinHoles.length > 0 ? pinHoles : undefined,
+      };
+    }),
+    junctions: [],
+    conductors: legacy.nets.map((net) => {
+      const normalized = net.points ? normalizeOrthogonalPersistedRoute(net.points) : null;
+      const points = normalized && normalized.length >= 2 ? normalized : undefined;
+      return {
+        conductorId: net.id,
+        visualPlane: DEFAULT_VISUAL_PLANES.conductor,
+        routingMode: points ? 'manual' : undefined,
+        points,
+      };
+    }),
+  };
+  const categorized = migrateProjectCategories(electrical, emptyResources());
+  const project = {
+    formatVersion: CANONICAL_FORMAT_VERSION,
+    electrical: categorized.electrical,
+    layout,
+    resources: categorized.resources,
+  };
+  validateV2Project(project);
+  return project;
+}
+
+function legacyCables(nets) {
+  const cables = new Map();
+  for (const net of [...nets].sort((a, b) => a.id.localeCompare(b.id))) {
+    if (!net.wireId) continue;
+    const color = net.colorCode ?? net.color;
+    const existing = cables.get(net.wireId);
+    if (existing) {
+      const current = existing.colors[0];
+      if (current && color && current !== color) {
+        throw new CanonicalProjectValidationError(
+          `project.nets: legacy cable "${net.wireId}" has conflicting colors`,
+        );
+      }
+      if (!current && color) existing.colors[0] = color;
+    } else {
+      cables.set(net.wireId, { name: net.wireId, wireCount: 1, colors: [color ?? ''] });
+    }
+  }
+  return [...cables.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function buildLegacyNets(conductors, nameHints) {
+  const parent = new Map();
+  const endpoints = new Map();
+  const find = (key) => {
+    if (!parent.has(key)) parent.set(key, key);
+    let root = key;
+    while (parent.get(root) !== root) root = parent.get(root);
+    parent.set(key, root);
+    return root;
+  };
+  const union = (left, right) => {
+    const leftRoot = find(left);
+    const rightRoot = find(right);
+    if (leftRoot !== rightRoot) parent.set(rightRoot, leftRoot);
+  };
+  for (const conductor of conductors) {
+    const from = v2EndpointKey(conductor.from);
+    const to = v2EndpointKey(conductor.to);
+    endpoints.set(from, conductor.from);
+    endpoints.set(to, conductor.to);
+    union(from, to);
+  }
+  const groups = new Map();
+  for (const conductor of conductors) {
+    const root = find(v2EndpointKey(conductor.from));
+    const group = groups.get(root) ?? [];
+    group.push(conductor);
+    groups.set(root, group);
+  }
+  return [...groups.values()]
+    .map((group) => {
+      const keys = [
+        ...new Set(group.flatMap((item) => [v2EndpointKey(item.from), v2EndpointKey(item.to)])),
+      ].sort();
+      const hints = group
+        .map((item) => nameHints.get(item.id))
+        .filter(Boolean)
+        .sort();
+      const id = `net-${stableIdFragment(keys[0])}`;
+      return {
+        id,
+        name: hints[0] ?? id,
+        endpoints: keys.map((key) => endpoints.get(key)),
+        conductors: [...group].sort((a, b) => a.id.localeCompare(b.id)),
+      };
+    })
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function stableIdFragment(value) {
+  const parts = [];
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint !== undefined) parts.push(codePoint.toString(16));
+  }
+  return parts.join('-') || '0';
+}
+
+function parseV2(root, migrateVisualPlanes, readBoardJumpers, readResources, readCategories) {
   const electricalRaw = expectRecord(root['electrical'], 'project.electrical');
   const layoutRaw = expectRecord(root['layout'], 'project.layout');
   preflightV2(electricalRaw, layoutRaw);
 
   const electrical = {
     components: expectArray(electricalRaw['components'], 'project.electrical.components').map(
-      (value, index) => parseV2Component(value, `project.electrical.components[${index}]`),
+      (value, index) =>
+        parseV2Component(value, `project.electrical.components[${index}]`, readCategories),
     ),
     junctions: expectArray(electricalRaw['junctions'], 'project.electrical.junctions').map(
       (value, index) => parseV2Junction(value, `project.electrical.junctions[${index}]`),
@@ -246,13 +437,23 @@ function parseV2(root, migrateVisualPlanes, readBoardJumpers, readResources) {
     ),
   };
 
-  const resources = readResources ? parseResources(root['resources']) : emptyResources();
-  const project = { formatVersion: 5, electrical, layout, resources };
+  const resources = readResources
+    ? parseResources(root['resources'], readCategories)
+    : emptyResources();
+  const categorized = readCategories
+    ? { electrical, resources }
+    : migrateProjectCategories(electrical, resources);
+  const project = {
+    formatVersion: CANONICAL_FORMAT_VERSION,
+    electrical: categorized.electrical,
+    layout,
+    resources: categorized.resources,
+  };
   validateV2Project(project);
   return project;
 }
 
-function parseResources(raw) {
+function parseResources(raw, readCategories) {
   const resources = expectRecord(raw, 'project.resources');
   const artwork = expectRecord(resources['artworkAssets'], 'project.resources.artworkAssets');
   const entries = Object.entries(artwork);
@@ -283,11 +484,127 @@ function parseResources(raw) {
       throw error;
     }
   }
-  return { artworkAssets };
+  return {
+    artworkAssets,
+    categories: readCategories ? parseCategoryResources(resources['categories']) : {},
+  };
 }
 
 function emptyResources() {
-  return { artworkAssets: {} };
+  return { artworkAssets: {}, categories: {} };
+}
+
+function parseCategoryResources(raw) {
+  const resources = expectRecord(raw, 'project.resources.categories');
+  const entries = Object.entries(resources);
+  if (entries.length > MAX_PROJECT_CATEGORIES) {
+    throw new CanonicalProjectValidationError(
+      `project.resources.categories: accepts at most ${MAX_PROJECT_CATEGORIES} categories`,
+    );
+  }
+  const categories = {};
+  for (const [id, value] of entries) {
+    const label = `project.resources.categories.${id}`;
+    const resource = expectRecord(value, label);
+    const category = {
+      id,
+      name: expectString(resource['name'], `${label}.name`),
+      prefix: expectString(resource['prefix'], `${label}.prefix`),
+    };
+    if (
+      !isCanonicalCategory(category) ||
+      (category.id === UNCATEGORIZED_CATEGORY.id &&
+        (category.name !== UNCATEGORIZED_CATEGORY.name ||
+          category.prefix !== UNCATEGORIZED_CATEGORY.prefix))
+    ) {
+      throw new CanonicalProjectValidationError(`${label}: invalid category definition`);
+    }
+    categories[id] = { name: category.name, prefix: category.prefix };
+  }
+  return categories;
+}
+
+function isCanonicalCategory(category) {
+  return (
+    CATEGORY_ID_PATTERN.test(category.id) &&
+    typeof category.name === 'string' &&
+    category.name.length <= 65_536 &&
+    category.name === collapseCategoryWhitespace(category.name) &&
+    normalizeCategoryName(category.name) !== '' &&
+    typeof category.prefix === 'string' &&
+    category.prefix === category.prefix.trim().toLocaleUpperCase('pt-BR') &&
+    CATEGORY_PREFIX_PATTERN.test(category.prefix)
+  );
+}
+
+function collapseCategoryWhitespace(value) {
+  return value.trim().replace(/\s+/gu, ' ');
+}
+
+function normalizeCategoryName(value) {
+  return collapseCategoryWhitespace(value)
+    .normalize('NFD')
+    .replace(/\p{M}+/gu, '')
+    .toLocaleLowerCase('pt-BR');
+}
+
+function deterministicLegacyCategoryId(normalizedName) {
+  const slug = normalizedName
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 72);
+  return `legacy-${slug || 'category'}-${fnv1a(normalizedName)}`;
+}
+
+function fnv1a(value) {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index++) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function migrateProjectCategories(electrical, resources) {
+  const categoriesByNormalizedName = new Map(
+    [...SEED_CATEGORY_BY_ID.values()].map((category) => [
+      normalizeCategoryName(category.name),
+      category,
+    ]),
+  );
+  const categoriesByLegacyId = new Map(
+    [...SEED_CATEGORY_BY_ID.values()].map((category) => [
+      normalizeCategoryName(category.id),
+      category,
+    ]),
+  );
+  const categoriesById = new Map(SEED_CATEGORY_BY_ID);
+  const components = electrical.components.map((component) => {
+    const legacyName = collapseCategoryWhitespace(component.category ?? '');
+    const normalizedName = normalizeCategoryName(legacyName);
+    let category = normalizedName
+      ? (categoriesByLegacyId.get(normalizedName) ?? categoriesByNormalizedName.get(normalizedName))
+      : UNCATEGORIZED_CATEGORY;
+    if (!category) {
+      category = {
+        id: deterministicLegacyCategoryId(normalizedName),
+        name: legacyName,
+        prefix: UNCATEGORIZED_CATEGORY.prefix,
+      };
+      categoriesByNormalizedName.set(normalizedName, category);
+      categoriesById.set(category.id, category);
+    }
+    const { category: _legacyCategory, ...canonical } = component;
+    return { ...canonical, categoryId: category.id };
+  });
+  const referenced = new Set(components.map((component) => component.categoryId));
+  const categories = Object.fromEntries(
+    [...referenced].sort().map((id) => {
+      const category = categoriesById.get(id) ?? UNCATEGORIZED_CATEGORY;
+      return [id, { name: category.name, prefix: category.prefix }];
+    }),
+  );
+  return { electrical: { ...electrical, components }, resources: { ...resources, categories } };
 }
 
 function preflightV1(root) {
@@ -555,8 +872,9 @@ function preflightV2(electricalRaw, layoutRaw) {
   });
 }
 
-function parseV2Component(raw, label) {
+function parseV2Component(raw, label, requireCategoryId) {
   const obj = expectRecord(raw, label);
+  const legacyCategory = expectOptionalString(obj['category'], `${label}.category`);
   const pins = expectArray(obj['pins'], `${label}.pins`).map((value, index) =>
     parseV2Pin(value, `${label}.pins[${index}]`),
   );
@@ -566,7 +884,10 @@ function parseV2Component(raw, label) {
     deviceId: expectString(obj['deviceId'], `${label}.deviceId`),
     manufacturer: expectString(obj['manufacturer'], `${label}.manufacturer`),
     model: expectString(obj['model'], `${label}.model`),
-    category: expectOptionalString(obj['category'], `${label}.category`),
+    categoryId: requireCategoryId
+      ? expectNonEmptyString(obj['categoryId'], `${label}.categoryId`)
+      : (expectOptionalString(obj['categoryId'], `${label}.categoryId`) ?? ''),
+    ...(!requireCategoryId ? { category: legacyCategory } : {}),
     location: expectOptionalString(obj['location'], `${label}.location`),
     wirevizName: expectOptionalString(obj['wirevizName'], `${label}.wirevizName`),
     wirevizType: expectOptionalString(obj['wirevizType'], `${label}.wirevizType`),
@@ -1054,6 +1375,7 @@ function validateV2Project(project) {
     conductorsById,
   );
   validateArtworkResourceReferences(project);
+  validateCategoryResourceReferences(project);
 }
 
 function validateArtworkResourceReferences(project) {
@@ -1075,6 +1397,27 @@ function validateArtworkResourceReferences(project) {
     if (!referenced.has(hash)) {
       throw new CanonicalProjectValidationError(
         `project.resources.artworkAssets: unreferenced artwork "${hash}"`,
+      );
+    }
+  }
+}
+
+function validateCategoryResourceReferences(project) {
+  const referenced = new Set(
+    project.electrical.components.map((component) => component.categoryId),
+  );
+  const available = new Set(Object.keys(project.resources.categories));
+  for (const categoryId of referenced) {
+    if (!available.has(categoryId)) {
+      throw new CanonicalProjectValidationError(
+        `project.resources.categories: missing category "${categoryId}" referenced by a component`,
+      );
+    }
+  }
+  for (const categoryId of available) {
+    if (!referenced.has(categoryId)) {
+      throw new CanonicalProjectValidationError(
+        `project.resources.categories: unreferenced category "${categoryId}"`,
       );
     }
   }

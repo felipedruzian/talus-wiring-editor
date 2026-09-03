@@ -2,7 +2,7 @@ import { sha256HexSync } from './artwork-import';
 import {
   parseSharedLibraryCatalog,
   type LibraryCatalog,
-  type PersistedLibraryV2,
+  type PersistedLibraryV3,
 } from './library-storage';
 
 const STRONG_ETAG_PATTERN = /^"[a-f0-9]{64}"$/;
@@ -77,7 +77,7 @@ export async function loadSharedLibrary(
 
 /** Conditional central write. A 412 is surfaced and is never retried automatically. */
 export async function saveSharedLibrary(
-  payload: PersistedLibraryV2,
+  payload: PersistedLibraryV3,
   etag: string,
   fetcher: typeof fetch = globalThis.fetch,
 ): Promise<SharedLibrarySaveResult> {

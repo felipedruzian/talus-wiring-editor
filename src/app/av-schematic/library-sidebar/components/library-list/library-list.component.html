@@ -5,6 +5,103 @@
     <button type="button" (click)="dismissStorageError()">Dispensar</button>
   </div>
 }
+<section class="category-manager" aria-label="Gerenciamento de categorias">
+  <button
+    class="category-manager__toggle p10"
+    type="button"
+    [attr.aria-expanded]="categoryManagerOpen()"
+    aria-controls="category-manager-content"
+    (click)="toggleCategoryManager()"
+  >
+    Gerenciar categorias
+  </button>
+  @if (categoryManagerOpen()) {
+    <div id="category-manager-content" class="category-manager__content">
+      <h3 id="category-manager-title">Categorias do catálogo</h3>
+      <form
+        class="category-manager__create"
+        aria-label="Criar categoria"
+        (submit)="onCreateCategory($event, categoryName, categoryPrefix)"
+      >
+        <label for="new-category-name">Nome</label>
+        <input #categoryName id="new-category-name" type="text" autocomplete="off" />
+        <label for="new-category-prefix">Prefixo do ID</label>
+        <input
+          #categoryPrefix
+          id="new-category-prefix"
+          type="text"
+          maxlength="12"
+          autocomplete="off"
+          value="DEV"
+        />
+        <button type="submit" [disabled]="isPersisting()">Criar categoria</button>
+      </form>
+      <ul class="category-manager__list">
+        @for (category of categories(); track category.id) {
+          <li>
+            <div class="category-manager__fields">
+              <label [for]="'category-name-' + category.id">Nome</label>
+              <input
+                #categoryNameEdit
+                [id]="'category-name-' + category.id"
+                type="text"
+                [value]="category.name"
+                [readOnly]="isFallbackCategory(category.id)"
+              />
+              <label [for]="'category-prefix-' + category.id">Prefixo</label>
+              <input
+                #categoryPrefixEdit
+                [id]="'category-prefix-' + category.id"
+                type="text"
+                maxlength="12"
+                [value]="category.prefix"
+                [readOnly]="isFallbackCategory(category.id)"
+              />
+            </div>
+            @if (isFallbackCategory(category.id)) {
+              <span class="category-manager__fixed">Categoria padrão fixa</span>
+            } @else if (pendingCategoryDeletion() === category.id) {
+              <div
+                class="category-manager__confirmation"
+                role="group"
+                aria-label="Confirmar exclusão"
+              >
+                <span>Os componentes serão movidos para “Não categorizado”.</span>
+                <button
+                  type="button"
+                  [disabled]="isPersisting()"
+                  (click)="confirmCategoryDeletion(category.id)"
+                >
+                  Confirmar
+                </button>
+                <button type="button" (click)="cancelCategoryDeletion()">Cancelar</button>
+              </div>
+            } @else {
+              <div class="category-manager__actions">
+                <button
+                  type="button"
+                  [disabled]="isPersisting()"
+                  [attr.aria-label]="'Salvar alterações em ' + category.name"
+                  (click)="onRenameCategory(category, categoryNameEdit, categoryPrefixEdit)"
+                >
+                  Salvar
+                </button>
+                <button
+                  type="button"
+                  [disabled]="isPersisting()"
+                  [attr.aria-label]="'Excluir categoria ' + category.name"
+                  (click)="requestCategoryDeletion(category.id)"
+                >
+                  Excluir
+                </button>
+              </div>
+            }
+          </li>
+        }
+      </ul>
+    </div>
+  }
+</section>
 <div class="list-scroll">
   @if (devices().length === 0) {
     <div class="empty-state p10">
@@ -48,13 +145,14 @@
   }
 </div>
 <div class="list-actions">
-  <button class="add-button p10" type="button" (click)="onAddDevice()">
+  <button class="add-button p10" type="button" [disabled]="isPersisting()" (click)="onAddDevice()">
     + Adicionar componente
   </button>
   <button
     class="restore-button p10"
     type="button"
     title="Repõe os componentes padrão atuais e mantém os personalizados"
+    [disabled]="isPersisting()"
     (click)="onRestoreDefaults()"
   >
     Restaurar padrões

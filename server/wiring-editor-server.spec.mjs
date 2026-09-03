@@ -14,7 +14,7 @@
 
 import { createHash } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
-import { lstat, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -28,6 +28,7 @@ import { parseCanonicalProject as parseCanonicalProjectOnServer } from './canoni
 import { createWiringEditorServer } from './wiring-editor-server.mjs';
 
 const HOST = '127.0.0.1';
+const FALLBACK_CATEGORY = { id: 'uncategorized', name: 'Não categorizado', prefix: 'DEV' };
 
 describe('canonical physical validation corpus', () => {
   for (const testCase of canonicalValidationCorpus) {
@@ -129,7 +130,7 @@ async function startServer(cfg) {
 
 function validProjectPayload() {
   return {
-    formatVersion: 5,
+    formatVersion: 6,
     electrical: {
       components: [
         {
@@ -137,6 +138,7 @@ function validProjectPayload() {
           deviceId: 'SOURCE',
           manufacturer: '',
           model: '',
+          categoryId: 'uncategorized',
           pins: [{ id: 'out', label: 'OUT', direction: 'output' }],
         },
         {
@@ -144,6 +146,7 @@ function validProjectPayload() {
           deviceId: 'LOAD-A',
           manufacturer: '',
           model: '',
+          categoryId: 'uncategorized',
           pins: [{ id: 'in', label: 'IN', direction: 'input' }],
         },
         {
@@ -151,6 +154,7 @@ function validProjectPayload() {
           deviceId: 'LOAD-B',
           manufacturer: '',
           model: '',
+          categoryId: 'uncategorized',
           pins: [{ id: 'in', label: 'IN', direction: 'input' }],
         },
       ],
@@ -218,7 +222,10 @@ function validProjectPayload() {
         { conductorId: 'branch-b', visualPlane: 20, fromTap: 2 },
       ],
     },
-    resources: { artworkAssets: {} },
+    resources: {
+      artworkAssets: {},
+      categories: { uncategorized: { name: 'Não categorizado', prefix: 'DEV' } },
+    },
   };
 }
 
@@ -347,7 +354,9 @@ describe('wiring-editor-server', () => {
       const body = await response.text();
 
       expect(response.status).toBe(200);
-      expect(body).toBe('{"version":2,"devices":[],"assets":{}}');
+      expect(body).toBe(
+        '{"version":3,"seedRevision":3,"categories":[{"id":"uncategorized","name":"Não categorizado","prefix":"DEV"}],"devices":[],"assets":{}}',
+      );
       expect(response.headers.get('etag')).toBe(strongEtag(body));
       expect(response.headers.get('cache-control')).toBe('no-store');
       expect(response.headers.get('x-content-type-options')).toBe('nosniff');
@@ -358,8 +367,9 @@ describe('wiring-editor-server', () => {
       const initial = await fetch(`${server.baseUrl}/api/library`);
       const etag = initial.headers.get('etag');
       const catalog = {
-        version: 2,
+        version: 3,
         seedRevision: 3,
+        categories: [FALLBACK_CATEGORY],
         devices: [
           {
             libraryId: 'lib-custom-test',
@@ -368,6 +378,7 @@ describe('wiring-editor-server', () => {
               deviceId: '',
               manufacturer: 'Talus',
               model: 'Teste',
+              categoryId: 'uncategorized',
               ports: [],
             },
           },
@@ -398,11 +409,139 @@ describe('wiring-editor-server', () => {
       );
     });
 
+    it('serves an existing v2 catalog as a deterministic v3 snapshot', async () => {
+      const legacy = {
+        version: 2,
+        devices: [
+          {
+            libraryId: 'lib-legacy-motor',
+            template: {
+              type: 'device',
+              deviceId: '',
+              manufacturer: 'Talus',
+              model: 'Motor',
+              category: ' MOTOR-DRIVER ',
+              ports: [],
+            },
+          },
+        ],
+        assets: {},
+      };
+      await writeFile(join(libraryDir, 'catalog.json'), JSON.stringify(legacy), 'utf8');
+
+      const first = await fetch(`${server.baseUrl}/api/library`);
+      const second = await fetch(`${server.baseUrl}/api/library`);
+      const body = await first.text();
+      const catalog = JSON.parse(body);
+
+      expect(catalog.version).toBe(3);
+      expect(catalog.devices[0].template.category).toBeUndefined();
+      expect(catalog.devices[0].template.categoryId).toBe('motor-driver');
+      expect(catalog.categories).toContainEqual({
+        id: 'motor-driver',
+        name: 'Drivers de motor',
+        prefix: 'DRV',
+      });
+      expect(first.headers.get('etag')).toBe(strongEtag(body));
+      expect(second.headers.get('etag')).toBe(first.headers.get('etag'));
+    });
+
+    it('upgrades a short v3 catalog on GET and accepts its ETag on PUT', async () => {
+      const shortV3 = {
+        version: 3,
+        seedRevision: 2,
+        devices: [
+          {
+            libraryId: 'lib-resistor-1k',
+            template: {
+              type: 'device',
+              deviceId: '',
+              manufacturer: 'Talus',
+              model: 'Resistor',
+              categoryId: 'resistor',
+              ports: [],
+            },
+          },
+        ],
+        assets: {},
+      };
+      await writeFile(join(libraryDir, 'catalog.json'), JSON.stringify(shortV3), 'utf8');
+
+      const loaded = await fetch(`${server.baseUrl}/api/library`);
+      const body = await loaded.text();
+      const catalog = JSON.parse(body);
+
+      expect(loaded.status).toBe(200);
+      expect(loaded.headers.get('etag')).toBe(strongEtag(body));
+      expect(catalog).toMatchObject({
+        version: 3,
+        seedRevision: 2,
+        categories: expect.arrayContaining([{ id: 'resistor', name: 'Resistores', prefix: 'RES' }]),
+        devices: [expect.objectContaining({ libraryId: 'lib-resistor-1k' })],
+      });
+      expect(catalog.devices[0].template.categoryId).toBe('resistor');
+
+      const saved = await fetch(`${server.baseUrl}/api/library`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'If-Match': loaded.headers.get('etag'),
+        },
+        body,
+      });
+      expect(saved.status).toBe(200);
+    });
+
+    it('migrates all passive v2 categories to their seeded IDs without legacy aliases', async () => {
+      const passiveCategories = [
+        ['lib-buzzer-active-12mm', 'buzzer'],
+        ['lib-resistor-1k', 'resistor'],
+        ['lib-resistor-1k8', 'resistor'],
+        ['lib-capacitor-electrolytic-470uf', 'capacitor'],
+        ['lib-capacitor-electrolytic-470uf-16v', 'capacitor'],
+        ['lib-capacitor-ceramic-100nf', 'capacitor'],
+      ];
+      await writeFile(
+        join(libraryDir, 'catalog.json'),
+        JSON.stringify({
+          version: 2,
+          devices: passiveCategories.map(([libraryId, category]) => ({
+            libraryId,
+            template: {
+              type: 'device',
+              deviceId: '',
+              manufacturer: 'Talus',
+              model: libraryId,
+              category,
+              ports: [],
+            },
+          })),
+          assets: {},
+        }),
+        'utf8',
+      );
+
+      const catalog = await (await fetch(`${server.baseUrl}/api/library`)).json();
+
+      expect(catalog.devices.map((device) => device.template.categoryId)).toEqual(
+        passiveCategories.map(([, category]) => category),
+      );
+      expect(catalog.categories).toEqual(
+        expect.arrayContaining([
+          { id: 'buzzer', name: 'Buzzers', prefix: 'BUZ' },
+          { id: 'resistor', name: 'Resistores', prefix: 'RES' },
+          { id: 'capacitor', name: 'Capacitores', prefix: 'CAP' },
+        ]),
+      );
+    });
+
     it('serializes competing writes and rejects the stale writer without overwriting', async () => {
       const first = await fetch(`${server.baseUrl}/api/library`);
       const etag = first.headers.get('etag');
       const catalogs = ['A', 'B'].map((model) => ({
-        version: 2,
+        version: 3,
+        seedRevision: 3,
+        categories: [FALLBACK_CATEGORY],
         devices: [
           {
             libraryId: `lib-${model.toLowerCase()}`,
@@ -411,6 +550,7 @@ describe('wiring-editor-server', () => {
               deviceId: '',
               manufacturer: 'Talus',
               model,
+              categoryId: 'uncategorized',
               ports: [],
             },
           },
@@ -433,76 +573,73 @@ describe('wiring-editor-server', () => {
       expect(catalogs).toContainEqual(stored);
     });
 
-    it('accepts only coherent adjustable axial footprints in the shared library', async () => {
+    it('rejects invalid categories and future seed revisions', async () => {
       const initial = await fetch(`${server.baseUrl}/api/library`);
       const etag = initial.headers.get('etag');
-      const catalog = {
-        version: 2,
+      const valid = {
+        version: 3,
         seedRevision: 3,
+        categories: [FALLBACK_CATEGORY, { id: 'audio', name: 'Áudio geral', prefix: 'AUD' }],
         devices: [
           {
-            libraryId: 'lib-resistor-1k',
+            libraryId: 'lib-audio',
             template: {
               type: 'device',
               deviceId: '',
               manufacturer: 'Talus',
-              model: 'Resistor 1 kOhm',
-              ports: [
-                { id: 'a', label: '1', direction: 'input' },
-                { id: 'b', label: '2', direction: 'output' },
-              ],
-              footprintId: 'resistor-1k',
-              footprint: {
-                id: 'resistor-1k',
-                label: '1 kOhm',
-                rows: 1,
-                cols: 5,
-                axialSpan: 4,
-                pins: [
-                  { id: 'a', label: '1', cell: { row: 0, col: 0 }, primary: true },
-                  { id: 'b', label: '2', cell: { row: 0, col: 4 } },
-                ],
-                shapes: [],
-              },
+              model: 'Áudio',
+              categoryId: 'audio',
+              ports: [],
             },
           },
         ],
         assets: {},
       };
-
-      const accepted = await fetch(`${server.baseUrl}/api/library`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'If-Match': etag },
-        body: JSON.stringify(catalog),
-      });
-      expect(accepted.status).toBe(200);
-      expect(await (await fetch(`${server.baseUrl}/api/library`)).json()).toEqual(catalog);
-
-      const invalid = structuredClone(catalog);
-      invalid.devices[0].template.footprint.cols = 6;
-      const rejected = await fetch(`${server.baseUrl}/api/library`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'If-Match': accepted.headers.get('etag'),
+      const invalidCatalogs = [
+        {
+          ...valid,
+          categories: [
+            ...valid.categories,
+            { id: 'audio-duplicate', name: 'audio geral', prefix: 'DUP' },
+          ],
         },
-        body: JSON.stringify(invalid),
-      });
-      expect(rejected.status).toBe(400);
-      expect(await (await fetch(`${server.baseUrl}/api/library`)).json()).toEqual(catalog);
-
-      const futureRevision = structuredClone(catalog);
-      futureRevision.seedRevision = 4;
-      const futureRejected = await fetch(`${server.baseUrl}/api/library`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'If-Match': accepted.headers.get('etag'),
+        {
+          ...valid,
+          categories: [{ ...FALLBACK_CATEGORY, name: 'Outros' }, valid.categories[1]],
         },
-        body: JSON.stringify(futureRevision),
-      });
-      expect(futureRejected.status).toBe(400);
-      expect(await (await fetch(`${server.baseUrl}/api/library`)).json()).toEqual(catalog);
+        {
+          ...valid,
+          seedRevision: 4,
+        },
+        {
+          ...valid,
+          devices: [
+            {
+              ...valid.devices[0],
+              template: { ...valid.devices[0].template, categoryId: 'missing' },
+            },
+          ],
+        },
+        {
+          ...valid,
+          devices: [
+            {
+              ...valid.devices[0],
+              template: { ...valid.devices[0].template, category: 'audio' },
+            },
+          ],
+        },
+      ];
+
+      for (const catalog of invalidCatalogs) {
+        const response = await fetch(`${server.baseUrl}/api/library`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'If-Match': etag },
+          body: JSON.stringify(catalog),
+        });
+        expect(response.status).toBe(400);
+      }
+      expect((await fetch(`${server.baseUrl}/api/library`)).headers.get('etag')).toBe(etag);
     });
 
     it('rejects forged artwork, SVG assets and dangling artwork references', async () => {
@@ -510,7 +647,8 @@ describe('wiring-editor-server', () => {
       const etag = initial.headers.get('etag');
       const hash = '0'.repeat(64);
       const base = {
-        version: 2,
+        version: 3,
+        categories: [FALLBACK_CATEGORY],
         devices: [
           {
             libraryId: 'lib-image',
@@ -519,6 +657,7 @@ describe('wiring-editor-server', () => {
               deviceId: '',
               manufacturer: 'Talus',
               model: 'Imagem',
+              categoryId: 'uncategorized',
               ports: [{ id: 'p1', label: 'P1', direction: 'input' }],
               footprintId: 'image',
               footprint: {
@@ -920,12 +1059,14 @@ describe('wiring-editor-server', () => {
       });
       expect(recoveredRes.status).toBe(200);
       const recovered = await (await fetch(`${server.baseUrl}/api/projects/legacy-route`)).json();
-      expect(recovered.nets[0]).toMatchObject({
-        routingMode: 'manual',
-        points: recoverable.nets[0].points,
+      expect(recovered.electrical.nets[0].conductors[0]).toMatchObject({
         gauge: '22 AWG',
         length: '120 mm',
-        note: 'Rota legada',
+        notes: 'Rota legada',
+      });
+      expect(recovered.layout.conductors[0]).toMatchObject({
+        routingMode: 'manual',
+        points: recoverable.nets[0].points,
       });
 
       const malformed = legacyConnectedProjectPayload();
@@ -943,8 +1084,8 @@ describe('wiring-editor-server', () => {
       const stored = await (
         await fetch(`${server.baseUrl}/api/projects/legacy-malformed-route`)
       ).json();
-      expect(stored.nets[0].routingMode).toBeUndefined();
-      expect(stored.nets[0].points).toBeUndefined();
+      expect(stored.layout.conductors[0].routingMode).toBeUndefined();
+      expect(stored.layout.conductors[0].points).toBeUndefined();
     });
 
     it('returns 404 for GET of a project id that was never saved', async () => {
@@ -1070,11 +1211,44 @@ describe('wiring-editor-server', () => {
       });
       expect(res.status).toBe(200);
       const stored = await (await fetch(`${server.baseUrl}/api/projects/migrated-planes`)).json();
-      expect(stored.formatVersion).toBe(5);
-      expect(stored.resources).toEqual({ artworkAssets: {} });
+      expect(stored.formatVersion).toBe(6);
+      expect(stored.resources).toEqual({
+        artworkAssets: {},
+        categories: { uncategorized: { name: 'Não categorizado', prefix: 'DEV' } },
+      });
       expect(stored.layout.components.every((item) => item.visualPlane === 10)).toBe(true);
       expect(stored.layout.junctions.every((item) => item.visualPlane === 30)).toBe(true);
       expect(stored.layout.conductors.every((item) => item.visualPlane === 20)).toBe(true);
+    });
+
+    it('persists v6 category resources and rejects a dangling categoryId', async () => {
+      const project = validProjectPayload();
+      project.formatVersion = 6;
+      for (const component of project.electrical.components) component.categoryId = 'category-lab';
+      project.resources = {
+        artworkAssets: {},
+        categories: { 'category-lab': { name: 'Laboratório', prefix: 'LAB' } },
+      };
+      const accepted = await fetch(`${server.baseUrl}/api/projects/categories-v6`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(accepted.status).toBe(200);
+      expect(
+        await (await fetch(`${server.baseUrl}/api/projects/categories-v6`)).json(),
+      ).toMatchObject({
+        formatVersion: 6,
+        resources: { categories: project.resources.categories },
+      });
+
+      project.resources.categories = {};
+      const rejected = await fetch(`${server.baseUrl}/api/projects/categories-v6-bad`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(rejected.status).toBe(400);
     });
 
     it('stores per-conductor metadata with a tolerant orthogonal manual route', async () => {
@@ -1416,5 +1590,95 @@ describe('wiring-editor-server', () => {
       });
       expect(res.status).toBe(200);
     });
+  });
+
+  it('keeps passive categories and board planes deterministic while migrating legacy projects', () => {
+    const v5 = emptyV2Payload();
+    v5.formatVersion = 5;
+    v5.electrical.components = [
+      {
+        id: 'resistor',
+        deviceId: 'R1',
+        manufacturer: 'Talus',
+        model: 'Resistor',
+        category: 'resistor',
+        pins: [],
+      },
+    ];
+    v5.layout.components = [{ componentId: 'resistor', position: { x: 0, y: 0 }, visualPlane: 10 }];
+    v5.resources = { artworkAssets: {} };
+    const migratedV5 = parseCanonicalProjectOnServer(v5);
+    expect(migratedV5.electrical.components[0]).toMatchObject({ categoryId: 'resistor' });
+    expect(migratedV5.electrical.components[0].category).toBeUndefined();
+    expect(migratedV5.resources.categories.resistor).toEqual({
+      name: 'Resistores',
+      prefix: 'RES',
+    });
+    const v6WithLegacyCategory = JSON.parse(JSON.stringify(migratedV5));
+    v6WithLegacyCategory.electrical.components[0].category = 'Legado';
+    expect(
+      parseCanonicalProjectOnServer(v6WithLegacyCategory).electrical.components[0].category,
+    ).toBeUndefined();
+
+    const v6WithPortableCollision = emptyV2Payload();
+    v6WithPortableCollision.formatVersion = 6;
+    v6WithPortableCollision.electrical.components = [
+      {
+        id: 'seed-resistor',
+        deviceId: 'R1',
+        manufacturer: '',
+        model: '',
+        categoryId: 'resistor',
+        pins: [],
+      },
+      {
+        id: 'portable-resistor',
+        deviceId: 'R2',
+        manufacturer: '',
+        model: '',
+        categoryId: 'category-portable-resistor',
+        pins: [],
+      },
+    ];
+    v6WithPortableCollision.layout.components = v6WithPortableCollision.electrical.components.map(
+      (component) => ({ componentId: component.id, position: { x: 0, y: 0 }, visualPlane: 10 }),
+    );
+    v6WithPortableCollision.resources = {
+      artworkAssets: {},
+      categories: {
+        resistor: { name: 'Resistores', prefix: 'RES' },
+        'category-portable-resistor': { name: 'Resistores', prefix: 'LAB' },
+      },
+    };
+    expect(parseCanonicalProjectOnServer(v6WithPortableCollision).resources.categories).toEqual(
+      v6WithPortableCollision.resources.categories,
+    );
+
+    const v1 = legacyProjectPayload();
+    v1.boards = [
+      {
+        id: 'board',
+        label: 'Board',
+        rows: 1,
+        cols: 1,
+        pitch: 20,
+        position: { x: 0, y: 0 },
+      },
+    ];
+    const migratedV1 = parseCanonicalProjectOnServer(v1);
+    expect(migratedV1.layout.boards[0]?.visualPlane).toBe(0);
+    v1.boards[0].visualPlane = 42;
+    expect(parseCanonicalProjectOnServer(v1).layout.boards[0]?.visualPlane).toBe(42);
+    expect(parseCanonicalProjectOnServer(migratedV1)).toEqual(migratedV1);
+  });
+
+  it('uses stable hex net IDs for connected v1 projects with Unicode endpoint IDs', () => {
+    const legacy = legacyConnectedProjectPayload();
+    legacy.components[0].id = 'á';
+    legacy.nets[0].source.componentId = 'á';
+
+    const migrated = parseCanonicalProjectOnServer(legacy);
+
+    expect(migrated.electrical.nets[0]?.id).toBe('net-70-69-6e-3a-25-43-33-25-41-31-2f-6f-75-74');
   });
 });

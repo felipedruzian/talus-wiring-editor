@@ -28,7 +28,7 @@ function emptyProject(): CanonicalProjectV2 {
     formatVersion: CANONICAL_FORMAT_VERSION,
     electrical: { components: [], junctions: [], cables: [], nets: [] },
     layout: { boards: [], components: [], junctions: [], conductors: [] },
-    resources: { artworkAssets: {} },
+    resources: { artworkAssets: {}, categories: {} },
   };
 }
 
@@ -197,6 +197,49 @@ describe('WireVizExchangeService', () => {
 });
 
 describe('buildImportedProject junction taps', () => {
+  it('preserves portable category resources and normalizes missing IDs to uncategorized', () => {
+    const previous = emptyProject();
+    previous.resources.categories = {
+      'category-portable': { name: 'Laboratório portátil', prefix: 'LAB' },
+    };
+    const imported: CanonicalElectrical = {
+      components: [
+        {
+          id: 'portable',
+          deviceId: 'LAB1',
+          manufacturer: 'Talus',
+          model: 'Portátil',
+          categoryId: 'category-portable',
+          category: 'Legado',
+          pins: [],
+        },
+        {
+          id: 'missing',
+          deviceId: 'DEV1',
+          manufacturer: 'Talus',
+          model: 'Sem catálogo',
+          categoryId: 'category-ausente',
+          pins: [],
+        },
+      ],
+      junctions: [],
+      cables: [],
+      nets: [],
+    };
+
+    const rebuilt = buildImportedProject(imported, previous);
+
+    expect(rebuilt.electrical.components.map((component) => component.categoryId)).toEqual([
+      'category-portable',
+      'uncategorized',
+    ]);
+    expect(rebuilt.electrical.components[0]?.category).toBeUndefined();
+    expect(rebuilt.resources.categories).toEqual({
+      'category-portable': { name: 'Laboratório portátil', prefix: 'LAB' },
+      uncategorized: { name: 'Não categorizado', prefix: 'DEV' },
+    });
+  });
+
   it('keeps only artwork still referenced after replacing WireViz components', () => {
     const previous = emptyProject();
     const hash = 'a'.repeat(64);
@@ -236,13 +279,14 @@ describe('buildImportedProject junction taps', () => {
       dataUrl: 'data:image/png;base64,AA==',
     };
 
-    expect(buildImportedProject(previous.electrical, previous).resources).toEqual(
-      previous.resources,
-    );
+    expect(buildImportedProject(previous.electrical, previous).resources).toEqual({
+      ...previous.resources,
+      categories: { uncategorized: { name: 'Não categorizado', prefix: 'DEV' } },
+    });
     expect(
       buildImportedProject({ components: [], junctions: [], cables: [], nets: [] }, previous)
         .resources,
-    ).toEqual({ artworkAssets: {} });
+    ).toEqual({ artworkAssets: {}, categories: {} });
   });
 
   it.each([

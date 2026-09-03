@@ -2,8 +2,18 @@ import { type Node } from 'ng-diagram';
 import { DEVICE_CATEGORY_PREFIXES, FALLBACK_DEVICE_PREFIX } from './device-categories';
 import { isDeviceNode } from './guards';
 
-const prefixForCategory = (category: string | undefined): string => {
-  const key = category?.trim().toLowerCase();
+export interface DeviceIdCategory {
+  id: string;
+  prefix: string;
+}
+
+const prefixForCategory = (
+  categoryId: string | undefined,
+  categories: readonly DeviceIdCategory[],
+): string => {
+  const configured = categories.find(({ id }) => id === categoryId)?.prefix;
+  if (configured) return configured;
+  const key = categoryId?.trim().toLowerCase();
   if (!key) return FALLBACK_DEVICE_PREFIX;
   return DEVICE_CATEGORY_PREFIXES[key] ?? FALLBACK_DEVICE_PREFIX;
 };
@@ -14,10 +24,11 @@ const prefixForCategory = (category: string | undefined): string => {
  * supplied node list.
  */
 export const generateDeviceId = (
-  category: string | undefined,
+  categoryId: string | undefined,
   existingNodes: readonly Node[],
+  categories: readonly DeviceIdCategory[] = [],
 ): string => {
-  const prefix = prefixForCategory(category);
+  const prefix = prefixForCategory(categoryId, categories);
   const pattern = new RegExp(`^${prefix}-(\\d+)$`);
   const used = new Set<number>();
 
