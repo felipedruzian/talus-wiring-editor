@@ -83,7 +83,7 @@ export const config = {
 };
 
 const PROJECT_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/;
-const MAX_BODY_BYTES = 5 * 1024 * 1024; // 5 MB — generous for a hand-edited circuit project.
+const MAX_BODY_BYTES = 8 * 1024 * 1024; // Includes up to 4 MiB of Base64-encoded project artwork.
 const MAX_LIBRARY_BODY_BYTES = 24 * 1024 * 1024;
 const MUTATING_METHODS = new Set(['PUT', 'POST', 'PATCH', 'DELETE']);
 const EMPTY_LIBRARY_BODY = JSON.stringify({ version: 2, devices: [], assets: {} });
@@ -282,7 +282,7 @@ async function getProject(res, cfg, id) {
 
 async function putProject(req, res, cfg, id) {
   requireJsonContentType(req);
-  const body = await readJsonBody(req, MAX_BODY_BYTES, '5 MB');
+  const body = await readJsonBody(req, MAX_BODY_BYTES, '8 MiB');
   if (body === null) {
     throw new HttpError(400, 'invalid_body', 'corpo vazio: esperado um objeto JSON');
   }

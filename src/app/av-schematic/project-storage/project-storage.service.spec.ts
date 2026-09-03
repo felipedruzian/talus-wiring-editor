@@ -7,6 +7,7 @@ import {
   type DeviceNodeData,
   type WireEdgeData,
 } from '../diagram/model/interfaces';
+import { ArtworkAssetStore } from '../diagram/artwork/artwork-asset.store';
 import { ProjectStorageService } from './project-storage.service';
 import { InMemoryModelAdapter } from '../diagram/model/testing/in-memory-model-adapter';
 import { UndoableDiagramModelAdapter } from '../diagram/model/undoable-model';
@@ -129,7 +130,7 @@ describe('ProjectStorageService save/open', () => {
     await storage.save('project-1');
 
     expect(savedBody).toMatchObject({
-      formatVersion: 4,
+      formatVersion: 5,
       electrical: {
         cables: [{ name: 'W1', colors: ['#123456'] }],
         nets: [
@@ -154,6 +155,7 @@ describe('ProjectStorageService save/open', () => {
           }),
         ],
       },
+      resources: { artworkAssets: {} },
     });
     expect(storage.status()).toBe('success');
 
@@ -231,14 +233,100 @@ describe('ProjectStorageService save/open', () => {
     });
 
     await TestBed.inject(ProjectStorageService).replaceProject({
-      formatVersion: 4,
+      formatVersion: 5,
       electrical: { components: [], junctions: [], cables: [], nets: [] },
       layout: { boards: [], components: [], junctions: [], conductors: [] },
+      resources: { artworkAssets: {} },
     });
 
     expect(history.getNodes()).toEqual([]);
     history.undo();
     expect(history.getNodes()).toEqual([]);
     expect(history.getEdges()).toEqual([]);
+  });
+
+  it('hydrates project artwork before adding pictured nodes to the live model', async () => {
+    const hash = '431ced6916a2a21a156e38701afe55bbd7f88969fbbfc56d7fe099d47f265460';
+    const dataUrl =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+    const project = {
+      formatVersion: 5,
+      electrical: {
+        components: [
+          {
+            id: 'pictured',
+            deviceId: 'PIC1',
+            manufacturer: 'Talus',
+            model: 'Imagem',
+            pins: [{ id: 'p1', label: 'P1', direction: 'input' }],
+          },
+        ],
+        junctions: [],
+        cables: [],
+        nets: [],
+      },
+      layout: {
+        boards: [],
+        components: [
+          {
+            componentId: 'pictured',
+            position: { x: 10, y: 20 },
+            visualPlane: 10,
+            footprintId: 'pictured-footprint',
+            footprint: {
+              id: 'pictured-footprint',
+              label: 'Com imagem',
+              rows: 1,
+              cols: 1,
+              pins: [{ id: 'p1', label: 'P1', cell: { row: 0, col: 0 } }],
+              shapes: [],
+              artwork: { assetHash: hash, x: 0, y: 0, width: 1, height: 1 },
+            },
+          },
+        ],
+        junctions: [],
+        conductors: [],
+      },
+      resources: {
+        artworkAssets: {
+          [hash]: {
+            mimeType: 'image/png',
+            width: 1,
+            height: 1,
+            byteLength: 68,
+            dataUrl,
+          },
+        },
+      },
+    };
+    const artworkStore = new ArtworkAssetStore();
+    const registerMany = vi.spyOn(artworkStore, 'registerMany');
+    const addNodes = vi.fn(() => {
+      expect(registerMany).toHaveBeenCalledWith([expect.objectContaining({ hash, dataUrl })]);
+      return Promise.resolve();
+    });
+    const modelService = {
+      getModel: () => ({ getNodes: () => [], getEdges: () => [], resetHistory: vi.fn() }),
+      deleteEdges: vi.fn(() => Promise.resolve()),
+      deleteNodes: vi.fn(() => Promise.resolve()),
+      addNodes,
+      addEdges: vi.fn(() => Promise.resolve()),
+      updateEdges: vi.fn(() => Promise.resolve()),
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(response(project))),
+    );
+    TestBed.configureTestingModule({
+      providers: [
+        ProjectStorageService,
+        { provide: NgDiagramModelService, useValue: modelService },
+        { provide: ArtworkAssetStore, useValue: artworkStore },
+      ],
+    });
+
+    await TestBed.inject(ProjectStorageService).open('pictured-project');
+
+    expect(addNodes).toHaveBeenCalledWith(expect.any(Array), { waitForMeasurements: true });
   });
 });

@@ -22,6 +22,7 @@ import {
   CanonicalProjectError,
   endpointKey,
   type CanonicalBoard,
+  type CanonicalArtworkResource,
   type CanonicalCable,
   type CanonicalComponent,
   type CanonicalComponentLayout,
@@ -35,8 +36,11 @@ import {
   type CanonicalPinPlacement,
   type CanonicalPoint,
   type CanonicalProjectV4,
+  type CanonicalResources,
   type CanonicalRoutingMode,
 } from './canonical-project';
+import { type RasterArtworkAsset } from '../artwork/artwork-asset.store';
+import { assertValidRasterArtworkAsset } from '../../library-sidebar/artwork-import';
 import {
   footprintOccupiedHoles,
   footprintPinHoles,
@@ -106,29 +110,32 @@ const ALLOWED_FOOTPRINT_PAINTS: readonly FootprintPaint[] = [
   'polarity',
 ];
 const ALLOWED_TEXT_ANCHORS = ['start', 'middle', 'end'] as const;
+const ARTWORK_HASH_PATTERN = /^[a-f0-9]{64}$/;
 
 export function parseCanonicalProject(raw: unknown): CanonicalProjectV4 {
   const root = expectRecord(raw, 'project');
   const version = root['formatVersion'];
 
   if (version === 1) return migrateV1(parseV1(root));
-  if (version === 2) return parseCurrent(root, true, false);
-  if (version === 3) return parseCurrent(root, false, false);
-  if (version === CANONICAL_FORMAT_VERSION) return parseCurrent(root, false, true);
+  if (version === 2) return parseCurrent(root, true, false, false);
+  if (version === 3) return parseCurrent(root, false, false, false);
+  if (version === 4) return parseCurrent(root, false, true, false);
+  if (version === CANONICAL_FORMAT_VERSION) return parseCurrent(root, false, true, true);
 
   throw new CanonicalProjectError(
-    `project.formatVersion: expected 1, 2, 3 or ${CANONICAL_FORMAT_VERSION}, got ${JSON.stringify(version)}`,
+    `project.formatVersion: expected 1, 2, 3, 4 or ${CANONICAL_FORMAT_VERSION}, got ${JSON.stringify(version)}`,
   );
 }
 
 // ---------------------------------------------------------------------------
-// v2/v3/v4 shared structure
+// v2/v3/v4/v5 shared structure
 // ---------------------------------------------------------------------------
 
 function parseCurrent(
   root: Record<string, unknown>,
   migrateVisualPlanes: boolean,
   readBoardJumpers: boolean,
+  readResources: boolean,
 ): CanonicalProjectV4 {
   const electricalRaw = expectRecord(root['electrical'], 'project.electrical');
   const layoutRaw = expectRecord(root['layout'], 'project.layout');
@@ -179,6 +186,7 @@ function parseCurrent(
         readBoardJumpers,
       ),
   );
+  const resources = readResources ? parseResources(root['resources']) : emptyResources();
 
   const project: CanonicalProjectV4 = {
     formatVersion: CANONICAL_FORMAT_VERSION,
@@ -189,10 +197,60 @@ function parseCurrent(
       junctions: junctionLayouts,
       conductors: conductorLayouts,
     },
+    resources,
   };
 
   validateProject(project);
   return project;
+}
+
+function parseResources(raw: unknown): CanonicalResources {
+  const resources = expectRecord(raw, 'project.resources');
+  const artwork = expectRecord(resources['artworkAssets'], 'project.resources.artworkAssets');
+  const entries = Object.entries(artwork);
+  if (entries.length > 64) {
+    throw new CanonicalProjectError('project.resources.artworkAssets: accepts at most 64 assets');
+  }
+  let totalBytes = 0;
+  const artworkAssets: Record<string, CanonicalArtworkResource> = {};
+  for (const [hash, value] of entries) {
+    const label = `project.resources.artworkAssets.${hash}`;
+    const record = expectRecord(value, label);
+    const mimeType = expectString(record['mimeType'], `${label}.mimeType`);
+    const asset: RasterArtworkAsset = {
+      hash,
+      mimeType:
+        mimeType === 'image/png' || mimeType === 'image/webp'
+          ? mimeType
+          : (() => {
+              throw new CanonicalProjectError(
+                `${label}.mimeType: expected image/png or image/webp`,
+              );
+            })(),
+      width: expectPositiveInteger(record['width'], `${label}.width`),
+      height: expectPositiveInteger(record['height'], `${label}.height`),
+      byteLength: expectPositiveInteger(record['byteLength'], `${label}.byteLength`),
+      dataUrl: expectString(record['dataUrl'], `${label}.dataUrl`),
+    };
+    try {
+      assertValidRasterArtworkAsset(asset);
+    } catch {
+      throw new CanonicalProjectError(`${label}: invalid or corrupted raster artwork`);
+    }
+    totalBytes += asset.byteLength;
+    if (totalBytes > 4 * 1024 * 1024) {
+      throw new CanonicalProjectError(
+        'project.resources.artworkAssets: decoded bytes exceed 4 MiB',
+      );
+    }
+    const { hash: _hash, ...resource } = asset;
+    artworkAssets[hash] = resource;
+  }
+  return { artworkAssets };
+}
+
+function emptyResources(): CanonicalResources {
+  return { artworkAssets: {} };
 }
 
 /**
@@ -559,6 +617,31 @@ function validateProject(project: CanonicalProjectV4): void {
   }
 
   validateLayout(project, boardsById, componentsById, junctionsById, conductorIds);
+  validateArtworkResourceReferences(project);
+}
+
+function validateArtworkResourceReferences(project: CanonicalProjectV4): void {
+  const referenced = new Set(
+    project.layout.components.flatMap((component) => {
+      const hash = component.footprint?.artwork?.assetHash;
+      return hash ? [hash] : [];
+    }),
+  );
+  const available = new Set(Object.keys(project.resources.artworkAssets));
+  for (const hash of referenced) {
+    if (!available.has(hash)) {
+      throw new CanonicalProjectError(
+        `project.resources.artworkAssets: missing artwork "${hash}" referenced by a footprint`,
+      );
+    }
+  }
+  for (const hash of available) {
+    if (!referenced.has(hash)) {
+      throw new CanonicalProjectError(
+        `project.resources.artworkAssets: unreferenced artwork "${hash}"`,
+      );
+    }
+  }
 }
 
 function validateLayout(
@@ -1666,12 +1749,35 @@ function parseFootprint(raw: unknown, label: string): Footprint {
     shapes: expectArray(obj['shapes'], `${label}.shapes`).map((shape, index) =>
       parseFootprintShape(shape, `${label}.shapes[${index}]`),
     ),
+    artwork:
+      obj['artwork'] === undefined
+        ? undefined
+        : parseFootprintArtwork(obj['artwork'], `${label}.artwork`),
     bodyCells:
       obj['bodyCells'] === undefined
         ? undefined
         : expectArray(obj['bodyCells'], `${label}.bodyCells`).map((cell, index) =>
             parseFootprintCell(cell, `${label}.bodyCells[${index}]`),
           ),
+  };
+}
+
+function parseFootprintArtwork(raw: unknown, label: string): NonNullable<Footprint['artwork']> {
+  const obj = expectRecord(raw, label);
+  const assetHash = expectNonEmptyString(obj['assetHash'], `${label}.assetHash`);
+  if (!ARTWORK_HASH_PATTERN.test(assetHash)) {
+    throw new CanonicalProjectError(`${label}.assetHash: expected a lowercase SHA-256 hash`);
+  }
+  return {
+    assetHash,
+    x: expectFiniteNumber(obj['x'], `${label}.x`),
+    y: expectFiniteNumber(obj['y'], `${label}.y`),
+    width: expectPositiveFiniteNumber(obj['width'], `${label}.width`),
+    height: expectPositiveFiniteNumber(obj['height'], `${label}.height`),
+    preserveAspectRatio: expectOptionalBoolean(
+      obj['preserveAspectRatio'],
+      `${label}.preserveAspectRatio`,
+    ),
   };
 }
 
@@ -2191,6 +2297,7 @@ function migrateV1(legacy: LegacyProject): CanonicalProjectV4 {
       junctions: [],
       conductors: conductorLayouts,
     },
+    resources: emptyResources(),
   };
 
   validateProject(project);

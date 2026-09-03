@@ -28,13 +28,14 @@ Consulte [`docs/wiring-tracer-bullet.md`](docs/wiring-tracer-bullet.md),
 - Criação de fios pendentes ao desenhar de uma porta para uma área vazia.
 - Navegação por duplo clique na porta até o dispositivo conectado.
 - Painel de propriedades com edição ao vivo de dispositivos, junções e fios.
-- Biblioteca arrastável de componentes, com busca, inclusão, edição, remoção e rascunhos descartáveis.
+- Biblioteca central compartilhada de componentes, com busca, inclusão, edição, remoção e rascunhos descartáveis.
+- Editor físico com upload PNG/JPEG/WebP/SVG seguro, escala por passo de furo, calibração por dois pontos e posicionamento dos terminais.
 - Geração automática de `deviceId` por prefixo de categoria e menor número livre.
 - Minimap, controles de zoom e temas claro e escuro.
 - Exportação para PNG e DXF pela barra superior.
 - Nets WireViz multi-drop derivadas por conectividade, sem tratar fan-out como colisão de porta
 - Junções e trilhos selecionáveis e editáveis no canvas, com taps visuais separados da semântica elétrica
-- Projeto canônico v2 persistido pela API local de mesma origem, com migração endurecida de snapshots v1 e inventário de cabos desconectados
+- Projeto canônico v5 persistido pela API local de mesma origem, com imagens usadas incorporadas por SHA-256, migração endurecida de snapshots v1-v4 e inventário de cabos desconectados
 - Importação de arquivo YAML, fixture multi-drop, exportação WireViz e relatório global acessíveis pela barra superior
 - Round-trip WireViz clean-room com `pinlabels`, `wirelabels`, referências sem ambiguidade, loops internos e RGB exato de seis dígitos
 
@@ -81,10 +82,10 @@ Deep-dive documentation lives in [`docs/`](docs/):
 - [`docs/dependency-triage.md`](docs/dependency-triage.md) — advisories observados, alcance e plano de atualização controlada
 - [`docs/edge-reshaping.md`](docs/edge-reshaping.md) — roteamento manual, reconexão de endpoints, fios pendentes e separação entre as três funcionalidades
 - [`docs/export.md`](docs/export.md) — PNG and DXF export pipelines
-- [`docs/physical-footprints.md`](docs/physical-footprints.md) — placas, footprints, encaixe, ocupação, persistência v2 e limites da autoria física
+- [`docs/physical-footprints.md`](docs/physical-footprints.md) — placas, footprints, editor físico, encaixe, ocupação e persistência v5
 - [`docs/wiring-tracer-bullet.md`](docs/wiring-tracer-bullet.md) — issue #1: representação de placa/componente/net física, formato canônico de projeto, o que está pendente ou fora de escopo
 - [`docs/wireviz-import-limits.md`](docs/wireviz-import-limits.md) — o subconjunto de YAML WireViz que o parser desta fatia aceita
-- [`docs/wireviz-round-trip.md`](docs/wireviz-round-trip.md) — projeto canônico v2, multi-drop, relatório e equivalência elétrica
+- [`docs/wireviz-round-trip.md`](docs/wireviz-round-trip.md) — projeto canônico v5, multi-drop, recursos, relatório e equivalência elétrica
 - [`docs/license-matrix.md`](docs/license-matrix.md) — origem, revisão, licença e estratégia de reuso para cada base avaliada para este fork
 - [`docs/local-service.md`](docs/local-service.md) — o serviço local estático+API (`server/`) e o contrato de implantação no Talus
 

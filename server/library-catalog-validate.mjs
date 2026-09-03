@@ -280,6 +280,11 @@ function validateRasterAsset(hash, value, label) {
   return { mimeType, width, height, byteLength, dataUrl };
 }
 
+/** Shared strict raster validator used by project resources as well as the catalog. */
+export function parseRasterArtworkResource(hash, value, label = 'artwork') {
+  return validateRasterAsset(hash, value, label);
+}
+
 function sniffRaster(bytes) {
   if (
     bytes.length >= 24 &&

@@ -8,6 +8,10 @@
 
 import { OPERATIONAL_LIMITS } from '../src/app/av-schematic/diagram/model/operational-limits.mjs';
 import { normalizeOrthogonalPersistedRoute } from '../src/app/av-schematic/diagram/model/persisted-wire-route.mjs';
+import {
+  LibraryCatalogValidationError,
+  parseRasterArtworkResource,
+} from './library-catalog-validate.mjs';
 
 export class CanonicalProjectValidationError extends Error {
   constructor(message) {
@@ -53,6 +57,9 @@ const DEFAULT_VISUAL_PLANES = Object.freeze({
   conductor: 20,
   junction: 30,
 });
+const MAX_PROJECT_ARTWORK_ASSETS = 64;
+const MAX_PROJECT_ARTWORK_BYTES = 4 * 1024 * 1024;
+const ARTWORK_HASH_PATTERN = /^[a-f0-9]{64}$/;
 // Keep these geometry constants aligned with board-geometry.ts and
 // footprint-geometry.ts. The server stays dependency-free from Angular code.
 const BOARD_MARGIN = 16;
@@ -91,12 +98,13 @@ export function parseCanonicalProject(raw) {
   const version = root['formatVersion'];
 
   if (version === 1) return parseV1(root);
-  if (version === 2) return parseV2(root, true, false);
-  if (version === 3) return parseV2(root, false, false);
-  if (version === 4) return parseV2(root, false, true);
+  if (version === 2) return parseV2(root, true, false, false);
+  if (version === 3) return parseV2(root, false, false, false);
+  if (version === 4) return parseV2(root, false, true, false);
+  if (version === 5) return parseV2(root, false, true, true);
 
   throw new CanonicalProjectValidationError(
-    `project.formatVersion: expected 1, 2, 3 or 4, got ${JSON.stringify(version)}`,
+    `project.formatVersion: expected 1, 2, 3, 4 or 5, got ${JSON.stringify(version)}`,
   );
 }
 
@@ -183,7 +191,7 @@ function parseV1(root) {
   return { formatVersion: 1, boards, components, nets };
 }
 
-function parseV2(root, migrateVisualPlanes, readBoardJumpers) {
+function parseV2(root, migrateVisualPlanes, readBoardJumpers, readResources) {
   const electricalRaw = expectRecord(root['electrical'], 'project.electrical');
   const layoutRaw = expectRecord(root['layout'], 'project.layout');
   preflightV2(electricalRaw, layoutRaw);
@@ -238,9 +246,48 @@ function parseV2(root, migrateVisualPlanes, readBoardJumpers) {
     ),
   };
 
-  const project = { formatVersion: 4, electrical, layout };
+  const resources = readResources ? parseResources(root['resources']) : emptyResources();
+  const project = { formatVersion: 5, electrical, layout, resources };
   validateV2Project(project);
   return project;
+}
+
+function parseResources(raw) {
+  const resources = expectRecord(raw, 'project.resources');
+  const artwork = expectRecord(resources['artworkAssets'], 'project.resources.artworkAssets');
+  const entries = Object.entries(artwork);
+  if (entries.length > MAX_PROJECT_ARTWORK_ASSETS) {
+    throw new CanonicalProjectValidationError(
+      `project.resources.artworkAssets: accepts at most ${MAX_PROJECT_ARTWORK_ASSETS} assets`,
+    );
+  }
+
+  let decodedBytes = 0;
+  const artworkAssets = {};
+  for (const [hash, value] of entries) {
+    const label = `project.resources.artworkAssets.${hash}`;
+    try {
+      const asset = parseRasterArtworkResource(hash, value, label);
+      decodedBytes += asset.byteLength;
+      if (decodedBytes > MAX_PROJECT_ARTWORK_BYTES) {
+        throw new CanonicalProjectValidationError(
+          'project.resources.artworkAssets: decoded bytes exceed 4 MiB',
+        );
+      }
+      artworkAssets[hash] = asset;
+    } catch (error) {
+      if (error instanceof CanonicalProjectValidationError) throw error;
+      if (error instanceof LibraryCatalogValidationError) {
+        throw new CanonicalProjectValidationError(error.message);
+      }
+      throw error;
+    }
+  }
+  return { artworkAssets };
+}
+
+function emptyResources() {
+  return { artworkAssets: {} };
 }
 
 function preflightV1(root) {
@@ -1006,6 +1053,31 @@ function validateV2Project(project) {
     conductorIds,
     conductorsById,
   );
+  validateArtworkResourceReferences(project);
+}
+
+function validateArtworkResourceReferences(project) {
+  const referenced = new Set(
+    project.layout.components.flatMap((component) => {
+      const hash = component.footprint?.artwork?.assetHash;
+      return hash ? [hash] : [];
+    }),
+  );
+  const available = new Set(Object.keys(project.resources.artworkAssets));
+  for (const hash of referenced) {
+    if (!available.has(hash)) {
+      throw new CanonicalProjectValidationError(
+        `project.resources.artworkAssets: missing artwork "${hash}" referenced by a footprint`,
+      );
+    }
+  }
+  for (const hash of available) {
+    if (!referenced.has(hash)) {
+      throw new CanonicalProjectValidationError(
+        `project.resources.artworkAssets: unreferenced artwork "${hash}"`,
+      );
+    }
+  }
 }
 
 function validateV2Layout(
@@ -2027,12 +2099,37 @@ function parseFootprint(raw, label) {
     shapes: expectArray(obj['shapes'], `${label}.shapes`).map((shape, index) =>
       parseFootprintShape(shape, `${label}.shapes[${index}]`),
     ),
+    artwork:
+      obj['artwork'] === undefined
+        ? undefined
+        : parseFootprintArtwork(obj['artwork'], `${label}.artwork`),
     bodyCells:
       obj['bodyCells'] === undefined
         ? undefined
         : expectArray(obj['bodyCells'], `${label}.bodyCells`).map((cell, index) =>
             expectHole(cell, `${label}.bodyCells[${index}]`),
           ),
+  };
+}
+
+function parseFootprintArtwork(raw, label) {
+  const obj = expectRecord(raw, label);
+  const assetHash = expectNonEmptyString(obj['assetHash'], `${label}.assetHash`);
+  if (!ARTWORK_HASH_PATTERN.test(assetHash)) {
+    throw new CanonicalProjectValidationError(
+      `${label}.assetHash: expected a lowercase SHA-256 hash`,
+    );
+  }
+  return {
+    assetHash,
+    x: expectFiniteNumber(obj['x'], `${label}.x`),
+    y: expectFiniteNumber(obj['y'], `${label}.y`),
+    width: expectPositiveFiniteNumber(obj['width'], `${label}.width`),
+    height: expectPositiveFiniteNumber(obj['height'], `${label}.height`),
+    preserveAspectRatio: expectOptionalBoolean(
+      obj['preserveAspectRatio'],
+      `${label}.preserveAspectRatio`,
+    ),
   };
 }
 

@@ -17,6 +17,7 @@ import {
   EdgeTemplateType,
   NodeTemplateType,
   type BoardNodeData,
+  type DeviceNodeData,
   type WireEdgeData,
 } from './interfaces';
 import { OPERATIONAL_LIMITS } from './operational-limits.mjs';
@@ -32,9 +33,10 @@ function clone<T>(value: T): T {
 
 function emptyV2(): CanonicalProjectV2 {
   return {
-    formatVersion: 4,
+    formatVersion: 5,
     electrical: { components: [], junctions: [], cables: [], nets: [] },
     layout: { boards: [], components: [], junctions: [], conductors: [] },
+    resources: { artworkAssets: {} },
   };
 }
 
@@ -126,6 +128,74 @@ function legacyTwoPointProject(): Record<string, unknown> {
 }
 
 describe('canonical project round-trip', () => {
+  it('embeds, validates and restores only artwork referenced by project footprints', () => {
+    const hash = '431ced6916a2a21a156e38701afe55bbd7f88969fbbfc56d7fe099d47f265460';
+    const base64 =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+    const node: Node<DeviceNodeData> = {
+      id: 'pictured-device',
+      type: NodeTemplateType.DeviceNode,
+      position: { x: 12, y: 34 },
+      data: {
+        type: 'device',
+        deviceId: 'PIC1',
+        manufacturer: 'Talus',
+        model: 'Imagem',
+        ports: [{ id: 'p1', label: 'P1', direction: 'input' }],
+        footprintId: 'pictured-footprint',
+        footprint: {
+          id: 'pictured-footprint',
+          label: 'Com imagem',
+          rows: 1,
+          cols: 1,
+          pins: [{ id: 'p1', label: 'P1', cell: { row: 0, col: 0 } }],
+          shapes: [],
+          artwork: {
+            assetHash: hash,
+            x: -0.25,
+            y: -0.5,
+            width: 1.5,
+            height: 2,
+            preserveAspectRatio: true,
+          },
+        },
+        footprintPitch: 20,
+      },
+    };
+    const asset = {
+      hash,
+      mimeType: 'image/png' as const,
+      width: 1,
+      height: 1,
+      byteLength: 68,
+      dataUrl: `data:image/png;base64,${base64}`,
+    };
+
+    expect(() => toCanonicalProject([node], [])).toThrow('missing artwork asset');
+    const saved = toCanonicalProject([node], [], [], [asset]);
+    expect(saved.resources.artworkAssets).toEqual({
+      [hash]: {
+        mimeType: asset.mimeType,
+        width: asset.width,
+        height: asset.height,
+        byteLength: asset.byteLength,
+        dataUrl: asset.dataUrl,
+      },
+    });
+    const parsed = parseCanonicalProject(clone(saved));
+    expect(must(fromCanonicalProject(parsed).nodes[0]).data).toMatchObject({
+      footprint: { artwork: { assetHash: hash, x: -0.25, y: -0.5, width: 1.5, height: 2 } },
+    });
+
+    const forged = clone(saved);
+    must(forged.resources.artworkAssets[hash]).dataUrl = 'data:image/png;base64,AA==';
+    expect(() => parseCanonicalProject(forged)).toThrow('invalid or corrupted raster artwork');
+
+    const unreferenced = clone(saved);
+    delete must(must(unreferenced.layout.components[0]).footprint).artwork;
+    expect(() => parseCanonicalProject(unreferenced)).toThrow('unreferenced artwork');
+  });
+
   it('persists only board-local jumper bends and derives endpoints from holes', () => {
     const board: Node<BoardNodeData> = {
       id: 'board-node-instance',
@@ -170,7 +240,7 @@ describe('canonical project round-trip', () => {
     };
 
     const saved = toCanonicalProject([board], [jumper]);
-    expect(saved.formatVersion).toBe(4);
+    expect(saved.formatVersion).toBe(5);
     expect(saved.layout.conductors[0]).toMatchObject({
       conductorId: jumper.id,
       boardJumper: {
@@ -218,7 +288,7 @@ describe('canonical project round-trip', () => {
   it('keeps electrical semantics separate from complementary visual geometry', () => {
     const project = toCanonicalProject(diagramModel.nodes, diagramModel.edges);
 
-    expect(project.formatVersion).toBe(4);
+    expect(project.formatVersion).toBe(5);
     expect(project.electrical.nets.length).toBeGreaterThanOrEqual(2);
     expect(project.electrical.components.length).toBeGreaterThan(2);
     expect(project.layout.boards).toHaveLength(5);
@@ -557,7 +627,8 @@ describe('parseCanonicalProject', () => {
       for (const entry of layout[collection] ?? []) delete entry['visualPlane'];
     }
     const migrated = parseCanonicalProject(legacy);
-    expect(migrated.formatVersion).toBe(4);
+    expect(migrated.formatVersion).toBe(5);
+    expect(migrated.resources).toEqual({ artworkAssets: {} });
     expect(migrated.layout.boards.every((item) => item.visualPlane === 0)).toBe(true);
     expect(migrated.layout.components.every((item) => item.visualPlane === 10)).toBe(true);
     expect(migrated.layout.junctions.every((item) => item.visualPlane === 30)).toBe(true);

@@ -88,6 +88,7 @@ function emptyProject(): CanonicalProjectV2 {
     formatVersion: CANONICAL_FORMAT_VERSION,
     electrical: { components: [], junctions: [], cables: [], nets: [] },
     layout: { boards: [], components: [], junctions: [], conductors: [] },
+    resources: { artworkAssets: {} },
   };
 }
 

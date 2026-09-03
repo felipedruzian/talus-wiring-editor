@@ -83,6 +83,17 @@ function baseConfig(storageDir, staticDir) {
 }
 
 const strongEtag = (body) => `"${createHash('sha256').update(body).digest('hex')}"`;
+const PNG_1X1_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+const PNG_1X1_BYTES = Buffer.from(PNG_1X1_BASE64, 'base64');
+const PNG_1X1_HASH = createHash('sha256').update(PNG_1X1_BYTES).digest('hex');
+const PNG_1X1_RESOURCE = Object.freeze({
+  mimeType: 'image/png',
+  width: 1,
+  height: 1,
+  byteLength: PNG_1X1_BYTES.length,
+  dataUrl: `data:image/png;base64,${PNG_1X1_BASE64}`,
+});
 
 /** Starts a fresh server on an ephemeral port and returns its base URL + close(). */
 async function startServer(cfg) {
@@ -105,7 +116,7 @@ async function startServer(cfg) {
 
 function validProjectPayload() {
   return {
-    formatVersion: 4,
+    formatVersion: 5,
     electrical: {
       components: [
         {
@@ -194,6 +205,7 @@ function validProjectPayload() {
         { conductorId: 'branch-b', visualPlane: 20, fromTap: 2 },
       ],
     },
+    resources: { artworkAssets: {} },
   };
 }
 
@@ -594,6 +606,66 @@ describe('wiring-editor-server', () => {
       });
     });
 
+    it('persists only valid content-addressed artwork referenced by a footprint', async () => {
+      const project = validProjectPayload();
+      project.layout.components[0].footprintId = 'source-artwork';
+      project.layout.components[0].footprint = {
+        id: 'source-artwork',
+        label: 'Source artwork',
+        rows: 1,
+        cols: 1,
+        pins: [{ id: 'out', label: 'OUT', cell: { row: 0, col: 0 } }],
+        shapes: [],
+        artwork: {
+          assetHash: PNG_1X1_HASH,
+          x: -0.25,
+          y: -0.5,
+          width: 1.5,
+          height: 2,
+          preserveAspectRatio: true,
+        },
+      };
+      project.resources.artworkAssets[PNG_1X1_HASH] = PNG_1X1_RESOURCE;
+
+      const accepted = await fetch(`${server.baseUrl}/api/projects/artwork`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project),
+      });
+      expect(accepted.status).toBe(200);
+      expect(await (await fetch(`${server.baseUrl}/api/projects/artwork`)).json()).toEqual(project);
+
+      const missing = structuredClone(project);
+      missing.resources.artworkAssets = {};
+      expect(
+        await fetch(`${server.baseUrl}/api/projects/artwork-missing`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(missing),
+        }),
+      ).toMatchObject({ status: 400 });
+
+      const forged = structuredClone(project);
+      forged.resources.artworkAssets[PNG_1X1_HASH].dataUrl = 'data:image/png;base64,AA==';
+      expect(
+        await fetch(`${server.baseUrl}/api/projects/artwork-forged`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(forged),
+        }),
+      ).toMatchObject({ status: 400 });
+
+      const unreferenced = validProjectPayload();
+      unreferenced.resources.artworkAssets[PNG_1X1_HASH] = PNG_1X1_RESOURCE;
+      expect(
+        await fetch(`${server.baseUrl}/api/projects/artwork-unreferenced`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(unreferenced),
+        }),
+      ).toMatchObject({ status: 400 });
+    });
+
     it('preserves and applies centerGap and board notes', async () => {
       const project = basePhysicalProject();
       project.layout.boards[0].notes = 'Bulk incorporado';
@@ -791,7 +863,8 @@ describe('wiring-editor-server', () => {
       });
       expect(res.status).toBe(200);
       const stored = await (await fetch(`${server.baseUrl}/api/projects/migrated-planes`)).json();
-      expect(stored.formatVersion).toBe(4);
+      expect(stored.formatVersion).toBe(5);
+      expect(stored.resources).toEqual({ artworkAssets: {} });
       expect(stored.layout.components.every((item) => item.visualPlane === 10)).toBe(true);
       expect(stored.layout.junctions.every((item) => item.visualPlane === 30)).toBe(true);
       expect(stored.layout.conductors.every((item) => item.visualPlane === 20)).toBe(true);
@@ -1078,8 +1151,8 @@ describe('wiring-editor-server', () => {
   });
 
   describe('oversized payload', () => {
-    it('returns 413 for a body over the 5 MB limit', async () => {
-      const hugeBody = JSON.stringify({ padding: 'x'.repeat(6 * 1024 * 1024) });
+    it('returns 413 for a body over the 8 MiB limit', async () => {
+      const hugeBody = JSON.stringify({ padding: 'x'.repeat(9 * 1024 * 1024) });
       const res = await fetch(`${server.baseUrl}/api/projects/too-big`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

@@ -1,6 +1,6 @@
 # Planos visuais
 
-O projeto canônico v4 persiste `visualPlane` em cada registro de `layout`: placas, componentes, junções e condutores. Valores maiores aparecem acima de valores menores. O inspetor permite consultar e alterar o número do elemento selecionado sem tocar em nets, endpoints ou conectividade.
+O projeto canônico v5 persiste `visualPlane` em cada registro de `layout`: placas, componentes, junções e condutores. Valores maiores aparecem acima de valores menores. O inspetor permite consultar e alterar o número do elemento selecionado sem tocar em nets, endpoints ou conectividade.
 
 Os defaults da migração são:
 

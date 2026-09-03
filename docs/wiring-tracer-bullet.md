@@ -155,14 +155,15 @@ adivinhar a identidade do node a partir do nome do conector.
 
 ## Formato canônico que pode ser serializado
 
-`diagram/model/canonical-project.ts` define `CanonicalProjectV4`, serializado
+`diagram/model/canonical-project.ts` define `CanonicalProjectV5`, serializado
 em JSON e independente dos tipos de runtime `Node`/`Edge` do `ng-diagram`.
 A seção `electrical` contém componentes, junções, cabos e nets; `layout`
-contém placas, posições, furos, taps e rotas manuais. Essa separação, adicionada
+contém placas, posições, furos, taps e rotas manuais; `resources` contém as
+imagens de footprints usadas no projeto. Essa separação, adicionada
 pela issue #2, impede que uma exportação WireViz confunda semântica elétrica
 com geometria que o formato não representa. `toCanonicalProject()` /
 `fromCanonicalProject()` são funções puras de ida e volta, enquanto
-`parseCanonicalProject()` aceita v4 e migra snapshots v1/v2/v3 em memória.
+`parseCanonicalProject()` aceita v5 e migra snapshots v1/v2/v3/v4 em memória.
 
 `canonical-project.spec.ts` cobre placas, componentes, pinos, nets, cores,
 rotas manuais, junções multi-drop e migração v1. O contrato de round-trip da
@@ -185,15 +186,16 @@ acessível, na barra de navegação superior, ao lado do menu de exportação). 
 
 - **Salvar** lê o modelo confirmado via `NgDiagramModelService.getModel()`
   (não os sinais `nodes()`/`edges()`, que podem estar momentaneamente
-  desatualizados), serializa com `toCanonicalProject()` e faz `PUT` do JSON
-  resultante.
+  desatualizados), serializa com `toCanonicalProject()`, incorpora apenas as
+  imagens referenciadas e faz `PUT` do JSON resultante.
 - **Abrir** faz `GET`, valida a resposta com `parseCanonicalProject()` (a
   mesma validação estrutural usada pelo servidor antes de gravar em disco —
   ver "Validação" em `docs/local-service.md`) e substitui o modelo inteiro
   usando apenas as operações públicas em lote de `NgDiagramModelService`
   (remove edges, remove nodes, adiciona nodes, adiciona edges — nessa
   ordem, para nunca deixar uma edge apontando para um node que ainda não
-  existe).
+  existe). As imagens são registradas antes da criação dos nodes, evitando um
+  primeiro frame ou medição sem a figura do componente.
 - O id do projeto é validado no cliente contra o mesmo padrão
   (`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$`) que o servidor exige, antes mesmo
   de sair do navegador.

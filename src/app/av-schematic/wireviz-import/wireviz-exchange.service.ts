@@ -338,6 +338,7 @@ export function buildImportedProject(
       junctions,
       conductors,
     },
+    resources: previous.resources,
   };
 }
 

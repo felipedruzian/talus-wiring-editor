@@ -193,7 +193,7 @@ export class LibraryService {
       }
 
       this.devices.set(structuredClone(catalog.devices));
-      this.artworkStore.replace(catalog.assets);
+      this.artworkStore.registerMany(catalog.assets);
       const local = persistLibraryCatalog(this.storage, catalog);
       this.storageError.set(
         local.ok
@@ -242,7 +242,7 @@ export class LibraryService {
     }
 
     this.devices.set(structuredClone(remote.catalog.devices));
-    this.artworkStore.replace(remote.catalog.assets);
+    this.artworkStore.registerMany(remote.catalog.assets);
     const local = persistLibraryCatalog(this.storage, remote.catalog);
     if (!local.ok) {
       this.storageError.set(

@@ -1,17 +1,25 @@
-# Round-trip WireViz e projeto canônico v4
+# Round-trip WireViz e projeto canônico v5
 
 ## Contrato persistido
 
-`CanonicalProjectV4` possui `formatVersion: 4` e duas seções independentes:
+`CanonicalProjectV5` possui `formatVersion: 5` e três seções independentes:
 
 - `electrical`: componentes, junções, cabos e nets com seus endpoints e
   condutores, inclusive cor e metadados próprios de cada ligação;
-- `layout`: placas, posições, furos, taps visuais e rotas manuais.
+- `layout`: placas, posições, furos, taps visuais e rotas manuais;
+- `resources`: imagens PNG/WebP endereçadas por SHA-256 e usadas pelos
+  footprints do projeto.
 
 O WireViz importa e exporta somente `electrical`. Abrir ou exportar um projeto
 não precisa apagar geometria, pois ela nunca é confundida com o documento
-elétrico. O parser aceita snapshots v1, v2 e v3 e os migra em memória; fios v1 que
+elétrico. Recursos visuais também permanecem fora dessa troca. O parser aceita
+snapshots v1, v2, v3 e v4 e os migra em memória; fios v1 que
 compartilham um pino são reunidos pela conectividade em uma única net v2.
+
+Cada imagem usada via `footprint.artwork.assetHash` viaja no próprio projeto.
+Ao abrir, os bytes são validados e hidratados antes da criação dos nós, de modo
+que o mesmo projeto preserve a figura em outro navegador/host mesmo que a
+biblioteca local desse cliente ainda não contenha o componente.
 
 ## Jumpers locais da protoboard
 

@@ -79,18 +79,41 @@ import { boardLocalPoints, boardWorldPoints } from './board-jumper';
  * v4 adds `boardJumper` to conductor layout. It stores only the owning board
  * and optional board-local bends; endpoints remain derived from the
  * conductor's junction taps and board holes.
+ * v5 adds content-addressed raster artwork under `resources`. Footprint
+ * definitions keep only the hash, while every used inert PNG/WebP byte stream
+ * travels with the project and can be hydrated before nodes are rendered.
  */
-export const CANONICAL_FORMAT_VERSION = 4;
+export const CANONICAL_FORMAT_VERSION = 5;
 
-export interface CanonicalProjectV4 {
-  formatVersion: 4;
+export interface CanonicalProjectV5 {
+  formatVersion: 5;
   electrical: CanonicalElectrical;
   layout: CanonicalLayout;
+  resources: CanonicalResources;
 }
 
 /** Compatibility aliases kept while current-format consumers migrate names. */
-export type CanonicalProjectV3 = CanonicalProjectV4;
-export type CanonicalProjectV2 = CanonicalProjectV4;
+export type CanonicalProjectV4 = CanonicalProjectV5;
+export type CanonicalProjectV3 = CanonicalProjectV5;
+export type CanonicalProjectV2 = CanonicalProjectV5;
+
+export type CanonicalArtworkMimeType = 'image/png' | 'image/webp';
+
+export interface CanonicalArtworkResource {
+  mimeType: CanonicalArtworkMimeType;
+  width: number;
+  height: number;
+  byteLength: number;
+  dataUrl: string;
+}
+
+export interface CanonicalArtworkAsset extends CanonicalArtworkResource {
+  hash: string;
+}
+
+export interface CanonicalResources {
+  artworkAssets: Record<string, CanonicalArtworkResource>;
+}
 
 // ---------------------------------------------------------------------------
 // Electrical section -- everything WireViz can express
@@ -504,6 +527,7 @@ export function toCanonicalProject(
   nodes: readonly Node[],
   edges: readonly Edge[],
   cableInventory: readonly CanonicalCable[] = [],
+  artworkAssets: readonly CanonicalArtworkAsset[] = [],
 ): CanonicalProjectV4 {
   const deviceNodes = nodes.filter(isDeviceNode);
   const junctionNodes = nodes.filter(isJunctionNode);
@@ -559,7 +583,44 @@ export function toCanonicalProject(
       ),
       conductors: drafts.map((draft) => draft.layout).sort(byKey((c) => c.conductorId)),
     },
+    resources: canonicalResources(deviceNodes, artworkAssets),
   };
+}
+
+function canonicalResources(
+  devices: readonly Node<DeviceNodeData>[],
+  assets: readonly CanonicalArtworkAsset[],
+): CanonicalResources {
+  const required = new Set(
+    devices.flatMap((device) => {
+      const hash = device.data.footprint?.artwork?.assetHash;
+      return hash ? [hash] : [];
+    }),
+  );
+  if (required.size > 64) {
+    throw new CanonicalProjectError('project resources exceed 64 artwork assets');
+  }
+  const byHash = new Map<string, CanonicalArtworkAsset>();
+  for (const asset of assets) {
+    const existing = byHash.get(asset.hash);
+    if (existing && JSON.stringify(existing) !== JSON.stringify(asset)) {
+      throw new CanonicalProjectError(`conflicting artwork asset "${asset.hash}"`);
+    }
+    byHash.set(asset.hash, asset);
+  }
+  let totalBytes = 0;
+  const artworkAssets: Record<string, CanonicalArtworkResource> = {};
+  for (const hash of [...required].sort()) {
+    const asset = byHash.get(hash);
+    if (!asset) throw new CanonicalProjectError(`missing artwork asset "${hash}"`);
+    totalBytes += asset.byteLength;
+    if (totalBytes > 4 * 1024 * 1024) {
+      throw new CanonicalProjectError('project artwork exceeds 4 MiB of decoded bytes');
+    }
+    const { hash: _hash, ...resource } = structuredClone(asset);
+    artworkAssets[hash] = resource;
+  }
+  return { artworkAssets };
 }
 
 /**

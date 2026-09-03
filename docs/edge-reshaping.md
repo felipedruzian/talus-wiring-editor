@@ -11,7 +11,7 @@ Há duas formas de roteamento:
 
 - automático: o `ng-diagram` calcula o traçado e o projeto não persiste pontos;
 - manual: a ligação possui `routingMode: 'manual'` e uma lista explícita de
-  `points` em `layout.conductors` do `CanonicalProjectV4` para fios globais;
+  `points` em `layout.conductors` do `CanonicalProjectV5` para fios globais;
 - jumper local: `boardJumper` persiste apenas `boardId` e as dobras intermediárias
   locais; os endpoints continuam derivados dos furos.
 
